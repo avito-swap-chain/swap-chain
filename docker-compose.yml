@@ -1,0 +1,33 @@
+name: swap-chain
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-swap_chain}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swap_chain}
+      POSTGRES_DB: ${POSTGRES_DB:-swap_chain}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  swagger-ui:
+    image: docker.swagger.io/swaggerapi/swagger-ui:v5.32.6
+    restart: unless-stopped
+    environment:
+      SWAGGER_JSON: /spec/openapi.yaml
+    ports:
+      - "${SWAGGER_PORT:-8081}:8080"
+    volumes:
+      - ./api/openapi.yaml:/spec/openapi.yaml:ro
+
+volumes:
+  postgres_data:

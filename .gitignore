@@ -1,0 +1,39 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+tmp/
+.tmp/
+coverage/
+
+# Go / backend
+backend/bin/
+backend/coverage.out
+backend/coverage.html
+backend/vendor/
+*.test
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.eslintcache
+frontend/coverage/
+*.tsbuildinfo
+
+# Local database and Docker overrides
+postgres-data/
+docker-compose.override.yml
