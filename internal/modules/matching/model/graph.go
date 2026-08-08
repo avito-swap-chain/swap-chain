@@ -16,7 +16,6 @@ type Graph interface {
 
 type Vertex struct {
 	ItemID   int
-	Category string
 }
 
 type Edge struct {
