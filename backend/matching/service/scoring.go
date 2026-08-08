@@ -1,6 +1,6 @@
 package service
 
-import "swap-chain/backend/matching/model"
+import "swap-chain/matching/model"
 
 type Scoring struct {
 }
