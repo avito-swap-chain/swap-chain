@@ -34,11 +34,11 @@ func (s *InMemoryStore) AddVertex(vertex Vertex) error {
 	return nil
 }
 
-func (s *InMemoryStore) Vertex(tradeOfferID int) (Vertex, error) {
+func (s *InMemoryStore) Vertex(itemID int) (Vertex, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	vertex, ok := s.vertices[tradeOfferID]
+	vertex, ok := s.vertices[itemID]
 	if !ok {
 		return Vertex{}, ErrVertexNotFound
 	}
@@ -77,10 +77,16 @@ func (s *InMemoryStore) Edge(edgeID int) (Edge, error) {
 }
 
 func (s *InMemoryStore) VerticesAmount() int {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	
 	return len(s.vertices)
 }
 
 func (s *InMemoryStore) EdgesAmount() int {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	
 	return len(s.edges)
 }
 
