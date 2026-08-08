@@ -1,0 +1,42 @@
+openapi: 3.1.0
+info:
+  title: Swap Chain API
+  version: 0.1.0
+  description: |
+    Draft REST contract for the swap-chain MVP. Endpoints are added here before
+    backend and frontend implementation.
+servers:
+  - url: http://localhost:8080
+    description: Local backend (after backend bootstrap)
+tags:
+  - name: System
+    description: Service diagnostics
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check whether the backend is ready to accept requests
+      tags:
+        - System
+      responses:
+        "200":
+          description: Backend is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              examples:
+                healthy:
+                  value:
+                    status: ok
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          const: ok
