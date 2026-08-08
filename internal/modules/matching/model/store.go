@@ -117,6 +117,10 @@ func (s *InMemoryStore) FindCycles(maxDepth int) ([][]Edge, error) {
 		for _, edge := range adjMap[currentNode] {
 			neighbor := edge.TargetID
 
+			if neighbor < startNode {
+				continue
+			}
+			
 			if neighbor == startNode {
 				cycle := make([]Edge, len(path)+1)
 				copy(cycle, path)
