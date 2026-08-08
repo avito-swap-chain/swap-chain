@@ -6,9 +6,12 @@ package db
 
 import (
 	"context"
+
+	pgvector_go "github.com/pgvector/pgvector-go"
 )
 
 type Querier interface {
+	FindCategory(ctx context.Context, embedding pgvector_go.Vector) ([]FindCategoryRow, error)
 	FindSimilarItems(ctx context.Context, arg FindSimilarItemsParams) ([]FindSimilarItemsRow, error)
 }
 

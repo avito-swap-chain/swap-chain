@@ -96,6 +96,12 @@ func (ns NullParticipantStatus) Value() (driver.Value, error) {
 	return string(ns.ParticipantStatus), nil
 }
 
+type Category struct {
+	ID        int32       `json:"id"`
+	Name      string      `json:"name"`
+	Embedding interface{} `json:"embedding"`
+}
+
 type Chain struct {
 	ID        int64           `json:"id"`
 	Status    NullChainStatus `json:"status"`
