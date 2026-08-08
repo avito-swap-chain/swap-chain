@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"swap-chain/internal/db"
-	"swap-chain/internal/modules/matching/model"
+	"swap-chain/backend/shared/db"
+	"swap-chain/backend/matching/model"
 
 	"go.uber.org/zap"
 )
