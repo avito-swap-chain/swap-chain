@@ -1,0 +1,80 @@
+@import 'tailwindcss';
+
+/* Avito-style design tokens (Tailwind v4 @theme → утилиты bg-brand, rounded-btn, …)
+ * Веб-шрифт Arial (как у Avito), фирменный азур #00AAFF, акцентный набор,
+ * скругления и spacing по системе Avito. */
+@theme {
+  --color-brand: #00aaff;
+  --color-brand-press: #0092de;
+  --color-brand-soft: #e5f6ff;
+  --color-on-brand: #ffffff;
+
+  /* акцентный набор Avito — цвета из официального лого (редизайн 2022) */
+  --color-accent-green: #04e061;
+  --color-accent-violet: #965eeb;
+  --color-accent-red: #ff4053;
+
+  /* нейтрали — тёплый светло-серый, как поверхности Avito */
+  --color-page: #f4f3f1;
+  --color-card: #ffffff;
+  --color-ink: #0a0a0a;
+  --color-ink-2: #757579;
+  --color-ink-3: #a3a2a0;
+  --color-line: #eae9e6;
+  --color-line-2: #f2f1ef;
+
+  /* чёрная кнопка Avito («Найти») */
+  --color-dark: #0a0a0a;
+  --color-dark-press: #262626;
+
+  /* статусные цвета. Как у Авито: статус — текст, а не плашка, и цвет несёт смысл.
+   * Оранжевый = «ход за вами» (у Авито так набраны «Ждёт отправки», «Уточните цену»),
+   * азур остаётся только на ссылках и кнопках. Заливки (--*-bg) — под баннеры. */
+  --color-attention: #f26100;
+  /* на точках степпера тот же сигнал звучит желтее — иначе точка теряется рядом с текстом */
+  --color-attention-dot: #ffa200;
+  --color-ok: #1f8a3f;
+  --color-ok-bg: #e7f4ea;
+  --color-stop: #e11d2e;
+  --color-stop-bg: #ffebec;
+
+  --radius-btn: 12px;
+  --radius-card: 16px;
+  --radius-chip: 8px;
+  --radius-input: 12px;
+
+  --shadow-card: 0 2px 8px rgba(10, 20, 30, 0.06);
+  --shadow-pop: 0 8px 28px -10px rgba(10, 30, 50, 0.16);
+
+  --font-sans: Arial, 'Helvetica Neue', Helvetica, 'Segoe UI', Roboto, sans-serif;
+
+  /* ширина контейнера Авито (утилита max-w-page): шапка и контент стоят на одной сетке */
+  --container-page: 1248px;
+}
+
+/* Только светлая тема — как веб-версия Avito. Системную тёмную не следуем,
+ * чтобы на защите UI выглядел одинаково независимо от темы ОС жюри. */
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  body {
+    margin: 0;
+    min-height: 100svh;
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer utilities {
+  /* Ленты, которые прокручиваются пальцем: полоса прокрутки под меню кабинета
+   * на узких экранах читается как посторонняя линия. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
