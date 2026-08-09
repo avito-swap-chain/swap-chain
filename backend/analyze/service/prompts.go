@@ -21,6 +21,26 @@ Schema:
 
 Input text: "%s"`
 
+const paramRichnessPromptTemplate = `Evaluate how informative this marketplace item description is.
+Return ONLY valid JSON with a number from 0 to 1:
+{"param_richness": 0.0}
+
+Description: %q`
+
+// VisionAnalysisPrompt requests the structured response expected by Vision.
+const VisionAnalysisPrompt = `Analyze the item photo and return ONLY valid JSON:
+{
+  "marketplace_description": "short factual description in Russian",
+  "visual_quality": "NEW|EXCELLENT|GOOD|FAIR|POOR",
+  "quality_score": 0.0
+}
+quality_score must be a number from 0 to 1.`
+
 func BuildEnrichmentPrompt(input string) string {
 	return fmt.Sprintf(enrichmentPromptTemplate, input)
+}
+
+// BuildParamRichnessPrompt creates a safely quoted description-scoring prompt.
+func BuildParamRichnessPrompt(description string) string {
+	return fmt.Sprintf(paramRichnessPromptTemplate, description)
 }

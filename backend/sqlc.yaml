@@ -4,6 +4,7 @@ sql:
     schema:
       - "migrations/000001_create_matching_schema.up.sql"
       - "migrations/000002_add_mvp_lifecycle.up.sql"
+      - "migrations/000005_add_analysis_metadata.up.sql"
     queries: "sql/queries"
     gen:
       go:
