@@ -4,30 +4,30 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"swap-chain/analyze/adapters"
 	"swap-chain/analyze/model"
 )
 
-type jsonGenerator interface {
-	GenerateJSON(ctx context.Context, prompt string) (string, error)
-}
-
-// Scoring evaluates normalized item-description metrics.
 type Scoring struct {
-	generator jsonGenerator
+	enricher adapters.Enricher
 }
 
-// NewScoring creates a description scoring service.
-func NewScoring(generator jsonGenerator) *Scoring {
-	return &Scoring{
-		generator: generator,
+func NewScoring(enricher adapters.Enricher) (*Scoring, error) {
+	if enricher == nil {
+		return nil, fmt.Errorf("scoring init: 'enricher' is required")
 	}
+
+	return &Scoring{
+		enricher: enricher,
+	}, nil
 }
 
 // EvaluateDescription оценивает качество пользовательского описания товара
 func (s *Scoring) EvaluateDescription(ctx context.Context, description string) (*model.DescriptionScore, error) {
 	prompt := BuildParamRichnessPrompt(description)
 
-	resp, err := s.generator.GenerateJSON(ctx, prompt)
+	resp, err := s.enricher.GenerateJSON(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("evaluate description: %w", err)
 	}

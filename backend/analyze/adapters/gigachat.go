@@ -47,7 +47,7 @@ func DefaultGigaChatConfig(authKey string) GigaChatConfig {
 		EmbeddingsURL:   "https://api.giga.chat/v1/embeddings",
 		FilesURL:        "https://api.giga.chat/v1/files",
 		ChatModel:       "GigaChat-3-Ultra",
-		EmbeddingsModel: "GigaEmbeddings-3B-2025-09",
+		EmbeddingsModel: "Embeddings",
 		Timeout:         30 * time.Second,
 	}
 }
@@ -69,11 +69,44 @@ type GigaChat struct {
 	client      *http.Client
 }
 
-func NewGigaChat(cfg GigaChatConfig) *GigaChat {
-	return &GigaChat{
-		cfg:    cfg,
-		client: &http.Client{Timeout: cfg.Timeout},
+func NewGigaChat(cfg GigaChatConfig) (*GigaChat, error) {
+	switch {
+	case strings.TrimSpace(cfg.AuthKey) == "":
+		return nil, fmt.Errorf("gigachat init: 'auth key' is required")
+	case strings.TrimSpace(cfg.Scope) == "":
+		return nil, fmt.Errorf("gigachat init: 'scope' is required")
+	case strings.TrimSpace(cfg.ChatModel) == "":
+		return nil, fmt.Errorf("gigachat init: 'chat model' is required")
+	case strings.TrimSpace(cfg.EmbeddingsModel) == "":
+		return nil, fmt.Errorf("gigachat init: 'embeddings model' is required")
+	case cfg.Timeout <= 0:
+		return nil, fmt.Errorf("gigachat init: 'timeout' must be positive")
 	}
+
+	urls := []struct {
+		name  string
+		value string
+	}{
+		{name: "oauth URL", value: cfg.OAuthURL},
+		{name: "chat URL", value: cfg.ChatURL},
+		{name: "embeddings URL", value: cfg.EmbeddingsURL},
+		{name: "files URL", value: cfg.FilesURL},
+	}
+	for _, endpoint := range urls {
+		if err := validateHTTPURL(endpoint.name, endpoint.value); err != nil {
+			return nil, fmt.Errorf("gigachat init: %w", err)
+		}
+	}
+
+	return &GigaChat{
+		cfg: cfg,
+		client: &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+			Timeout: cfg.Timeout,
+		},
+	}, nil
 }
 
 func (g *GigaChat) GetToken(ctx context.Context) (string, error) {
@@ -143,7 +176,6 @@ func (g *GigaChat) GenerateJSON(ctx context.Context, prompt string) (string, err
 		"messages": []map[string]interface{}{
 			{"role": "user", "content": prompt},
 		},
-		"response_format": map[string]string{"type": "json_object"},
 	}
 
 	var chatResp struct {
@@ -163,34 +195,6 @@ func (g *GigaChat) GenerateJSON(ctx context.Context, prompt string) (string, err
 	}
 
 	return chatResp.Choices[0].Message.Content, nil
-}
-
-func (g *GigaChat) Vectorize(ctx context.Context, text string) ([]float32, error) {
-	token, err := g.GetToken(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	requestBody := map[string]interface{}{
-		"model": g.cfg.EmbeddingsModel,
-		"input": []string{text},
-	}
-
-	var embResp struct {
-		Data []struct {
-			Embedding []float32 `json:"embedding"`
-		} `json:"data"`
-	}
-
-	if err := g.doJSONRequest(ctx, g.cfg.EmbeddingsURL, token, requestBody, &embResp); err != nil {
-		return nil, err
-	}
-
-	if len(embResp.Data) == 0 {
-		return nil, fmt.Errorf("empty embeddings data")
-	}
-
-	return embResp.Data[0].Embedding, nil
 }
 
 func (g *GigaChat) AnalyzePhoto(ctx context.Context, photoBytes []byte, prompt string) (string, error) {
@@ -213,7 +217,6 @@ func (g *GigaChat) AnalyzePhoto(ctx context.Context, photoBytes []byte, prompt s
 				"attachments": []string{fileID},
 			},
 		},
-		"response_format": map[string]string{"type": "json_object"},
 	}
 
 	var chatResp struct {

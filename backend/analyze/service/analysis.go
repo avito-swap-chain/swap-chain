@@ -1,4 +1,3 @@
-// Package service implements item enrichment, categorization and vectorization.
 package service
 
 import (
@@ -16,52 +15,61 @@ import (
 )
 
 var (
-	// ErrAnalysisStateChanged indicates that an item left ANALYZING before completion.
-	ErrAnalysisStateChanged = errors.New("item is no longer analyzing")
+	ErrManualCategoryRequired = errors.New("manual category selection required")
+	ErrAnalysisStateChanged   = errors.New("item is no longer analyzing")
 )
 
-type analysisRepository interface {
+type AnalysisRepository interface {
 	GetItemForAnalysis(ctx context.Context, id int64) (db.GetItemForAnalysisRow, error)
 	CompleteItemAnalysis(ctx context.Context, arg db.CompleteItemAnalysisParams) (int64, error)
 }
 
-type paramRichnessEvaluator interface {
+type ParamRichnessEvaluator interface {
 	EvaluateDescription(ctx context.Context, description string) (*analyzemodel.DescriptionScore, error)
 }
 
-type categoryDefiner interface {
+type CategoryDefiner interface {
 	DefineTag(ctx context.Context, title string, description string) (*analyzemodel.CategoryMatch, error)
 }
 
-type analysisVectorizer interface {
+type AnalysisVectorizer interface {
 	Vectorize(ctx context.Context, text string) ([]float32, error)
 }
 
 // Analysis выполняет полный повторяемый сценарий анализа уже созданной вещи.
 // Все вычисления происходят до единственной финальной записи в БД.
 type Analysis struct {
-	repo       analysisRepository
-	scoring    paramRichnessEvaluator
-	tagging    categoryDefiner
-	vectorizer analysisVectorizer
+	repo       AnalysisRepository
+	scoring    ParamRichnessEvaluator
+	tagging    CategoryDefiner
+	vectorizer AnalysisVectorizer
 }
 
-// NewAnalysis creates the complete item-analysis pipeline.
 func NewAnalysis(
-	repo analysisRepository,
-	scoring paramRichnessEvaluator,
-	tagging categoryDefiner,
-	vectorizer analysisVectorizer,
-) *Analysis {
+	repo AnalysisRepository,
+	scoring ParamRichnessEvaluator,
+	tagging CategoryDefiner,
+	vectorizer AnalysisVectorizer,
+) (*Analysis, error) {
+	switch {
+	case repo == nil:
+		return nil, fmt.Errorf("analysis init: 'analysis repo' is required")
+	case scoring == nil:
+		return nil, fmt.Errorf("analysis init: 'param richness evaluator' is required")
+	case tagging == nil:
+		return nil, fmt.Errorf("analysis init: 'category definer' is required")
+	case vectorizer == nil:
+		return nil, fmt.Errorf("analysis init: 'analysis vectorizer' is required")
+	}
+
 	return &Analysis{
 		repo:       repo,
 		scoring:    scoring,
 		tagging:    tagging,
 		vectorizer: vectorizer,
-	}
+	}, nil
 }
 
-// AnalyzeItem computes all matching metadata and atomically completes analysis.
 func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 	item, err := s.repo.GetItemForAnalysis(ctx, itemID)
 	if err != nil {
@@ -90,10 +98,16 @@ func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 	if err != nil {
 		return fmt.Errorf("define item %d offer category: %w", itemID, err)
 	}
+	if offerCategory.IsManual {
+		return fmt.Errorf("define item %d offer category: %w", itemID, ErrManualCategoryRequired)
+	}
 
 	wantCategory, err := s.tagging.DefineTag(ctx, "", wantDescription)
 	if err != nil {
 		return fmt.Errorf("define item %d want category: %w", itemID, err)
+	}
+	if wantCategory.IsManual {
+		return fmt.Errorf("define item %d want category: %w", itemID, ErrManualCategoryRequired)
 	}
 
 	offerText := strings.TrimSpace(item.OfferTitle + " " + offerDescription)
@@ -110,16 +124,15 @@ func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 	wantEmbedding := pgvector.NewVector(wantVector)
 
 	updated, err := s.repo.CompleteItemAnalysis(ctx, db.CompleteItemAnalysisParams{
-		OfferCategoryID: categoryID(offerCategory),
-		WantCategoryID:  categoryID(wantCategory),
+		OfferCategoryID: sql.NullInt32{Int32: int32(offerCategory.CategoryID), Valid: true},
+		WantCategoryID:  sql.NullInt32{Int32: int32(wantCategory.CategoryID), Valid: true},
 		ParamRichness: sql.NullString{
 			String: strconv.FormatFloat(descriptionScore.ParamRichness, 'f', -1, 64),
 			Valid:  true,
 		},
-		OfferEmbedding:   offerEmbedding,
-		WantEmbedding:    wantEmbedding,
-		IsCategoryManual: offerCategory.IsManual || wantCategory.IsManual,
-		ID:               item.ID,
+		OfferEmbeddingLocal: &offerEmbedding,
+		WantEmbeddingLocal:  &wantEmbedding,
+		ID:                  item.ID,
 	})
 	if err != nil {
 		return fmt.Errorf("complete item %d analysis: %w", itemID, err)
@@ -129,11 +142,4 @@ func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 	}
 
 	return nil
-}
-
-func categoryID(match *analyzemodel.CategoryMatch) sql.NullInt32 {
-	if match == nil || match.IsManual || match.CategoryID <= 0 {
-		return sql.NullInt32{}
-	}
-	return sql.NullInt32{Int32: int32(match.CategoryID), Valid: true}
 }

@@ -28,11 +28,10 @@ UPDATE items
 SET offer_category_id = sqlc.arg(offer_category_id),
     want_category_id = sqlc.arg(want_category_id),
     param_richness = sqlc.arg(param_richness),
-    is_category_manual = sqlc.arg(is_category_manual),
-    offer_embedding = sqlc.arg(offer_embedding)::vector,
-    want_embedding = sqlc.arg(want_embedding)::vector,
+    is_category_manual = FALSE,
+    offer_embedding_local = sqlc.arg(offer_embedding_local)::vector,
+    want_embedding_local = sqlc.arg(want_embedding_local)::vector,
     status = 'MATCHING',
-    last_status_updated_at = NOW(),
-    updated_at = NOW()
+    last_status_updated_at = NOW()
 WHERE id = sqlc.arg(id)
   AND status = 'ANALYZING';

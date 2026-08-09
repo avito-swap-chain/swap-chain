@@ -1,5 +1,8 @@
 -- name: FindCategory :many
-SELECT id, name, (1.0 - (embedding <=> sqlc.arg(embedding)::vector))::float8 AS similarity
-FROM categories
-ORDER BY embedding <=> sqlc.arg(embedding)::vector
+SELECT category.id,
+       category.name,
+       (1.0 - (category.embedding_local <=> sqlc.arg(embedding_local)::vector))::float8 AS similarity
+FROM categories AS category
+WHERE category.embedding_local IS NOT NULL
+ORDER BY category.embedding_local <=> sqlc.arg(embedding_local)::vector
 LIMIT 2;

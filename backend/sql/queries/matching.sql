@@ -1,38 +1,34 @@
 -- name: FindSimilarItems :many
-SELECT candidate.id,
-       candidate.user_id,
-       candidate.offer_title,
-       candidate.offer_description,
-       candidate.want_description,
-       candidate.offer_embedding::vector AS offer_embedding,
-       candidate.want_embedding::vector AS want_embedding,
-       cardinality(candidate.image_urls)::int AS image_amount,
-       COALESCE(candidate.param_richness, 0)::float8 AS param_richness,
-       COALESCE(candidate.quality_score, 0)::float8 AS quality_score,
-       owner.rating::float8 AS user_rating,
-       owner.success_rate::float8 AS user_success_rate,
-       (1.0 - (candidate.offer_embedding <=> source.want_embedding))::float8 AS similarity
-FROM items AS candidate
-JOIN users AS owner ON owner.id = candidate.user_id
-JOIN items AS source ON source.id = $1
-WHERE candidate.id != source.id
-  AND candidate.user_id != source.user_id
-  AND candidate.status = 'MATCHING'
-  AND source.status = 'MATCHING'
-  AND candidate.offer_embedding IS NOT NULL
-  AND candidate.want_embedding IS NOT NULL
-  AND source.offer_embedding IS NOT NULL
-  AND source.want_embedding IS NOT NULL
-  AND (candidate.offer_category_id = source.want_category_id
-       OR candidate.offer_category_id IS NULL
-       OR source.want_category_id IS NULL)
-ORDER BY candidate.offer_embedding <=> source.want_embedding, candidate.id
+SELECT candidate_item.id,
+       candidate_item.user_id,
+       candidate_item.offer_title,
+       candidate_item.offer_description,
+       candidate_item.want_description,
+       candidate_item.offer_category_id,
+       candidate_item.want_category_id,
+       candidate_item.visual_quality,
+       candidate_item.quality_score,
+       candidate_item.param_richness,
+       candidate_item.is_category_manual,
+       candidate_item.image_amount,
+       candidate_owner.rating AS user_rating,
+       candidate_owner.success_rate AS user_success_rate,
+       candidate_item.offer_embedding_local::vector AS offer_embedding_local,
+       candidate_item.want_embedding_local::vector AS want_embedding_local,
+       (1.0 - (candidate_item.offer_embedding_local <=> source_item.want_embedding_local))::float8 AS similarity
+FROM items AS candidate_item
+JOIN users AS candidate_owner ON candidate_owner.id = candidate_item.user_id
+JOIN items AS source_item ON source_item.id = $1
+WHERE candidate_item.id != source_item.id
+  AND candidate_item.user_id != source_item.user_id
+  AND candidate_item.status = 'MATCHING'
+  AND source_item.status = 'MATCHING'
+  AND candidate_item.offer_category_id = source_item.want_category_id
+ORDER BY candidate_item.offer_embedding_local <=> source_item.want_embedding_local
 LIMIT $2;
 
 -- name: GetMatchingSourceItem :one
-SELECT id
-FROM items
-WHERE id = $1
-  AND status = 'MATCHING'
-  AND offer_embedding IS NOT NULL
-  AND want_embedding IS NOT NULL;
+SELECT source_item.id
+FROM items AS source_item
+WHERE source_item.id = $1
+  AND source_item.status = 'MATCHING';

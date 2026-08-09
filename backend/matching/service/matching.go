@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+
 	"swap-chain/matching/model"
 
 	"go.uber.org/zap"
@@ -39,13 +40,40 @@ func NewMatching(
 	repo MatchingRepo,
 	scorer Scorer,
 	cfg MatchingConfig,
-) *Matching {
+) (*Matching, error) {
+	switch {
+	case logger == nil:
+		return nil, fmt.Errorf("matching init: 'logger' is required")
+	case repo == nil:
+		return nil, fmt.Errorf("matching init: 'matching repo' is required")
+	case scorer == nil:
+		return nil, fmt.Errorf("matching init: 'scorer implementation' is required")
+	}
+
+	if cfg.ChainLen < 2 || cfg.ChainLen > 3 {
+		return nil, fmt.Errorf("matching init: invalid 'max chain len' %d", cfg.ChainLen)
+	}
+	if cfg.SimilarItemsAmount <= 0 || cfg.SimilarItemsAmount > 40 {
+		return nil, fmt.Errorf("matching init: invalid 'similar items amount' range %d", cfg.SimilarItemsAmount)
+	}
+	if math.IsNaN(cfg.ChainRatingThreshold) || math.IsInf(cfg.ChainRatingThreshold, 0) ||
+		cfg.ChainRatingThreshold < 0 || cfg.ChainRatingThreshold > 1 {
+		return nil, fmt.Errorf("matching init: invalid 'chain rating threshold' range %g", cfg.ChainRatingThreshold)
+	}
+	if math.IsNaN(cfg.CompatibilityThreshold) || math.IsInf(cfg.CompatibilityThreshold, 0) ||
+		cfg.CompatibilityThreshold < -1 || cfg.CompatibilityThreshold > 1 {
+		return nil, fmt.Errorf("matching init: invalid 'compatibility threshold' range %g", cfg.CompatibilityThreshold)
+	}
+	if math.IsNaN(cfg.PenaltyFactor) || math.IsInf(cfg.PenaltyFactor, 0) || cfg.PenaltyFactor < 0 {
+		return nil, fmt.Errorf("matching init: invalid 'penalty factor' %g", cfg.PenaltyFactor)
+	}
+
 	return &Matching{
 		logger: logger,
 		repo:   repo,
 		scorer: scorer,
 		cfg:    cfg,
-	}
+	}, nil
 }
 
 func (m *Matching) FindCycles(ctx context.Context, itemID int) ([][]model.Edge, error) {
@@ -97,10 +125,8 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 				if match.Similarity < m.cfg.CompatibilityThreshold {
 					continue
 				}
-				if err := graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID}); err != nil && !errors.Is(err, model.ErrVertexAlreadyExists) {
-					errs = append(errs, fmt.Errorf("add item %d to graph: %w", match.TargetItem.ID, err))
-					continue
-				}
+
+				graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID})
 				score := m.scorer.CalculateScore(match)
 
 				if err := graph.AddEdge(model.Edge{
@@ -149,12 +175,12 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 // - []model.ItemMatch - кандидаты на создание связи с itemID вещью
 // - error - ошибка если она была
 func (m *Matching) findSimilarItems(ctx context.Context, itemID int) ([]model.ItemMatch, error) {
-	res, err := m.repo.FindSimilarItems(ctx, itemID, m.cfg.SimilarItemsAmount)
+	matches, err := m.repo.FindSimilarItems(ctx, itemID, m.cfg.SimilarItemsAmount)
 	if err != nil {
-		return nil, fmt.Errorf("find similar items: %w", err)
+		return nil, fmt.Errorf("find similar items for item %d: %w", itemID, err)
 	}
 
-	return res, nil
+	return matches, nil
 }
 
 // filterChainsByScoreAndRoot - фильтрует цепочки по корневому узлу и рейтингу.
@@ -183,7 +209,7 @@ func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int)
 	return filteredChains
 }
 
-// CalculateChainScore рассчитывает рейтинг целой цепочки при помощи среднего, скорректированного на дисперсию.
+// CalculateChainScore - рассчитывает рейтинг целой цепочки при помощи среднего скоректированного на дисперсию.
 func (m *Matching) CalculateChainScore(chain []model.Edge) float64 {
 	if len(chain) == 0 {
 		return 0

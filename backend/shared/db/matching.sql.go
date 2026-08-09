@@ -13,34 +13,32 @@ import (
 )
 
 const findSimilarItems = `-- name: FindSimilarItems :many
-SELECT candidate.id,
-       candidate.user_id,
-       candidate.offer_title,
-       candidate.offer_description,
-       candidate.want_description,
-       candidate.offer_embedding::vector AS offer_embedding,
-       candidate.want_embedding::vector AS want_embedding,
-       cardinality(candidate.image_urls)::int AS image_amount,
-       COALESCE(candidate.param_richness, 0)::float8 AS param_richness,
-       COALESCE(candidate.quality_score, 0)::float8 AS quality_score,
-       owner.rating::float8 AS user_rating,
-       owner.success_rate::float8 AS user_success_rate,
-       (1.0 - (candidate.offer_embedding <=> source.want_embedding))::float8 AS similarity
-FROM items AS candidate
-JOIN users AS owner ON owner.id = candidate.user_id
-JOIN items AS source ON source.id = $1
-WHERE candidate.id != source.id
-  AND candidate.user_id != source.user_id
-  AND candidate.status = 'MATCHING'
-  AND source.status = 'MATCHING'
-  AND candidate.offer_embedding IS NOT NULL
-  AND candidate.want_embedding IS NOT NULL
-  AND source.offer_embedding IS NOT NULL
-  AND source.want_embedding IS NOT NULL
-  AND (candidate.offer_category_id = source.want_category_id
-       OR candidate.offer_category_id IS NULL
-       OR source.want_category_id IS NULL)
-ORDER BY candidate.offer_embedding <=> source.want_embedding, candidate.id
+SELECT candidate_item.id,
+       candidate_item.user_id,
+       candidate_item.offer_title,
+       candidate_item.offer_description,
+       candidate_item.want_description,
+       candidate_item.offer_category_id,
+       candidate_item.want_category_id,
+       candidate_item.visual_quality,
+       candidate_item.quality_score,
+       candidate_item.param_richness,
+       candidate_item.is_category_manual,
+       candidate_item.image_amount,
+       candidate_owner.rating AS user_rating,
+       candidate_owner.success_rate AS user_success_rate,
+       candidate_item.offer_embedding_local::vector AS offer_embedding_local,
+       candidate_item.want_embedding_local::vector AS want_embedding_local,
+       (1.0 - (candidate_item.offer_embedding_local <=> source_item.want_embedding_local))::float8 AS similarity
+FROM items AS candidate_item
+JOIN users AS candidate_owner ON candidate_owner.id = candidate_item.user_id
+JOIN items AS source_item ON source_item.id = $1
+WHERE candidate_item.id != source_item.id
+  AND candidate_item.user_id != source_item.user_id
+  AND candidate_item.status = 'MATCHING'
+  AND source_item.status = 'MATCHING'
+  AND candidate_item.offer_category_id = source_item.want_category_id
+ORDER BY candidate_item.offer_embedding_local <=> source_item.want_embedding_local
 LIMIT $2
 `
 
@@ -50,19 +48,23 @@ type FindSimilarItemsParams struct {
 }
 
 type FindSimilarItemsRow struct {
-	ID               int64              `json:"id"`
-	UserID           int64              `json:"user_id"`
-	OfferTitle       string             `json:"offer_title"`
-	OfferDescription sql.NullString     `json:"offer_description"`
-	WantDescription  sql.NullString     `json:"want_description"`
-	OfferEmbedding   pgvector_go.Vector `json:"offer_embedding"`
-	WantEmbedding    pgvector_go.Vector `json:"want_embedding"`
-	ImageAmount      int32              `json:"image_amount"`
-	ParamRichness    float64            `json:"param_richness"`
-	QualityScore     float64            `json:"quality_score"`
-	UserRating       float64            `json:"user_rating"`
-	UserSuccessRate  float64            `json:"user_success_rate"`
-	Similarity       float64            `json:"similarity"`
+	ID                  int64               `json:"id"`
+	UserID              int64               `json:"user_id"`
+	OfferTitle          string              `json:"offer_title"`
+	OfferDescription    sql.NullString      `json:"offer_description"`
+	WantDescription     sql.NullString      `json:"want_description"`
+	OfferCategoryID     sql.NullInt32       `json:"offer_category_id"`
+	WantCategoryID      sql.NullInt32       `json:"want_category_id"`
+	VisualQuality       sql.NullString      `json:"visual_quality"`
+	QualityScore        sql.NullString      `json:"quality_score"`
+	ParamRichness       sql.NullString      `json:"param_richness"`
+	IsCategoryManual    sql.NullBool        `json:"is_category_manual"`
+	ImageAmount         sql.NullInt32       `json:"image_amount"`
+	UserRating          sql.NullString      `json:"user_rating"`
+	UserSuccessRate     sql.NullString      `json:"user_success_rate"`
+	OfferEmbeddingLocal *pgvector_go.Vector `json:"offer_embedding_local"`
+	WantEmbeddingLocal  *pgvector_go.Vector `json:"want_embedding_local"`
+	Similarity          float64             `json:"similarity"`
 }
 
 func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsParams) ([]FindSimilarItemsRow, error) {
@@ -80,13 +82,17 @@ func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsPara
 			&i.OfferTitle,
 			&i.OfferDescription,
 			&i.WantDescription,
-			&i.OfferEmbedding,
-			&i.WantEmbedding,
-			&i.ImageAmount,
-			&i.ParamRichness,
+			&i.OfferCategoryID,
+			&i.WantCategoryID,
+			&i.VisualQuality,
 			&i.QualityScore,
+			&i.ParamRichness,
+			&i.IsCategoryManual,
+			&i.ImageAmount,
 			&i.UserRating,
 			&i.UserSuccessRate,
+			&i.OfferEmbeddingLocal,
+			&i.WantEmbeddingLocal,
 			&i.Similarity,
 		); err != nil {
 			return nil, err
@@ -103,16 +109,15 @@ func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsPara
 }
 
 const getMatchingSourceItem = `-- name: GetMatchingSourceItem :one
-SELECT id
-FROM items
-WHERE id = $1
-  AND status = 'MATCHING'
-  AND offer_embedding IS NOT NULL
-  AND want_embedding IS NOT NULL
+SELECT source_item.id
+FROM items AS source_item
+WHERE source_item.id = $1
+  AND source_item.status = 'MATCHING'
 `
 
 func (q *Queries) GetMatchingSourceItem(ctx context.Context, id int64) (int64, error) {
 	row := q.db.QueryRowContext(ctx, getMatchingSourceItem, id)
-	err := row.Scan(&id)
-	return id, err
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
 }

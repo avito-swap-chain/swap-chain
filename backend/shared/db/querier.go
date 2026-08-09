@@ -13,7 +13,7 @@ import (
 type Querier interface {
 	ClaimStaleAnalyzingItems(ctx context.Context, arg ClaimStaleAnalyzingItemsParams) ([]int64, error)
 	CompleteItemAnalysis(ctx context.Context, arg CompleteItemAnalysisParams) (int64, error)
-	FindCategory(ctx context.Context, embedding pgvector_go.Vector) ([]FindCategoryRow, error)
+	FindCategory(ctx context.Context, embeddingLocal *pgvector_go.Vector) ([]FindCategoryRow, error)
 	FindSimilarItems(ctx context.Context, arg FindSimilarItemsParams) ([]FindSimilarItemsRow, error)
 	GetItemForAnalysis(ctx context.Context, id int64) (GetItemForAnalysisRow, error)
 	GetMatchingSourceItem(ctx context.Context, id int64) (int64, error)

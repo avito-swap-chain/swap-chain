@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -11,22 +12,20 @@ import (
 	"swap-chain/shared/db"
 )
 
-type staleAnalysisRepository interface {
+type StaleAnalysisRepository interface {
 	ClaimStaleAnalyzingItems(ctx context.Context, arg db.ClaimStaleAnalyzingItemsParams) ([]int64, error)
 }
 
-type itemAnalyzer interface {
+type ItemAnalyzer interface {
 	AnalyzeItem(ctx context.Context, itemID int64) error
 }
 
-// AnalysisRecoveryWorkerConfig controls stale-item recovery frequency and size.
 type AnalysisRecoveryWorkerConfig struct {
 	PollInterval time.Duration
 	StaleAfter   time.Duration
 	BatchSize    int32
 }
 
-// DefaultAnalysisRecoveryWorkerConfig returns conservative recovery defaults.
 func DefaultAnalysisRecoveryWorkerConfig() AnalysisRecoveryWorkerConfig {
 	return AnalysisRecoveryWorkerConfig{
 		PollInterval: 30 * time.Second,
@@ -37,20 +36,28 @@ func DefaultAnalysisRecoveryWorkerConfig() AnalysisRecoveryWorkerConfig {
 
 // AnalysisRecoveryWorker повторно запускает полный анализ зависших ANALYZING-вещей.
 type AnalysisRecoveryWorker struct {
-	repo     staleAnalysisRepository
-	analyzer itemAnalyzer
+	repo     StaleAnalysisRepository
+	analyzer ItemAnalyzer
 	logger   *zap.Logger
 	cfg      AnalysisRecoveryWorkerConfig
 	now      func() time.Time
 }
 
-// NewAnalysisRecoveryWorker validates configuration and creates a recovery worker.
 func NewAnalysisRecoveryWorker(
-	repo staleAnalysisRepository,
-	analyzer itemAnalyzer,
+	repo StaleAnalysisRepository,
+	analyzer ItemAnalyzer,
 	logger *zap.Logger,
 	cfg AnalysisRecoveryWorkerConfig,
 ) (*AnalysisRecoveryWorker, error) {
+	switch {
+	case repo == nil:
+		return nil, fmt.Errorf("analysis recovery worker: repository is required")
+	case analyzer == nil:
+		return nil, fmt.Errorf("analysis recovery worker: analyzer is required")
+	case logger == nil:
+		return nil, fmt.Errorf("analysis recovery worker: logger is required")
+	}
+
 	if cfg.PollInterval <= 0 {
 		return nil, fmt.Errorf("analysis recovery worker: poll interval must be positive")
 	}
@@ -70,7 +77,6 @@ func NewAnalysisRecoveryWorker(
 	}, nil
 }
 
-// Start runs recovery until the context is canceled.
 func (w *AnalysisRecoveryWorker) Start(ctx context.Context) {
 	ticker := time.NewTicker(w.cfg.PollInterval)
 	defer ticker.Stop()
@@ -96,7 +102,7 @@ func (w *AnalysisRecoveryWorker) recoverAndLog(ctx context.Context) {
 func (w *AnalysisRecoveryWorker) recoverOnce(ctx context.Context) error {
 	staleBefore := w.now().Add(-w.cfg.StaleAfter)
 	itemIDs, err := w.repo.ClaimStaleAnalyzingItems(ctx, db.ClaimStaleAnalyzingItemsParams{
-		StaleBefore: staleBefore,
+		StaleBefore: sql.NullTime{Time: staleBefore, Valid: true},
 		BatchSize:   w.cfg.BatchSize,
 	})
 	if err != nil {

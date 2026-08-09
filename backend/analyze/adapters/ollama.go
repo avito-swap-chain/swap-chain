@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type OllamaConfig struct {
 	BaseURL         string
 	ChatModel       string
 	EmbeddingsModel string
+	Timeout         time.Duration
 }
 
 func DefaultOllamaConfig() OllamaConfig {
@@ -22,6 +24,7 @@ func DefaultOllamaConfig() OllamaConfig {
 		BaseURL:         "http://localhost:11434",
 		ChatModel:       "llama3.1",
 		EmbeddingsModel: "bge-m3",
+		Timeout:         30 * time.Second,
 	}
 }
 
@@ -30,11 +33,23 @@ type Ollama struct {
 	cfg    OllamaConfig
 }
 
-func NewOllama(cfg OllamaConfig) *Ollama {
-	return &Ollama{
-		client: &http.Client{Timeout: defaultOllamaTimeout},
-		cfg:    cfg,
+func NewOllama(cfg OllamaConfig) (*Ollama, error) {
+	switch {
+	case strings.TrimSpace(cfg.ChatModel) == "":
+		return nil, fmt.Errorf("ollama init: 'chat model' is required")
+	case strings.TrimSpace(cfg.EmbeddingsModel) == "":
+		return nil, fmt.Errorf("ollama init: 'embeddings model' is required")
+	case cfg.Timeout <= 0:
+		return nil, fmt.Errorf("ollama init: 'timeout' must be positive")
 	}
+	if err := validateHTTPURL("base URL", cfg.BaseURL); err != nil {
+		return nil, fmt.Errorf("ollama init: %w", err)
+	}
+
+	return &Ollama{
+		client: &http.Client{Timeout: cfg.Timeout},
+		cfg:    cfg,
+	}, nil
 }
 
 func (o *Ollama) Vectorize(ctx context.Context, text string) ([]float32, error) {

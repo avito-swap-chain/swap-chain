@@ -1,31 +1,60 @@
 package adapters
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"strings"
+)
 
-type LLMClient interface {
+type Enricher interface {
 	GenerateJSON(ctx context.Context, prompt string) (string, error)
+}
+
+type Embedder interface {
 	Vectorize(ctx context.Context, text string) ([]float32, error)
 }
 
 type FallbackClient struct {
-	Primary LLMClient
-	Fallback LLMClient
+	primary  Enricher
+	fallback Enricher
+}
+
+func NewFallbackClient(primary Enricher, fallback Enricher) (*FallbackClient, error) {
+	switch {
+	case primary == nil:
+		return nil, fmt.Errorf("fallback client init: 'primary enricher' is required")
+	case fallback == nil:
+		return nil, fmt.Errorf("fallback client init: 'fallback enricher' is required")
+	}
+
+	return &FallbackClient{
+		primary:  primary,
+		fallback: fallback,
+	}, nil
 }
 
 func (f *FallbackClient) GenerateJSON(ctx context.Context, prompt string) (string, error) {
-	res, err := f.Primary.GenerateJSON(ctx, prompt)
+	res, err := f.primary.GenerateJSON(ctx, prompt)
 	if err != nil {
-		return f.Fallback.GenerateJSON(ctx, prompt)
+		return f.fallback.GenerateJSON(ctx, prompt)
 	}
 
 	return res, nil
 }
 
-func (f *FallbackClient) Vectorize(ctx context.Context, text string) ([]float32, error) {
-	res, err := f.Primary.Vectorize(ctx, text)
-	if err != nil {
-		return f.Fallback.Vectorize(ctx, text)
+func validateHTTPURL(field string, rawURL string) error {
+	if strings.TrimSpace(rawURL) == "" {
+		return fmt.Errorf("%s is required", field)
 	}
 
-	return res, nil
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", field, err)
+	}
+	if (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" {
+		return fmt.Errorf("%s must be an absolute HTTP URL", field)
+	}
+
+	return nil
 }
