@@ -12,6 +12,11 @@ ENV CI=true
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
+
+# Куда фронт ходит за данными. По умолчанию `/` — тот же адрес, что и сам фронт:
+# nginx рядом проксирует /api на бэкенд. Пустое значение соберёт демо на мок-данных.
+ARG VITE_API_URL=/
+ENV VITE_API_URL=$VITE_API_URL
 RUN pnpm build
 
 # --- serve stage ---

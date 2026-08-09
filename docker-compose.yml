@@ -134,7 +134,11 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:18080}
+        # Относительный путь, а не абсолютный: фронт запрашивает /api у своего же
+        # nginx, который проксирует на backend. С зашитым http://localhost:18080
+        # образ работал бы только на машине разработчика — в браузере пользователя
+        # этот адрес указывает на его собственный компьютер.
+        VITE_API_URL: ${VITE_API_URL:-/}
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-18080}:80"
