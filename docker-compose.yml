@@ -61,7 +61,7 @@ services:
       CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
       SESSION_TTL: ${SESSION_TTL:-24h}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.1}
       OLLAMA_EMBEDDINGS_MODEL: ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}
       MINIO_ENDPOINT: minio:9000
@@ -89,6 +89,36 @@ services:
         condition: service_completed_successfully
       minio:
         condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+
+  ollama:
+    image: ollama/ollama:0.12.13
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  ollama-pull:
+    image: ollama/ollama:0.12.13
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}..."
+        ollama pull ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}
+        echo "Pulling ${OLLAMA_CHAT_MODEL:-llama3.1}..."
+        ollama pull ${OLLAMA_CHAT_MODEL:-llama3.1}
+        echo "Models ready."
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
 
   swagger-ui:
     image: docker.swagger.io/swaggerapi/swagger-ui:v5.32.6
@@ -103,3 +133,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  ollama_data:
