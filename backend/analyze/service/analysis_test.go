@@ -2,52 +2,71 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
-	analyzemodel "swap-chain/analyze/model"
-	"swap-chain/shared/db"
+	"swap-chain/analyze/model"
 
 	"go.uber.org/zap"
 )
 
 type analysisRepoStub struct {
-	item     db.GetItemForAnalysisRow
-	updated  int64
-	complete db.CompleteItemAnalysisParams
+	item     model.AnalysisItem
+	updated  bool
+	complete model.AnalysisResult
 }
 
-func (r *analysisRepoStub) GetItemForAnalysis(context.Context, int64) (db.GetItemForAnalysisRow, error) {
+func (r *analysisRepoStub) GetItemForAnalysis(context.Context, int64) (model.AnalysisItem, error) {
 	return r.item, nil
 }
 
-func (r *analysisRepoStub) CompleteItemAnalysis(_ context.Context, arg db.CompleteItemAnalysisParams) (int64, error) {
+func (r *analysisRepoStub) CompleteItemAnalysis(_ context.Context, arg model.AnalysisResult) (bool, error) {
 	r.complete = arg
 	return r.updated, nil
 }
 
 type scoreStub struct{ value float64 }
 
-func (s scoreStub) EvaluateDescription(context.Context, string) (*analyzemodel.DescriptionScore, error) {
-	return &analyzemodel.DescriptionScore{ParamRichness: s.value}, nil
+func (s scoreStub) EvaluateDescription(context.Context, string) (*model.DescriptionScore, error) {
+	return &model.DescriptionScore{ParamRichness: s.value}, nil
 }
 
 type tagStub struct {
-	matches []*analyzemodel.CategoryMatch
-	calls   int
+	mu          sync.Mutex
+	matches     []*model.CategoryMatch
+	byEmbedding map[float32]*model.CategoryMatch
+	calls       int
 }
 
-func (s *tagStub) DefineTag(context.Context, string, string) (*analyzemodel.CategoryMatch, error) {
+func (s *tagStub) DefineTag(_ context.Context, embedding []float32) (*model.CategoryMatch, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(embedding) > 0 && s.byEmbedding != nil {
+		return s.byEmbedding[embedding[0]], nil
+	}
+
 	match := s.matches[s.calls]
 	s.calls++
 	return match, nil
 }
 
-type vectorStub struct{ vectors [][]float32 }
+type vectorStub struct {
+	mu      sync.Mutex
+	vectors [][]float32
+	byText  map[string][]float32
+}
 
-func (s *vectorStub) Vectorize(context.Context, string) ([]float32, error) {
+func (s *vectorStub) EnrichAndVectorize(_ context.Context, text string) ([]float32, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.byText != nil {
+		return s.byText[text], nil
+	}
+
 	result := s.vectors[0]
 	s.vectors = s.vectors[1:]
 	return result, nil
@@ -55,20 +74,23 @@ func (s *vectorStub) Vectorize(context.Context, string) ([]float32, error) {
 
 func TestAnalysisCompletesItem(t *testing.T) {
 	repo := &analysisRepoStub{
-		item: db.GetItemForAnalysisRow{
+		item: model.AnalysisItem{
 			ID:               7,
 			OfferTitle:       "Велосипед",
-			OfferDescription: sql.NullString{String: "Городской велосипед", Valid: true},
-			WantDescription:  sql.NullString{String: "Сноуборд", Valid: true},
+			OfferDescription: "Городской велосипед",
+			WantDescription:  "Сноуборд",
 		},
-		updated: 1,
+		updated: true,
 	}
-	tagging := &tagStub{matches: []*analyzemodel.CategoryMatch{
-		{CategoryID: 2, Confidence: 0.9},
-		{CategoryID: 3, Confidence: 0.8},
+	tagging := &tagStub{byEmbedding: map[float32]*model.CategoryMatch{
+		1: {CategoryID: 2, Confidence: 0.9},
+		3: {CategoryID: 3, Confidence: 0.8},
 	}}
 	analysis, err := NewAnalysis(repo, scoreStub{value: 0.75}, tagging, &vectorStub{
-		vectors: [][]float32{{1, 2}, {3, 4}},
+		byText: map[string][]float32{
+			"Велосипед Городской велосипед": {1, 2},
+			"Сноуборд": {3, 4},
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)
@@ -77,51 +99,56 @@ func TestAnalysisCompletesItem(t *testing.T) {
 	if err := analysis.AnalyzeItem(context.Background(), 7); err != nil {
 		t.Fatalf("AnalyzeItem() error = %v", err)
 	}
-	if !repo.complete.OfferCategoryID.Valid || repo.complete.OfferCategoryID.Int32 != 2 {
+	if repo.complete.OfferCategoryID != 2 {
 		t.Fatalf("offer category = %+v", repo.complete.OfferCategoryID)
 	}
-	if repo.complete.ParamRichness.String != "0.75" {
-		t.Fatalf("ParamRichness = %q", repo.complete.ParamRichness.String)
+	if repo.complete.ParamRichness != 0.75 {
+		t.Fatalf("ParamRichness = %v", repo.complete.ParamRichness)
 	}
-	if len(repo.complete.OfferEmbeddingLocal.Slice()) != 2 || len(repo.complete.WantEmbeddingLocal.Slice()) != 2 {
+	if len(repo.complete.OfferEmbedding) != 2 || len(repo.complete.WantEmbedding) != 2 {
 		t.Fatal("embeddings were not passed to repository")
 	}
 }
 
-func TestAnalysisRequiresManualCategory(t *testing.T) {
+func TestAnalysisStoresUndefinedCategoryForManualDecision(t *testing.T) {
 	repo := &analysisRepoStub{
-		item: db.GetItemForAnalysisRow{
+		item: model.AnalysisItem{
 			ID:               7,
 			OfferTitle:       "Вещь",
-			OfferDescription: sql.NullString{String: "Описание", Valid: true},
-			WantDescription:  sql.NullString{String: "Другая вещь", Valid: true},
+			OfferDescription: "Описание",
+			WantDescription:  "Другая вещь",
 		},
-		updated: 1,
+		updated: true,
 	}
-	manual := &analyzemodel.CategoryMatch{IsManual: true}
-	analysis, err := NewAnalysis(repo, scoreStub{value: 0.5}, &tagStub{matches: []*analyzemodel.CategoryMatch{manual, manual}}, &vectorStub{
+	manual := &model.CategoryMatch{CategoryID: 99, IsManual: true}
+	analysis, err := NewAnalysis(repo, scoreStub{value: 0.5}, &tagStub{matches: []*model.CategoryMatch{manual, manual}}, &vectorStub{
 		vectors: [][]float32{{1}, {2}},
 	})
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)
 	}
 
-	if err := analysis.AnalyzeItem(context.Background(), 7); !errors.Is(err, ErrManualCategoryRequired) {
-		t.Fatalf("AnalyzeItem() error = %v, want %v", err, ErrManualCategoryRequired)
+	if err := analysis.AnalyzeItem(context.Background(), 7); err != nil {
+		t.Fatalf("AnalyzeItem() error = %v", err)
 	}
-	if repo.complete.OfferCategoryID.Valid || repo.complete.WantCategoryID.Valid {
-		t.Fatalf("manual category should not update database, got %+v", repo.complete)
+	if repo.complete.OfferCategoryID != 99 || repo.complete.WantCategoryID != 99 || !repo.complete.IsCategoryManual {
+		t.Fatalf("undefined categories were not stored: %+v", repo.complete)
 	}
 }
 
 func TestAnalysisRejectsInvalidRichness(t *testing.T) {
-	repo := &analysisRepoStub{item: db.GetItemForAnalysisRow{
+	repo := &analysisRepoStub{item: model.AnalysisItem{
 		ID:               7,
 		OfferTitle:       "Вещь",
-		OfferDescription: sql.NullString{String: "Описание", Valid: true},
-		WantDescription:  sql.NullString{String: "Другая вещь", Valid: true},
+		OfferDescription: "Описание",
+		WantDescription:  "Другая вещь",
 	}}
-	analysis, err := NewAnalysis(repo, scoreStub{value: 1.1}, &tagStub{}, &vectorStub{})
+	analysis, err := NewAnalysis(
+		repo,
+		scoreStub{value: 1.1},
+		&tagStub{matches: []*model.CategoryMatch{{CategoryID: 1}, {CategoryID: 2}}},
+		&vectorStub{vectors: [][]float32{{1}, {2}}},
+	)
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)
 	}
@@ -169,7 +196,7 @@ func TestVisionValidatesModelResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DescribeImage() error = %v", err)
 	}
-	if result.VisualQuality != analyzemodel.New || result.QualityScore != 0.9 {
+	if result.VisualQuality != model.New || result.QualityScore != 0.9 {
 		t.Fatalf("DescribeImage() = %+v", result)
 	}
 }
@@ -186,7 +213,7 @@ func TestVisionRejectsOutOfRangeScore(t *testing.T) {
 
 type recoveryRepoStub struct{ ids []int64 }
 
-func (r recoveryRepoStub) ClaimStaleAnalyzingItems(context.Context, db.ClaimStaleAnalyzingItemsParams) ([]int64, error) {
+func (r recoveryRepoStub) ClaimStaleAnalyzingItems(context.Context, time.Time, int32) ([]int64, error) {
 	return r.ids, nil
 }
 

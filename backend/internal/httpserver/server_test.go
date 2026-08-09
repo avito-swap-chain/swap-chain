@@ -705,10 +705,9 @@ func (service matchingReadyItems) Get(ctx context.Context, itemID int64) (items.
 type testFinder struct{}
 
 func (testFinder) Execute(_ context.Context, itemID int64) ([][]model.Edge, error) {
-	rootID := int(itemID)
 	return [][]model.Edge{{
-		{SourceID: rootID, TargetID: rootID + 1, Score: 0.8},
-		{SourceID: rootID + 1, TargetID: rootID, Score: 0.9},
+		{SourceID: itemID, TargetID: itemID + 1, Score: 0.8},
+		{SourceID: itemID + 1, TargetID: itemID, Score: 0.9},
 	}}, nil
 }
 

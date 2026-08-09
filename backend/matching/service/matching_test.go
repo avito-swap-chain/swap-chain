@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"swap-chain/matching/model"
@@ -12,28 +11,36 @@ import (
 )
 
 type repoCall struct {
-	itemID int
-	limit  int
+	itemID            int64
+	undefinedCategory int32
+	limit             int
 }
 
 type repoStub struct {
-	matchesByItem map[int][]model.ItemMatch
-	errByItem     map[int]error
+	matchesByItem map[int64][]model.ItemMatch
+	errByItem     map[int64]error
 	matchable     bool
 	matchableErr  error
 	calls         []repoCall
 }
 
-func (r *repoStub) FindSimilarItems(_ context.Context, itemID, limit int) ([]model.ItemMatch, error) {
-	r.calls = append(r.calls, repoCall{itemID: itemID, limit: limit})
+func (r *repoStub) FindSimilarItems(_ context.Context, itemID int64, undefinedCategoryID int32, limit int) ([]model.ItemMatch, error) {
+	r.calls = append(r.calls, repoCall{itemID: itemID, undefinedCategory: undefinedCategoryID, limit: limit})
 	if err := r.errByItem[itemID]; err != nil {
 		return nil, err
 	}
 	return r.matchesByItem[itemID], nil
 }
 
-func (r *repoStub) IsSourceMatchable(context.Context, int) (bool, error) {
-	return r.matchable, r.matchableErr
+func (r *repoStub) ValidateSourceItem(context.Context, int64) error {
+	if r.matchableErr != nil {
+		return r.matchableErr
+	}
+	if !r.matchable {
+		return model.ErrItemNotMatchable
+	}
+
+	return nil
 }
 
 type scorerStub struct{ score float64 }
@@ -50,25 +57,25 @@ func TestMatchingFindCyclesRejectsNonMatchingSource(t *testing.T) {
 	}
 }
 
-func TestMatchingFindCyclesReturnsErrorWhenNoCandidatesExist(t *testing.T) {
-	repo := &repoStub{matchable: true, matchesByItem: make(map[int][]model.ItemMatch)}
+func TestMatchingFindCyclesReturnsEmptyResultWhenNoCandidatesExist(t *testing.T) {
+	repo := &repoStub{matchable: true, matchesByItem: make(map[int64][]model.ItemMatch)}
 	matching := newTestMatching(t, repo, 3)
 
 	cycles, err := matching.FindCycles(context.Background(), 42)
-	if err == nil || !strings.Contains(err.Error(), "no edges found for item 42") {
+	if err != nil {
 		t.Fatalf("FindCycles() error = %v", err)
 	}
-	if cycles != nil {
-		t.Fatalf("FindCycles() cycles = %+v, want nil", cycles)
+	if len(cycles) != 0 {
+		t.Fatalf("FindCycles() cycles = %+v, want empty", cycles)
 	}
-	if len(repo.calls) != 1 || repo.calls[0].limit != 5 {
+	if len(repo.calls) != 1 || repo.calls[0].limit != 5 || repo.calls[0].undefinedCategory != 99 {
 		t.Fatalf("repository calls = %+v", repo.calls)
 	}
 }
 
 func TestMatchingFindCyclesWrapsRepositoryErrorWhenGraphIsEmpty(t *testing.T) {
 	repoErr := errors.New("database unavailable")
-	repo := &repoStub{matchable: true, errByItem: map[int]error{42: repoErr}}
+	repo := &repoStub{matchable: true, errByItem: map[int64]error{42: repoErr}}
 	matching := newTestMatching(t, repo, 3)
 
 	_, err := matching.FindCycles(context.Background(), 42)
@@ -80,21 +87,24 @@ func TestMatchingFindCyclesWrapsRepositoryErrorWhenGraphIsEmpty(t *testing.T) {
 func TestMatchingFiltersCandidatesBelowCompatibilityThreshold(t *testing.T) {
 	repo := &repoStub{
 		matchable: true,
-		matchesByItem: map[int][]model.ItemMatch{
+		matchesByItem: map[int64][]model.ItemMatch{
 			1: {{SourceID: 1, TargetItem: model.Item{ID: 2}, Similarity: 0.49}},
 		},
 	}
 	matching := newTestMatching(t, repo, 3)
 	matching.cfg.CompatibilityThreshold = 0.5
 
-	_, err := matching.FindCycles(context.Background(), 1)
-	if err == nil || !strings.Contains(err.Error(), "no edges found") {
-		t.Fatalf("FindCycles() error = %v, want no edges", err)
+	cycles, err := matching.FindCycles(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("FindCycles() error = %v", err)
+	}
+	if len(cycles) != 0 {
+		t.Fatalf("FindCycles() cycles = %+v, want empty", cycles)
 	}
 }
 
 func TestMatchingThreeItemCycle(t *testing.T) {
-	matching := newTestMatching(t, cycleRepo(map[int]int{1: 2, 2: 3, 3: 1}), 3)
+	matching := newTestMatching(t, cycleRepo(map[int64]int64{1: 2, 2: 3, 3: 1}), 3)
 
 	cycles, err := matching.FindCycles(context.Background(), 1)
 	if err != nil {
@@ -105,21 +115,26 @@ func TestMatchingThreeItemCycle(t *testing.T) {
 	}
 }
 
-func TestMatchingRejectsTwoItemChainLength(t *testing.T) {
-	_, err := NewMatching(zap.NewNop(), cycleRepo(map[int]int{1: 2, 2: 1}), scorerStub{score: 1}, MatchingConfig{
-		SimilarItemsAmount: 5,
-		ChainLen:           2,
-	})
-	if err == nil {
-		t.Fatal("NewMatching() error = nil, want error for chain length 2")
+func TestMatchingAcceptsTwoItemChainLength(t *testing.T) {
+	matching := newTestMatching(t, cycleRepo(map[int64]int64{1: 2, 2: 1}), 2)
+
+	cycles, err := matching.FindCycles(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("FindCycles() error = %v", err)
+	}
+	if len(cycles) != 1 || len(cycles[0]) != 2 {
+		t.Fatalf("cycles = %+v, want one two-item cycle", cycles)
 	}
 }
 
 func newTestMatching(t *testing.T, repo MatchingRepo, chainLen int) *Matching {
 	t.Helper()
 	m, err := NewMatching(zap.NewNop(), repo, scorerStub{score: 1}, MatchingConfig{
-		SimilarItemsAmount: 5,
-		ChainLen:           chainLen,
+		SimilarItemsAmount:              5,
+		CompatibilityThreshold:          0.5,
+		UndefinedCategoryID:             99,
+		UndefinedCompatibilityThreshold: 0.8,
+		ChainLen:                        chainLen,
 	})
 	if err != nil {
 		t.Fatalf("NewMatching() error = %v", err)
@@ -127,8 +142,8 @@ func newTestMatching(t *testing.T, repo MatchingRepo, chainLen int) *Matching {
 	return m
 }
 
-func cycleRepo(edges map[int]int) *repoStub {
-	matches := make(map[int][]model.ItemMatch, len(edges))
+func cycleRepo(edges map[int64]int64) *repoStub {
+	matches := make(map[int64][]model.ItemMatch, len(edges))
 	for source, target := range edges {
 		matches[source] = []model.ItemMatch{{
 			SourceID:   source,

@@ -34,7 +34,7 @@ func TestInMemoryStoreVertexLifecycle(t *testing.T) {
 
 func TestInMemoryStoreEdgeLifecycle(t *testing.T) {
 	store := NewMemoryStore()
-	for _, itemID := range []int{1, 2} {
+	for _, itemID := range []int64{1, 2} {
 		if err := store.AddVertex(Vertex{ItemID: itemID}); err != nil {
 			t.Fatalf("add vertex %d: %v", itemID, err)
 		}
@@ -142,7 +142,7 @@ func graphStore(t *testing.T, edges []Edge) *InMemoryStore {
 	t.Helper()
 
 	store := NewMemoryStore()
-	vertices := make(map[int]struct{})
+	vertices := make(map[int64]struct{})
 	for _, edge := range edges {
 		vertices[edge.SourceID] = struct{}{}
 		vertices[edge.TargetID] = struct{}{}

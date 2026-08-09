@@ -43,15 +43,14 @@ func TestMatchingRepositoryFindsCrossOwnerCandidateIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPostgreSQLMatching() error = %v", err)
 	}
-	matchable, err := repository.IsSourceMatchable(context.Background(), int(sourceID))
-	if err != nil || !matchable {
-		t.Fatalf("IsSourceMatchable() = %v, %v", matchable, err)
+	if err := repository.ValidateSourceItem(context.Background(), sourceID); err != nil {
+		t.Fatalf("ValidateSourceItem() error = %v", err)
 	}
-	matches, err := repository.FindSimilarItems(context.Background(), int(sourceID), 10)
+	matches, err := repository.FindSimilarItems(context.Background(), sourceID, 1, 10)
 	if err != nil {
 		t.Fatalf("FindSimilarItems() error = %v", err)
 	}
-	if len(matches) != 1 || matches[0].TargetItem.ID != int(candidateID) {
+	if len(matches) != 1 || matches[0].TargetItem.ID != candidateID {
 		t.Fatalf("FindSimilarItems() = %+v, want only candidate %d", matches, candidateID)
 	}
 }

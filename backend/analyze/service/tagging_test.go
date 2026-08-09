@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"swap-chain/shared/db"
+	"swap-chain/analyze/model"
 )
 
 func TestTaggingRequiresManualSelectionWithoutCategories(t *testing.T) {
@@ -16,7 +16,7 @@ func TestTaggingRequiresManualSelectionWithoutCategories(t *testing.T) {
 
 func TestTaggingAcceptsConfidentCategory(t *testing.T) {
 	tagging := &Tagging{cfg: TaggingConfig{SimilarityThreshold: 0.65, ConfidenceMargin: 0.05}}
-	rows := []db.FindCategoryRow{
+	rows := []model.CategoryCandidate{
 		{ID: 2, Similarity: 0.90},
 		{ID: 3, Similarity: 0.70},
 	}
@@ -28,7 +28,7 @@ func TestTaggingAcceptsConfidentCategory(t *testing.T) {
 
 func TestTaggingRejectsAmbiguousCategories(t *testing.T) {
 	tagging := &Tagging{cfg: TaggingConfig{SimilarityThreshold: 0.65, ConfidenceMargin: 0.05}}
-	rows := []db.FindCategoryRow{
+	rows := []model.CategoryCandidate{
 		{ID: 2, Similarity: 0.80},
 		{ID: 3, Similarity: 0.77},
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"swap-chain/analyze/adapters"
+	analyzerepository "swap-chain/analyze/repository"
 	analyzeservice "swap-chain/analyze/service"
 	applicationmatching "swap-chain/internal/application/matching"
 	"swap-chain/internal/chains"
@@ -101,9 +102,14 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create vectorizer: %w", err)
 	}
-	tagging, err := analyzeservice.NewTagging(vectorizer, queries, analyzeservice.TaggingConfig{
+	analysisRepo, err := analyzerepository.NewPostgreSQLAnalysis(queries)
+	if err != nil {
+		return fmt.Errorf("create analysis repo: %w", err)
+	}
+	tagging, err := analyzeservice.NewTagging(analysisRepo, analyzeservice.TaggingConfig{
 		SimilarityThreshold: cfg.CategorySimilarityThreshold,
 		ConfidenceMargin:    cfg.CategoryConfidenceMargin,
+		UndefinedCategoryID: cfg.UndefinedCategoryID,
 	})
 	if err != nil {
 		return fmt.Errorf("create tagging: %w", err)
@@ -112,7 +118,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create scoring: %w", err)
 	}
-	analysis, err := analyzeservice.NewAnalysis(queries, scoring, tagging, vectorizer)
+	analysis, err := analyzeservice.NewAnalysis(analysisRepo, scoring, tagging, vectorizer)
 	if err != nil {
 		return fmt.Errorf("create analysis: %w", err)
 	}
@@ -129,11 +135,13 @@ func run(logger *zap.Logger) error {
 		matchingRepo,
 		service.NewScoring(),
 		service.MatchingConfig{
-			SimilarItemsAmount:     cfg.SimilarItemsAmount,
-			CompatibilityThreshold: cfg.CompatibilityThreshold,
-			ChainLen:               cfg.ChainLength,
-			PenaltyFactor:          cfg.PenaltyFactor,
-			ChainRatingThreshold:   cfg.ChainThreshold,
+			SimilarItemsAmount:              cfg.SimilarItemsAmount,
+			CompatibilityThreshold:          cfg.CompatibilityThreshold,
+			UndefinedCategoryID:             cfg.UndefinedCategoryID,
+			UndefinedCompatibilityThreshold: cfg.UndefinedCompatibilityThreshold,
+			ChainLen:                        cfg.ChainLength,
+			PenaltyFactor:                   cfg.PenaltyFactor,
+			ChainRatingThreshold:            cfg.ChainThreshold,
 		},
 	)
 	if err != nil {
@@ -159,7 +167,7 @@ func run(logger *zap.Logger) error {
 	}
 	shutdownSignal, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
-	recoveryWorker, err := analyzeservice.NewAnalysisRecoveryWorker(queries, analysis, logger, analyzeservice.AnalysisRecoveryWorkerConfig{
+	recoveryWorker, err := analyzeservice.NewAnalysisRecoveryWorker(analysisRepo, analysis, logger, analyzeservice.AnalysisRecoveryWorkerConfig{
 		PollInterval: cfg.AnalysisPollInterval,
 		StaleAfter:   cfg.AnalysisStaleAfter,
 		BatchSize:    int32(cfg.AnalysisBatchSize),

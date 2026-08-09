@@ -11,7 +11,7 @@ import (
 type matcherStub struct {
 	cycles [][]model.Edge
 	err    error
-	itemID int
+	itemID int64
 }
 
 type registryStub struct {
@@ -25,7 +25,7 @@ func (stub *registryStub) KnownCycleKeys(_ context.Context, keys []string) (map[
 	return stub.known, stub.err
 }
 
-func (stub *matcherStub) FindCycles(_ context.Context, itemID int) ([][]model.Edge, error) {
+func (stub *matcherStub) FindCycles(_ context.Context, itemID int64) ([][]model.Edge, error) {
 	stub.itemID = itemID
 	return stub.cycles, stub.err
 }
