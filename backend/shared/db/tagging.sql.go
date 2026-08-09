@@ -12,9 +12,12 @@ import (
 )
 
 const findCategory = `-- name: FindCategory :many
-SELECT id, name, (1.0 - (embedding <=> $1::vector))::float8 AS similarity
-FROM categories
-ORDER BY embedding <=> $1::vector
+SELECT category.id,
+       category.name,
+       (1.0 - (category.embedding_local <=> $1::vector))::float8 AS similarity
+FROM categories AS category
+WHERE category.embedding_local IS NOT NULL
+ORDER BY category.embedding_local <=> $1::vector
 LIMIT 2
 `
 
@@ -24,8 +27,8 @@ type FindCategoryRow struct {
 	Similarity float64 `json:"similarity"`
 }
 
-func (q *Queries) FindCategory(ctx context.Context, embedding pgvector_go.Vector) ([]FindCategoryRow, error) {
-	rows, err := q.db.QueryContext(ctx, findCategory, embedding)
+func (q *Queries) FindCategory(ctx context.Context, embeddingLocal *pgvector_go.Vector) ([]FindCategoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, findCategory, embeddingLocal)
 	if err != nil {
 		return nil, err
 	}
