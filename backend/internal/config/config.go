@@ -24,6 +24,7 @@ const (
 	defaultAnalysisPoll           = 30 * time.Second
 	defaultAnalysisStale          = 5 * time.Minute
 	defaultAnalysisBatch          = 100
+	defaultAnalysisBootstrap      = 5 * time.Minute
 	defaultCORSAllowedOrigin      = "http://localhost:5173"
 	defaultSessionTTL             = 24 * time.Hour
 	defaultOllamaBaseURL          = "http://localhost:11434"
@@ -53,6 +54,7 @@ type Config struct {
 	AnalysisPollInterval        time.Duration
 	AnalysisStaleAfter          time.Duration
 	AnalysisBatchSize           int
+	AnalysisBootstrapTimeout    time.Duration
 	CORSAllowedOrigin           string
 	SessionTTL                  time.Duration
 	CookieSecure                bool
@@ -147,6 +149,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.AnalysisBatchSize, err = positiveIntFromEnv("ANALYSIS_RECOVERY_BATCH_SIZE", defaultAnalysisBatch); err != nil {
+		return Config{}, err
+	}
+	if cfg.AnalysisBootstrapTimeout, err = durationFromEnv("ANALYSIS_BOOTSTRAP_TIMEOUT", defaultAnalysisBootstrap); err != nil {
 		return Config{}, err
 	}
 

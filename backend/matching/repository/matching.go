@@ -74,12 +74,12 @@ func mapItemMatch(sourceID int, row db.FindSimilarItemsRow) (model.ItemMatch, er
 		return model.ItemMatch{}, err
 	}
 
-	userRating, err := parseNullableFloat("user_rating", row.UserRating)
+	userRating, err := parseFloat("user_rating", row.UserRating)
 	if err != nil {
 		return model.ItemMatch{}, err
 	}
 
-	userSuccessRate, err := parseNullableFloat("user_success_rate", row.UserSuccessRate)
+	userSuccessRate, err := parseFloat("user_success_rate", row.UserSuccessRate)
 	if err != nil {
 		return model.ItemMatch{}, err
 	}
@@ -87,15 +87,8 @@ func mapItemMatch(sourceID int, row db.FindSimilarItemsRow) (model.ItemMatch, er
 	offerDescription := nullableString(row.OfferDescription)
 	wantDescription := nullableString(row.WantDescription)
 
-	var offerVector []float32
-	if row.OfferEmbeddingLocal != nil {
-		offerVector = row.OfferEmbeddingLocal.Slice()
-	}
-
-	var wantVector []float32
-	if row.WantEmbeddingLocal != nil {
-		wantVector = row.WantEmbeddingLocal.Slice()
-	}
+	offerVector := row.OfferEmbeddingLocal.Slice()
+	wantVector := row.WantEmbeddingLocal.Slice()
 
 	return model.ItemMatch{
 		SourceID: sourceID,
@@ -134,6 +127,10 @@ func parseNullableFloat(field string, value sql.NullString) (float64, error) {
 	}
 
 	return parsed, nil
+}
+
+func parseFloat(field, value string) (float64, error) {
+	return parseNullableFloat(field, sql.NullString{String: value, Valid: true})
 }
 
 func nullableString(value sql.NullString) string {

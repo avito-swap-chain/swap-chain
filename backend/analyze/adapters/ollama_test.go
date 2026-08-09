@@ -112,3 +112,35 @@ func TestOllamaVectorizeHonorsCancelledContext(t *testing.T) {
 		t.Fatal("vectorize: expected context error, got nil")
 	}
 }
+
+func TestOllamaReadyAcceptsConfiguredModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/api/tags" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"models":[{"name":"bge-m3:latest"},{"model":"llama3.1:latest"}]}`))
+	}))
+	defer server.Close()
+	adapter := &Ollama{
+		client: server.Client(),
+		cfg:    OllamaConfig{BaseURL: server.URL, ChatModel: "llama3.1", EmbeddingsModel: "bge-m3"},
+	}
+	if err := adapter.Ready(context.Background()); err != nil {
+		t.Fatalf("ready: %v", err)
+	}
+}
+
+func TestOllamaReadyReportsMissingModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"models":[{"name":"bge-m3:latest"}]}`))
+	}))
+	defer server.Close()
+	adapter := &Ollama{
+		client: server.Client(),
+		cfg:    OllamaConfig{BaseURL: server.URL, ChatModel: "llama3.1", EmbeddingsModel: "bge-m3"},
+	}
+	err := adapter.Ready(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "llama3.1") {
+		t.Fatalf("ready error = %v", err)
+	}
+}

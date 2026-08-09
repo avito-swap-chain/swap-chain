@@ -5,7 +5,7 @@ import type {
 import type { Chain, ChainParticipant, ChainStatus, ParticipantStatus } from '../model/types'
 
 /**
- * Статусы цепочки. Контракт (0.4.0) знает три состояния, наша машина — пять:
+ * Статусы цепочки. Контракт (0.5.0) знает три состояния, наша машина — пять:
  *
  * - `PENDING` → `formed` — предложение собрано, участники отвечают;
  * - `ACCEPTED` → `active` — согласны все, дальше передача вещей;

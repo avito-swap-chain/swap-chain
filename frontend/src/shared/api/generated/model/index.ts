@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.4.0
+ * OpenAPI spec version: 0.5.0
  */
 
 export * from './badRequestResponse';
@@ -22,6 +22,7 @@ export * from './error';
 export * from './errorDetails';
 export * from './forbiddenResponse';
 export * from './healthResponse';
+export * from './healthResponseAnalysis';
 export * from './healthResponseDatabase';
 export * from './healthResponseStatus';
 export * from './internalErrorResponse';
@@ -31,6 +32,8 @@ export * from './itemStatus';
 export * from './listChainsParams';
 export * from './listItemsParams';
 export * from './listUserItemsParams';
+export * from './livenessResponse';
+export * from './livenessResponseStatus';
 export * from './loginRequest';
 export * from './matchingCycle';
 export * from './matchingEdge';

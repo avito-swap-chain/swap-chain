@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"strings"
@@ -62,25 +63,32 @@ func run(arguments []string) error {
 	}
 
 	v1, v2, v3 := embedding(0), embedding(1), embedding(2)
+	categoryIDs, err := loadCategoryIDs(ctx, db, 3)
+	if err != nil {
+		return err
+	}
 
 	items := []itemSeed{
 		{ // Алиса предлагает v1, хочет v2 → матчится с Борисом (offer=v2)
 			userID: userIDs[0], offerTitle: "Книга 'Архитектура ПО'",
-			offerDesc: "Классическая книга по архитектуре, состояние отличное",
-			wantDesc:  "Хочу настольную лампу для рабочего стола",
-			offerEmb:  v1, wantEmb: v2,
+			offerDesc:       "Классическая книга по архитектуре, состояние отличное",
+			wantDesc:        "Хочу настольную лампу для рабочего стола",
+			offerCategoryID: categoryIDs[0], wantCategoryID: categoryIDs[1],
+			offerEmb: v1, wantEmb: v2,
 		},
 		{ // Борис предлагает v2, хочет v3 → матчится с Верой (offer=v3)
 			userID: userIDs[1], offerTitle: "Настольная лампа Xiaomi",
-			offerDesc: "LED лампа с регулировкой яркости, почти новая",
-			wantDesc:  "Хочу клавиатуру, желательно механическую",
-			offerEmb:  v2, wantEmb: v3,
+			offerDesc:       "LED лампа с регулировкой яркости, почти новая",
+			wantDesc:        "Хочу клавиатуру, желательно механическую",
+			offerCategoryID: categoryIDs[1], wantCategoryID: categoryIDs[2],
+			offerEmb: v2, wantEmb: v3,
 		},
 		{ // Вера предлагает v3, хочет v1 → матчится с Алисой (offer=v1)
 			userID: userIDs[2], offerTitle: "Механическая клавиатура Keychron",
-			offerDesc: "Keychron K2, красные свитчи, в идеальном состоянии",
-			wantDesc:  "Хочу книгу по архитектуре ПО",
-			offerEmb:  v3, wantEmb: v1,
+			offerDesc:       "Keychron K2, красные свитчи, в идеальном состоянии",
+			wantDesc:        "Хочу книгу по архитектуре ПО",
+			offerCategoryID: categoryIDs[2], wantCategoryID: categoryIDs[0],
+			offerEmb: v3, wantEmb: v1,
 		},
 	}
 
@@ -89,10 +97,11 @@ func run(arguments []string) error {
 		var id int64
 		err := db.QueryRowContext(ctx,
 			`INSERT INTO items (user_id, offer_title, offer_description, want_description,
-			 offer_embedding, want_embedding, status)
-			 VALUES ($1, $2, $3, $4, $5, $6, 'MATCHING')
+			 offer_category_id, want_category_id, offer_embedding_local, want_embedding_local, status)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'MATCHING')
 			 RETURNING id`,
 			it.userID, it.offerTitle, it.offerDesc, it.wantDesc,
+			it.offerCategoryID, it.wantCategoryID,
 			pgvector.NewVector(it.offerEmb), pgvector.NewVector(it.wantEmb),
 		).Scan(&id)
 		if err != nil {
@@ -123,7 +132,33 @@ type itemSeed struct {
 	userID              int64
 	offerTitle          string
 	offerDesc, wantDesc string
+	offerCategoryID     int32
+	wantCategoryID      int32
 	offerEmb, wantEmb   []float32
+}
+
+func loadCategoryIDs(ctx context.Context, database *sql.DB, limit int) ([]int32, error) {
+	rows, err := database.QueryContext(ctx, `SELECT id FROM categories ORDER BY id LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("load demo categories: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	ids := make([]int32, 0, limit)
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan demo category: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate demo categories: %w", err)
+	}
+	if len(ids) != limit {
+		return nil, fmt.Errorf("load demo categories: got %d, want %d; apply migrations first", len(ids), limit)
+	}
+	return ids, nil
 }
 
 func embedding(pos int) []float32 {

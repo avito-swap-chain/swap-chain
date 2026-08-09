@@ -3,13 +3,15 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.4.0
+ * OpenAPI spec version: 0.5.0
  */
+import type { HealthResponseAnalysis } from './healthResponseAnalysis';
 import type { HealthResponseDatabase } from './healthResponseDatabase';
 import type { HealthResponseStatus } from './healthResponseStatus';
 
 export interface HealthResponse {
   status: HealthResponseStatus;
   database: HealthResponseDatabase;
+  analysis: HealthResponseAnalysis;
   timestamp: string;
 }

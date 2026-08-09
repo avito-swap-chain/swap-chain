@@ -35,9 +35,13 @@ func TestMatchingRepositoryFindsCrossOwnerCandidateIntegration(t *testing.T) {
 
 	vector := make([]float32, 1024)
 	vector[0] = 1
-	sourceID := insertMatchingTestItem(t, database, ownerID, "Источник", vector)
-	_ = insertMatchingTestItem(t, database, ownerID, "Тот же владелец", vector)
-	candidateID := insertMatchingTestItem(t, database, candidateOwnerID, "Кандидат", vector)
+	var categoryID int32
+	if err := database.QueryRowContext(context.Background(), `SELECT id FROM categories ORDER BY id LIMIT 1`).Scan(&categoryID); err != nil {
+		t.Fatalf("load matching category: %v", err)
+	}
+	sourceID := insertMatchingTestItem(t, database, ownerID, "Источник", categoryID, vector)
+	_ = insertMatchingTestItem(t, database, ownerID, "Тот же владелец", categoryID, vector)
+	candidateID := insertMatchingTestItem(t, database, candidateOwnerID, "Кандидат", categoryID, vector)
 
 	repository, err := NewPostgreSQLMatching(db.New(database))
 	if err != nil {
@@ -68,15 +72,16 @@ func insertMatchingTestUser(t *testing.T, database *sql.DB, phone string, suffix
 	return id
 }
 
-func insertMatchingTestItem(t *testing.T, database *sql.DB, userID int64, title string, vector []float32) int64 {
+func insertMatchingTestItem(t *testing.T, database *sql.DB, userID int64, title string, categoryID int32, vector []float32) int64 {
 	t.Helper()
 	var id int64
 	if err := database.QueryRowContext(context.Background(), `
 		INSERT INTO items (
 			user_id, offer_title, offer_description, want_description,
-			offer_embedding, want_embedding, status, param_richness
-		) VALUES ($1, $2, 'Описание', 'Желаемая вещь', $3, $3, 'MATCHING', 0.8)
-		RETURNING id`, userID, title, pgvector.NewVector(vector),
+			offer_category_id, want_category_id,
+			offer_embedding_local, want_embedding_local, status, param_richness
+		) VALUES ($1, $2, 'Описание', 'Желаемая вещь', $3, $3, $4, $4, 'MATCHING', 0.8)
+		RETURNING id`, userID, title, categoryID, pgvector.NewVector(vector),
 	).Scan(&id); err != nil {
 		t.Fatalf("insert item: %v", err)
 	}

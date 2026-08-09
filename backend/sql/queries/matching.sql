@@ -24,6 +24,9 @@ WHERE candidate_item.id != source_item.id
   AND candidate_item.status = 'MATCHING'
   AND source_item.status = 'MATCHING'
   AND candidate_item.offer_category_id = source_item.want_category_id
+  AND candidate_item.offer_embedding_local IS NOT NULL
+  AND candidate_item.want_embedding_local IS NOT NULL
+  AND source_item.want_embedding_local IS NOT NULL
 ORDER BY candidate_item.offer_embedding_local <=> source_item.want_embedding_local
 LIMIT $2;
 

@@ -77,12 +77,14 @@ docker compose logs -f ollama-pull
 ```
 
 `make up` собирает backend, поднимает PostgreSQL+pgvector, Ollama, MinIO,
-дожидается здоровья сервисов, загружает модели, применяет миграции и запускает API.
+загружает модели, применяет миграции и только после bootstrap embeddings категорий
+запускает готовый API. Frontend ждёт успешный readiness backend.
 После старта доступны:
 
 - frontend: <http://localhost:18080>;
 - backend: <http://localhost:8080>;
-- health check: <http://localhost:8080/api/v1/health>;
+- liveness: <http://localhost:8080/health>;
+- readiness: <http://localhost:8080/api/v1/health>;
 - Swagger UI: <http://localhost:8081>;
 - MinIO console: <http://localhost:9001> (если опубликован порт).
 
@@ -142,6 +144,7 @@ make migrate-version  показать версию схемы
 make lint             запустить golangci-lint
 make test             запустить доступные тесты
 make test-go          запустить Go-тесты
+make test-integration запустить миграционные и сквозные PostgreSQL-тесты
 ```
 
 Все команды Makefile имеют прямой эквивалент, например `cd backend && go test
@@ -201,24 +204,30 @@ make test-go          запустить Go-тесты
 | `MATCHING_CHAIN_LENGTH` | Макс. длина цепочки | `3` |
 | `MATCHING_PENALTY_FACTOR` | Штраф за разброс score | `0.25` |
 | `MATCHING_CHAIN_THRESHOLD` | Мин. итоговый score | `0.30` |
+| `ANALYSIS_BOOTSTRAP_TIMEOUT` | Таймаут проверки моделей и bootstrap категорий | `5m` |
 | `SWAGGER_PORT` | Порт Swagger UI | `8081` |
 
 `.env` не коммитится. Значения примера — только для локальной разработки.
 
 ## База данных и миграции
 
-Миграции включают pgvector, создают `users`, `items`, `chains` и `chain_participants`.
+Миграции включают pgvector, создают `users`, `items`, `chains` и `chain_participants`,
+а также версионированный справочник категорий. Embeddings системных категорий
+вычисляются настроенной Ollama-моделью при старте backend и повторно не создаются.
 Внешние ключи и уникальные ограничения защищают связь вещи с владельцем, запрещают
 повтор вещи или пользователя внутри цепочки, гарантируют уникальность cycle key.
 Embedding — `vector(1024)`, HNSW-индекс для cosine distance.
 
-Backend не стартует без PostgreSQL. `GET /health` делает `PingContext` и отдаёт
-503 при недоступности БД.
+Backend не стартует без PostgreSQL, обеих моделей Ollama и заполненных embeddings
+категорий. `GET /health` проверяет только liveness процесса. Версионированный
+`GET /api/v1/health` проверяет PostgreSQL, модели Ollama и справочник категорий,
+возвращая 503, пока сервис не готов принимать пользовательские запросы.
 
 ## Линтер и тесты
 
 ```bash
 make test-go
+TEST_DATABASE_URL=postgres://swap_chain:swap_chain@127.0.0.1:5432/swap_chain?sslmode=disable make test-integration
 make lint-go
 make build
 ```

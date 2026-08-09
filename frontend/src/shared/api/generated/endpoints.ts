@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.4.0
+ * OpenAPI spec version: 0.5.0
  */
 import type {
   BadRequestResponse,
@@ -22,6 +22,7 @@ import type {
   ListChainsParams,
   ListItemsParams,
   ListUserItemsParams,
+  LivenessResponse,
   LoginRequest,
   MatchingResponse,
   MediaUpload,
@@ -38,23 +39,16 @@ import type {
 
 import { apiFetch } from '../fetcher';
 export type getLegacyHealthResponse200 = {
-  data: HealthResponse
+  data: LivenessResponse
   status: 200
-}
-
-export type getLegacyHealthResponse503 = {
-  data: ServiceUnavailableResponse
-  status: 503
 }
 
 export type getLegacyHealthResponseSuccess = (getLegacyHealthResponse200) & {
   headers: Headers;
 };
-export type getLegacyHealthResponseError = (getLegacyHealthResponse503) & {
-  headers: Headers;
-};
+;
 
-export type getLegacyHealthResponse = (getLegacyHealthResponseSuccess | getLegacyHealthResponseError)
+export type getLegacyHealthResponse = (getLegacyHealthResponseSuccess)
 
 export const getGetLegacyHealthUrl = () => {
 
@@ -66,7 +60,7 @@ export const getGetLegacyHealthUrl = () => {
 
 /**
  * @deprecated
- * @summary Check service and database health using the legacy path
+ * @summary Check process liveness using the legacy path
  */
 export const getLegacyHealth = async ( options?: Parameters<typeof apiFetch>[1]): Promise<getLegacyHealthResponse> => {
 
@@ -109,7 +103,7 @@ export const getGetHealthUrl = () => {
 }
 
 /**
- * @summary Check service and database health
+ * @summary Check service readiness
  */
 export const getHealth = async ( options?: Parameters<typeof apiFetch>[1]): Promise<getHealthResponse> => {
 

@@ -12,7 +12,7 @@ import (
 )
 
 type TaggingRepo interface {
-	FindCategory(ctx context.Context, embeddingLocal *pgvector.Vector) ([]db.FindCategoryRow, error)
+	FindCategory(ctx context.Context, embeddingLocal pgvector.Vector) ([]db.FindCategoryRow, error)
 }
 
 type TaggingConfig struct {
@@ -60,7 +60,7 @@ func (s *Tagging) DefineTag(ctx context.Context, title string, description strin
 	}
 
 	vecArg := pgvector.NewVector(vec)
-	rows, err := s.repo.FindCategory(ctx, &vecArg)
+	rows, err := s.repo.FindCategory(ctx, vecArg)
 	if err != nil {
 		return nil, fmt.Errorf("find category error: %w", err)
 	}

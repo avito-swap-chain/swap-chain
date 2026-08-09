@@ -130,8 +130,8 @@ func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 			String: strconv.FormatFloat(descriptionScore.ParamRichness, 'f', -1, 64),
 			Valid:  true,
 		},
-		OfferEmbeddingLocal: &offerEmbedding,
-		WantEmbeddingLocal:  &wantEmbedding,
+		OfferEmbeddingLocal: offerEmbedding,
+		WantEmbeddingLocal:  wantEmbedding,
 		ID:                  item.ID,
 	})
 	if err != nil {

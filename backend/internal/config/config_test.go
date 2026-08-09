@@ -23,6 +23,7 @@ func TestLoadDefaults(t *testing.T) {
 		"ANALYSIS_RECOVERY_POLL_INTERVAL",
 		"ANALYSIS_STALE_AFTER",
 		"ANALYSIS_RECOVERY_BATCH_SIZE",
+		"ANALYSIS_BOOTSTRAP_TIMEOUT",
 		"CORS_ALLOWED_ORIGIN",
 		"SESSION_TTL",
 		"COOKIE_SECURE",
@@ -139,13 +140,15 @@ func TestLoadReadsAnalysisSettings(t *testing.T) {
 	t.Setenv("ANALYSIS_RECOVERY_POLL_INTERVAL", "15s")
 	t.Setenv("ANALYSIS_STALE_AFTER", "2m")
 	t.Setenv("ANALYSIS_RECOVERY_BATCH_SIZE", "25")
+	t.Setenv("ANALYSIS_BOOTSTRAP_TIMEOUT", "90s")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if cfg.CategorySimilarityThreshold != 0.7 || cfg.CategoryConfidenceMargin != 0.1 ||
-		cfg.AnalysisPollInterval != 15*time.Second || cfg.AnalysisStaleAfter != 2*time.Minute || cfg.AnalysisBatchSize != 25 {
+		cfg.AnalysisPollInterval != 15*time.Second || cfg.AnalysisStaleAfter != 2*time.Minute || cfg.AnalysisBatchSize != 25 ||
+		cfg.AnalysisBootstrapTimeout != 90*time.Second {
 		t.Fatalf("unexpected analysis config: %+v", cfg)
 	}
 }
