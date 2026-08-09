@@ -1,4 +1,14 @@
+import { unwrap } from '@/shared/api/fetcher'
+import {
+  getChain as getChainRequest,
+  getSession,
+  listChains,
+  submitChainDecision,
+} from '@/shared/api/generated/endpoints'
+import type { Chain as ApiChain, ChainList, Session } from '@/shared/api/generated/model'
+import { isBackendConnected } from '@/shared/config/backend'
 import { notify } from '@/shared/model/notifications'
+import { mapChain } from './mapChain'
 import { currentPersonaId, PERSONAS, type Persona } from '@/shared/model/persona'
 import { confirmReceiptFor } from '../lib/participants'
 import type { Chain, ChainParticipant, ParticipantStatus } from '../model/types'
@@ -214,7 +224,26 @@ const withPersonaStatus = (chain: Chain, personaId: string, status: ParticipantS
 })
 
 /** Обмены, в которых участвует текущий пользователь, — чужие в кабинет не попадают. */
+/**
+ * Кто «я» на стороне бэкенда. Сессия одна на приложение, поэтому держим её в модуле:
+ * запрашивать её перед каждым чтением цепочек — лишний round-trip на каждый рендер.
+ */
+let sessionUserId: number | undefined
+
+async function currentUserId(): Promise<number> {
+  if (sessionUserId === undefined) {
+    sessionUserId = unwrap<Session>(await getSession()).user.id
+  }
+  return sessionUserId
+}
+
 export async function getMyChains(): Promise<Chain[]> {
+  if (isBackendConnected) {
+    const meId = await currentUserId()
+    const { chains: list } = unwrap<ChainList>(await listChains())
+    return list.map((chain) => mapChain(chain, meId))
+  }
+
   await delay(300)
   const personaId = currentPersonaId()
 
@@ -224,6 +253,11 @@ export async function getMyChains(): Promise<Chain[]> {
 }
 
 export async function getChain(id: string): Promise<Chain> {
+  if (isBackendConnected) {
+    const meId = await currentUserId()
+    return mapChain(unwrap<ApiChain>(await getChainRequest(Number(id))), meId)
+  }
+
   await delay(250)
   return asSeenBy(find(id), currentPersonaId())
 }
@@ -262,6 +296,15 @@ function cancelRivals(formedId: string) {
  * одного человека, а не распускает цепочку: остальным сервис ищет замену.
  */
 export async function respondToChain(id: string, decision: ChainDecision): Promise<void> {
+  if (isBackendConnected) {
+    unwrap(
+      await submitChainDecision(Number(id), {
+        decision: decision === 'like' ? 'APPROVED' : 'DECLINED',
+      }),
+    )
+    return
+  }
+
   await delay(400)
   find(id)
   const personaId = currentPersonaId()

@@ -6,6 +6,8 @@
   "packageManager": "pnpm@11.3.0",
   "scripts": {
     "dev": "vite",
+    "api:sync": "cp ../avito-mono/api/openapi.yaml api/openapi.yaml",
+    "api:gen": "orval",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
@@ -28,6 +30,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
+    "orval": "^8.24.0",
     "oxlint": "^1.75.0",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",

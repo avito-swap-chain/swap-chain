@@ -12,8 +12,13 @@ export interface Wish {
 export interface Item {
   id: string
   title: string
+  /**
+   * Категория и состояние приходят не всегда: в контракте бэкенда (0.4.0) таких полей нет,
+   * и по данным из API они пустые. Интерфейс это учитывает и не рисует пустую подпись —
+   * додумывать состояние за пользователя нельзя, в обмене оно и есть предмет разговора.
+   */
   category: string
-  condition: ItemCondition
+  condition?: ItemCondition
   photoUrl?: string
   /**
    * Варианты желания: «PS5 или Xbox или беговая дорожка» — три ребра и три шанса
