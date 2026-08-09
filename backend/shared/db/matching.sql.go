@@ -13,13 +13,32 @@ import (
 )
 
 const findSimilarItems = `-- name: FindSimilarItems :many
-SELECT i1.id, i1.user_id, i1.offer_title, i1.offer_description, i1.want_description,
-       i1.offer_embedding::vector AS offer_embedding,
-       i1.want_embedding::vector AS want_embedding,
-       (1.0 - (i1.offer_embedding <=> (SELECT i2.want_embedding FROM items i2 WHERE i2.id = $1)))::float8 AS similarity
-FROM items i1
-WHERE i1.id != $1
-ORDER BY i1.offer_embedding <=> (SELECT i2.want_embedding FROM items i2 WHERE i2.id = $1)
+SELECT candidate_item.id,
+       candidate_item.user_id,
+       candidate_item.offer_title,
+       candidate_item.offer_description,
+       candidate_item.want_description,
+       candidate_item.offer_category_id,
+       candidate_item.want_category_id,
+       candidate_item.visual_quality,
+       candidate_item.quality_score,
+       candidate_item.param_richness,
+       candidate_item.is_category_manual,
+       candidate_item.image_amount,
+       candidate_owner.rating AS user_rating,
+       candidate_owner.success_rate AS user_success_rate,
+       candidate_item.offer_embedding_local::vector AS offer_embedding_local,
+       candidate_item.want_embedding_local::vector AS want_embedding_local,
+       (1.0 - (candidate_item.offer_embedding_local <=> source_item.want_embedding_local))::float8 AS similarity
+FROM items AS candidate_item
+JOIN users AS candidate_owner ON candidate_owner.id = candidate_item.user_id
+JOIN items AS source_item ON source_item.id = $1
+WHERE candidate_item.id != source_item.id
+  AND candidate_item.user_id != source_item.user_id
+  AND candidate_item.status = 'MATCHING'
+  AND source_item.status = 'MATCHING'
+  AND candidate_item.offer_category_id = source_item.want_category_id
+ORDER BY candidate_item.offer_embedding_local <=> source_item.want_embedding_local
 LIMIT $2
 `
 
@@ -29,14 +48,23 @@ type FindSimilarItemsParams struct {
 }
 
 type FindSimilarItemsRow struct {
-	ID               int64              `json:"id"`
-	UserID           int64              `json:"user_id"`
-	OfferTitle       string             `json:"offer_title"`
-	OfferDescription sql.NullString     `json:"offer_description"`
-	WantDescription  sql.NullString     `json:"want_description"`
-	OfferEmbedding   pgvector_go.Vector `json:"offer_embedding"`
-	WantEmbedding    pgvector_go.Vector `json:"want_embedding"`
-	Similarity       float64            `json:"similarity"`
+	ID                  int64               `json:"id"`
+	UserID              int64               `json:"user_id"`
+	OfferTitle          string              `json:"offer_title"`
+	OfferDescription    sql.NullString      `json:"offer_description"`
+	WantDescription     sql.NullString      `json:"want_description"`
+	OfferCategoryID     sql.NullInt32       `json:"offer_category_id"`
+	WantCategoryID      sql.NullInt32       `json:"want_category_id"`
+	VisualQuality       sql.NullString      `json:"visual_quality"`
+	QualityScore        sql.NullString      `json:"quality_score"`
+	ParamRichness       sql.NullString      `json:"param_richness"`
+	IsCategoryManual    sql.NullBool        `json:"is_category_manual"`
+	ImageAmount         sql.NullInt32       `json:"image_amount"`
+	UserRating          sql.NullString      `json:"user_rating"`
+	UserSuccessRate     sql.NullString      `json:"user_success_rate"`
+	OfferEmbeddingLocal *pgvector_go.Vector `json:"offer_embedding_local"`
+	WantEmbeddingLocal  *pgvector_go.Vector `json:"want_embedding_local"`
+	Similarity          float64             `json:"similarity"`
 }
 
 func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsParams) ([]FindSimilarItemsRow, error) {
@@ -54,8 +82,17 @@ func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsPara
 			&i.OfferTitle,
 			&i.OfferDescription,
 			&i.WantDescription,
-			&i.OfferEmbedding,
-			&i.WantEmbedding,
+			&i.OfferCategoryID,
+			&i.WantCategoryID,
+			&i.VisualQuality,
+			&i.QualityScore,
+			&i.ParamRichness,
+			&i.IsCategoryManual,
+			&i.ImageAmount,
+			&i.UserRating,
+			&i.UserSuccessRate,
+			&i.OfferEmbeddingLocal,
+			&i.WantEmbeddingLocal,
 			&i.Similarity,
 		); err != nil {
 			return nil, err
@@ -69,4 +106,18 @@ func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const getMatchingSourceItem = `-- name: GetMatchingSourceItem :one
+SELECT source_item.id
+FROM items AS source_item
+WHERE source_item.id = $1
+  AND source_item.status = 'MATCHING'
+`
+
+func (q *Queries) GetMatchingSourceItem(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getMatchingSourceItem, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
 }
