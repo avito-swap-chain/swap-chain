@@ -27,6 +27,10 @@ type databasePinger interface {
 	PingContext(ctx context.Context) error
 }
 
+type readinessChecker interface {
+	Ready(ctx context.Context) error
+}
+
 type cycleFinder interface {
 	Execute(ctx context.Context, itemID int64) ([][]model.Edge, error)
 }
@@ -38,15 +42,16 @@ type mediaService interface {
 
 // Handler connects generated HTTP operations to application services.
 type Handler struct {
-	database databasePinger
-	finder   cycleFinder
-	logger   *zap.Logger
-	items    items.Service
-	media    mediaService
-	chains   chains.Service
-	events   *events.Hub
-	sessions *session.Manager
-	users    users.Service
+	database  databasePinger
+	finder    cycleFinder
+	logger    *zap.Logger
+	items     items.Service
+	media     mediaService
+	chains    chains.Service
+	events    *events.Hub
+	sessions  *session.Manager
+	users     users.Service
+	readiness []readinessChecker
 }
 
 // NewHandler creates the integrated API handler.
@@ -60,17 +65,19 @@ func NewHandler(
 	eventHub *events.Hub,
 	sessions *session.Manager,
 	userService users.Service,
+	readiness ...readinessChecker,
 ) *Handler {
 	return &Handler{
-		database: database,
-		finder:   finder,
-		logger:   logger,
-		items:    itemService,
-		media:    mediaService,
-		chains:   chainService,
-		events:   eventHub,
-		sessions: sessions,
-		users:    userService,
+		database:  database,
+		finder:    finder,
+		logger:    logger,
+		items:     itemService,
+		media:     mediaService,
+		chains:    chainService,
+		events:    eventHub,
+		sessions:  sessions,
+		users:     userService,
+		readiness: readiness,
 	}
 }
 
@@ -167,7 +174,7 @@ func uploadMediaBadRequest(ctx context.Context, message string) api.UploadMedia4
 	}
 }
 
-// GetHealth reports API and database readiness.
+// GetHealth reports readiness of the database and analysis dependencies.
 func (h *Handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {
 	response, healthErr := h.health(ctx)
 	if healthErr != nil {
@@ -178,15 +185,12 @@ func (h *Handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 	return api.GetHealth200JSONResponse(response), nil
 }
 
-// GetLegacyHealth preserves the original unversioned health route.
-func (h *Handler) GetLegacyHealth(ctx context.Context, _ api.GetLegacyHealthRequestObject) (api.GetLegacyHealthResponseObject, error) {
-	response, healthErr := h.health(ctx)
-	if healthErr != nil {
-		return api.GetLegacyHealth503JSONResponse{
-			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(*healthErr),
-		}, nil
-	}
-	return api.GetLegacyHealth200JSONResponse(response), nil
+// GetLegacyHealth reports process liveness without probing external dependencies.
+func (h *Handler) GetLegacyHealth(_ context.Context, _ api.GetLegacyHealthRequestObject) (api.GetLegacyHealthResponseObject, error) {
+	return api.GetLegacyHealth200JSONResponse(api.LivenessResponse{
+		Status:    api.Alive,
+		Timestamp: time.Now().UTC(),
+	}), nil
 }
 
 func (h *Handler) health(ctx context.Context) (api.HealthResponse, *api.Error) {
@@ -195,10 +199,18 @@ func (h *Handler) health(ctx context.Context) (api.HealthResponse, *api.Error) {
 		response := errorModel(ctx, "DATABASE_UNAVAILABLE", "database is unavailable", nil)
 		return api.HealthResponse{}, &response
 	}
+	for _, checker := range h.readiness {
+		if err := checker.Ready(ctx); err != nil {
+			h.logger.Error("analysis readiness check failed", zap.Error(err))
+			response := errorModel(ctx, "ANALYSIS_UNAVAILABLE", "analysis dependencies are unavailable", nil)
+			return api.HealthResponse{}, &response
+		}
+	}
 
 	return api.HealthResponse{
 		Status:    api.Ok,
 		Database:  api.Up,
+		Analysis:  api.Ready,
 		Timestamp: time.Now().UTC(),
 	}, nil
 }

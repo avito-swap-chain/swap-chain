@@ -144,6 +144,7 @@ type Category struct {
 	ID             int32       `json:"id"`
 	Name           string      `json:"name"`
 	EmbeddingLocal interface{} `json:"embedding_local"`
+	IsSystem       bool        `json:"is_system"`
 }
 
 type Chain struct {
@@ -152,6 +153,7 @@ type Chain struct {
 	CreatedAt time.Time   `json:"created_at"`
 	ExpiresAt time.Time   `json:"expires_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
+	CycleKey  string      `json:"cycle_key"`
 }
 
 type ChainItem struct {
@@ -169,24 +171,30 @@ type Item struct {
 	UserID              int64          `json:"user_id"`
 	OfferTitle          string         `json:"offer_title"`
 	OfferDescription    sql.NullString `json:"offer_description"`
-	OfferCategoryID     sql.NullInt32  `json:"offer_category_id"`
+	OfferCategory       sql.NullString `json:"offer_category"`
 	WantDescription     sql.NullString `json:"want_description"`
+	WantCategory        sql.NullString `json:"want_category"`
+	OfferEmbeddingLocal interface{}    `json:"offer_embedding_local"`
+	WantEmbeddingLocal  interface{}    `json:"want_embedding_local"`
+	CreatedAt           time.Time      `json:"created_at"`
+	Status              ItemStatus     `json:"status"`
+	ImageUrls           []string       `json:"image_urls"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+	OfferCategoryID     sql.NullInt32  `json:"offer_category_id"`
 	WantCategoryID      sql.NullInt32  `json:"want_category_id"`
 	VisualQuality       sql.NullString `json:"visual_quality"`
 	QualityScore        sql.NullString `json:"quality_score"`
 	ParamRichness       sql.NullString `json:"param_richness"`
-	IsCategoryManual    sql.NullBool   `json:"is_category_manual"`
+	IsCategoryManual    bool           `json:"is_category_manual"`
+	LastStatusUpdatedAt time.Time      `json:"last_status_updated_at"`
 	ImageAmount         sql.NullInt32  `json:"image_amount"`
-	OfferEmbeddingLocal interface{}    `json:"offer_embedding_local"`
-	WantEmbeddingLocal  interface{}    `json:"want_embedding_local"`
-	Status              NullItemStatus `json:"status"`
-	LastStatusUpdatedAt sql.NullTime   `json:"last_status_updated_at"`
-	CreatedAt           sql.NullTime   `json:"created_at"`
 }
 
 type User struct {
-	ID          int64          `json:"id"`
-	Username    string         `json:"username"`
-	Rating      sql.NullString `json:"rating"`
-	SuccessRate sql.NullString `json:"success_rate"`
+	ID          int64     `json:"id"`
+	Username    string    `json:"username"`
+	Rating      string    `json:"rating"`
+	CreatedAt   time.Time `json:"created_at"`
+	Phone       string    `json:"phone"`
+	SuccessRate string    `json:"success_rate"`
 }

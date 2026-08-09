@@ -5,9 +5,9 @@
  * Shared REST and realtime contract for the swap-chain MVP.
  * OpenAPI spec version: 0.5.0
  */
-import type { Error } from './error';
+import type { LivenessResponseStatus } from './livenessResponseStatus';
 
-/**
- * Resource not found
- */
-export type NotFoundResponse = Error;
+export interface LivenessResponse {
+  status: LivenessResponseStatus;
+  timestamp: string;
+}

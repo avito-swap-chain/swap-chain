@@ -75,6 +75,9 @@ func normalize(input CreateInput) CreateInput {
 	input.OfferTitle = strings.TrimSpace(input.OfferTitle)
 	input.OfferDescription = strings.TrimSpace(input.OfferDescription)
 	input.WantDescription = strings.TrimSpace(input.WantDescription)
+	if input.ImageURLs == nil {
+		input.ImageURLs = []string{}
+	}
 	for i := range input.ImageURLs {
 		input.ImageURLs[i] = strings.TrimSpace(input.ImageURLs[i])
 	}

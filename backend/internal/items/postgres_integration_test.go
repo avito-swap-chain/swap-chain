@@ -39,7 +39,7 @@ func TestPostgresServiceLifecycleIntegration(t *testing.T) {
 	analyzer := fakeAnalyzer{analyze: func(ctx context.Context, itemID int64) error {
 		_, err := database.ExecContext(ctx, `
 			UPDATE items
-			SET offer_embedding = $2, want_embedding = $2, status = 'MATCHING',
+			SET offer_embedding_local = $2, want_embedding_local = $2, status = 'MATCHING',
 			    last_status_updated_at = now(), updated_at = now()
 			WHERE id = $1 AND status = 'ANALYZING'`, itemID, pgvector.NewVector(vector))
 		return err
@@ -81,7 +81,7 @@ func TestPostgresServiceLifecycleIntegration(t *testing.T) {
 
 	var embeddingsReady bool
 	if err := database.QueryRowContext(context.Background(), `
-		SELECT offer_embedding IS NOT NULL AND want_embedding IS NOT NULL
+		SELECT offer_embedding_local IS NOT NULL AND want_embedding_local IS NOT NULL
 		FROM items WHERE id = $1`, created.ID).Scan(&embeddingsReady); err != nil {
 		t.Fatalf("query embeddings: %v", err)
 	}

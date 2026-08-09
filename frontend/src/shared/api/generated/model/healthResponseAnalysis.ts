@@ -6,9 +6,9 @@
  * OpenAPI spec version: 0.5.0
  */
 
-export type HealthResponseDatabase = typeof HealthResponseDatabase[keyof typeof HealthResponseDatabase];
+export type HealthResponseAnalysis = typeof HealthResponseAnalysis[keyof typeof HealthResponseAnalysis];
 
 
-export const HealthResponseDatabase = {
-  up: 'up',
+export const HealthResponseAnalysis = {
+  ready: 'ready',
 } as const;

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Swap Chain API
-  version: 0.4.0
+  version: 0.5.0
   description: Shared REST and realtime contract for the swap-chain MVP.
 
 servers:
@@ -23,25 +23,23 @@ paths:
       operationId: getLegacyHealth
       deprecated: true
       tags: [system]
-      summary: Check service and database health using the legacy path
+      summary: Check process liveness using the legacy path
       responses:
         "200":
-          description: Service and database are available
+          description: The HTTP process is alive
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
+                $ref: "#/components/schemas/LivenessResponse"
 
   /api/v1/health:
     get:
       operationId: getHealth
       tags: [system]
-      summary: Check service and database health
+      summary: Check service readiness
       responses:
         "200":
-          description: Service and database are available
+          description: Database, Ollama models and category embeddings are ready
           content:
             application/json:
               schema:
@@ -618,9 +616,20 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    LivenessResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [alive]
+        timestamp:
+          type: string
+          format: date-time
+
     HealthResponse:
       type: object
-      required: [status, database, timestamp]
+      required: [status, database, analysis, timestamp]
       properties:
         status:
           type: string
@@ -628,6 +637,9 @@ components:
         database:
           type: string
           enum: [up]
+        analysis:
+          type: string
+          enum: [ready]
         timestamp:
           type: string
           format: date-time

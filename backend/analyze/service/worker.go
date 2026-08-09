@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -102,7 +101,7 @@ func (w *AnalysisRecoveryWorker) recoverAndLog(ctx context.Context) {
 func (w *AnalysisRecoveryWorker) recoverOnce(ctx context.Context) error {
 	staleBefore := w.now().Add(-w.cfg.StaleAfter)
 	itemIDs, err := w.repo.ClaimStaleAnalyzingItems(ctx, db.ClaimStaleAnalyzingItemsParams{
-		StaleBefore: sql.NullTime{Time: staleBefore, Valid: true},
+		StaleBefore: staleBefore,
 		BatchSize:   w.cfg.BatchSize,
 	})
 	if err != nil {

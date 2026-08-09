@@ -79,6 +79,48 @@ func TestHealthAndMatchingRoutesUseIntegratedServices(t *testing.T) {
 	}
 }
 
+func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
+	logger := zap.NewNop()
+	eventHub := events.NewHub()
+	sessions := session.NewManager(time.Hour, false)
+	handler := httpapi.NewHandler(
+		testDatabase{},
+		testFinder{},
+		logger,
+		items.NewMemoryService(),
+		media.NewService(newTestMediaStorage(), 10<<20),
+		&testChainService{chain: testChain()},
+		eventHub,
+		sessions,
+		users.NewMemoryService(testUser(1)),
+		testReadiness{err: errors.New("ollama model is missing")},
+	)
+	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
+	if err != nil {
+		t.Fatalf("create HTTP handler: %v", err)
+	}
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	liveness, err := http.Get(server.URL + "/health")
+	if err != nil {
+		t.Fatalf("GET liveness: %v", err)
+	}
+	defer closeBody(t, liveness.Body)
+	if liveness.StatusCode != http.StatusOK {
+		t.Fatalf("liveness status = %d, want 200", liveness.StatusCode)
+	}
+
+	readiness, err := http.Get(server.URL + "/api/v1/health")
+	if err != nil {
+		t.Fatalf("GET readiness: %v", err)
+	}
+	defer closeBody(t, readiness.Body)
+	if readiness.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("readiness status = %d, want 503", readiness.StatusCode)
+	}
+}
+
 func TestMatchingRejectsItemBeforeAnalysis(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
@@ -661,6 +703,12 @@ func closeBody(t *testing.T, body io.Closer) {
 type testDatabase struct{}
 
 func (testDatabase) PingContext(context.Context) error { return nil }
+
+type testReadiness struct {
+	err error
+}
+
+func (readiness testReadiness) Ready(context.Context) error { return readiness.err }
 
 type testMediaStorage struct {
 	objects map[string]media.Object

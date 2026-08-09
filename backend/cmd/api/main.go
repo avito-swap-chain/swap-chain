@@ -101,6 +101,20 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create vectorizer: %w", err)
 	}
+	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(queries, llmClient)
+	if err != nil {
+		return fmt.Errorf("create category bootstrap: %w", err)
+	}
+	bootstrapCtx, cancelBootstrap := context.WithTimeout(context.Background(), cfg.AnalysisBootstrapTimeout)
+	if err := llmClient.Ready(bootstrapCtx); err != nil {
+		cancelBootstrap()
+		return fmt.Errorf("wait for ollama models: %w", err)
+	}
+	if err := categoryBootstrap.Bootstrap(bootstrapCtx); err != nil {
+		cancelBootstrap()
+		return fmt.Errorf("bootstrap category embeddings: %w", err)
+	}
+	cancelBootstrap()
 	tagging, err := analyzeservice.NewTagging(vectorizer, queries, analyzeservice.TaggingConfig{
 		SimilarityThreshold: cfg.CategorySimilarityThreshold,
 		ConfidenceMargin:    cfg.CategoryConfidenceMargin,
@@ -144,7 +158,19 @@ func run(logger *zap.Logger) error {
 	})
 	finder := applicationmatching.NewFindCycles(matcher, chainService)
 	userService := users.NewPostgresService(database)
-	handler := httpapi.NewHandler(database, finder, logger, itemService, mediaService, chainService, eventHub, sessions, userService)
+	handler := httpapi.NewHandler(
+		database,
+		finder,
+		logger,
+		itemService,
+		mediaService,
+		chainService,
+		eventHub,
+		sessions,
+		userService,
+		llmClient,
+		categoryBootstrap,
+	)
 	router, err := httpserver.New(logger, handler, sessions, cfg.CORSAllowedOrigin, cfg.MediaMaxUploadBytes)
 	if err != nil {
 		return fmt.Errorf("create HTTP router: %w", err)
