@@ -24,27 +24,41 @@ func NewPostgreSQLMatching(queries *db.Queries) (*Matching, error) {
 	return &Matching{queries: queries}, nil
 }
 
-func (r *Matching) IsSourceMatchable(ctx context.Context, itemID int) (bool, error) {
-	_, err := r.queries.GetMatchingSourceItem(ctx, int64(itemID))
-
+func (r *Matching) ValidateSourceItem(ctx context.Context, itemID int64) error {
+	item, err := r.queries.GetMatchingSourceItem(ctx, itemID)
 	switch {
-	case err == nil:
-		return true, nil
 	case errors.Is(err, sql.ErrNoRows):
-		return false, nil
-	default:
-		return false, fmt.Errorf("get matching source item %d: %w", itemID, err)
+		return model.ErrItemNotFound
+	case err != nil:
+		return fmt.Errorf("get matching source item %d: %w", itemID, err)
 	}
+
+	actualStatus := mapItemStatus(item.Status)
+	if actualStatus != model.ItemStatusMatching {
+		return &model.ItemStatusError{
+			ItemID:   itemID,
+			Expected: model.ItemStatusMatching,
+			Actual:   actualStatus,
+		}
+	}
+
+	return nil
 }
 
-func (r *Matching) FindSimilarItems(ctx context.Context, sourceID int, limit int) ([]model.ItemMatch, error) {
+func (r *Matching) FindSimilarItems(
+	ctx context.Context,
+	sourceID int64,
+	undefinedCategoryID int32,
+	limit int,
+) ([]model.ItemMatch, error) {
 	if limit <= 0 || int64(limit) > math.MaxInt32 {
 		return nil, fmt.Errorf("find similar items: limit %d is outside (0,%d]", limit, int64(math.MaxInt32))
 	}
 
 	rows, err := r.queries.FindSimilarItems(ctx, db.FindSimilarItemsParams{
-		ID:    int64(sourceID),
-		Limit: int32(limit),
+		ID:                  sourceID,
+		UndefinedCategoryID: undefinedCategoryID,
+		Limit:               int32(limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("query similar items for source %d: %w", sourceID, err)
@@ -63,7 +77,7 @@ func (r *Matching) FindSimilarItems(ctx context.Context, sourceID int, limit int
 	return matches, nil
 }
 
-func mapItemMatch(sourceID int, row db.FindSimilarItemsRow) (model.ItemMatch, error) {
+func mapItemMatch(sourceID int64, row db.FindSimilarItemsRow) (model.ItemMatch, error) {
 	paramRichness, err := parseNullableFloat("param_richness", row.ParamRichness)
 	if err != nil {
 		return model.ItemMatch{}, err
@@ -100,7 +114,7 @@ func mapItemMatch(sourceID int, row db.FindSimilarItemsRow) (model.ItemMatch, er
 	return model.ItemMatch{
 		SourceID: sourceID,
 		TargetItem: model.Item{
-			ID:               int(row.ID),
+			ID:               row.ID,
 			OfferTitle:       row.OfferTitle,
 			OfferDescription: offerDescription,
 			WantDescription:  wantDescription,
@@ -116,7 +130,8 @@ func mapItemMatch(sourceID int, row db.FindSimilarItemsRow) (model.ItemMatch, er
 				SuccessRate:    userSuccessRate,
 			},
 		},
-		Similarity: row.Similarity,
+		Similarity:            row.Similarity,
+		UsesUndefinedCategory: row.UsesUndefinedCategory,
 	}, nil
 }
 
@@ -150,4 +165,12 @@ func nullableInt32(value sql.NullInt32) int {
 	}
 
 	return int(value.Int32)
+}
+
+func mapItemStatus(status db.NullItemStatus) model.ItemStatus {
+	if !status.Valid {
+		return model.ItemStatusUnknown
+	}
+
+	return model.ItemStatus(status.ItemStatus)
 }
