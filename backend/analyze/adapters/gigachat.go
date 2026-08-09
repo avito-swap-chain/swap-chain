@@ -3,7 +3,6 @@ package adapters
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -72,13 +71,8 @@ type GigaChat struct {
 
 func NewGigaChat(cfg GigaChatConfig) *GigaChat {
 	return &GigaChat{
-		cfg: cfg,
-		client: &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-			Timeout: cfg.Timeout,
-		},
+		cfg:    cfg,
+		client: &http.Client{Timeout: cfg.Timeout},
 	}
 }
 
@@ -120,7 +114,7 @@ func (g *GigaChat) refreshToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)
@@ -274,7 +268,7 @@ func (g *GigaChat) uploadPhoto(ctx context.Context, token string, photoBytes []b
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)
@@ -308,7 +302,7 @@ func (g *GigaChat) doJSONRequest(ctx context.Context, url string, token string, 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)

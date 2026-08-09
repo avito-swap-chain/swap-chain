@@ -167,24 +167,32 @@ type ChainItem struct {
 }
 
 type Item struct {
-	ID               int64          `json:"id"`
-	UserID           int64          `json:"user_id"`
-	OfferTitle       string         `json:"offer_title"`
-	OfferDescription sql.NullString `json:"offer_description"`
-	OfferCategory    sql.NullString `json:"offer_category"`
-	WantDescription  sql.NullString `json:"want_description"`
-	WantCategory     sql.NullString `json:"want_category"`
-	OfferEmbedding   interface{}    `json:"offer_embedding"`
-	WantEmbedding    interface{}    `json:"want_embedding"`
-	CreatedAt        time.Time      `json:"created_at"`
-	Status           ItemStatus     `json:"status"`
-	ImageUrls        []string       `json:"image_urls"`
-	UpdatedAt        time.Time      `json:"updated_at"`
+	ID                  int64          `json:"id"`
+	UserID              int64          `json:"user_id"`
+	OfferTitle          string         `json:"offer_title"`
+	OfferDescription    sql.NullString `json:"offer_description"`
+	OfferCategory       sql.NullString `json:"offer_category"`
+	WantDescription     sql.NullString `json:"want_description"`
+	WantCategory        sql.NullString `json:"want_category"`
+	OfferEmbedding      interface{}    `json:"offer_embedding"`
+	WantEmbedding       interface{}    `json:"want_embedding"`
+	CreatedAt           time.Time      `json:"created_at"`
+	Status              ItemStatus     `json:"status"`
+	ImageUrls           []string       `json:"image_urls"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+	OfferCategoryID     sql.NullInt32  `json:"offer_category_id"`
+	WantCategoryID      sql.NullInt32  `json:"want_category_id"`
+	VisualQuality       sql.NullString `json:"visual_quality"`
+	QualityScore        sql.NullString `json:"quality_score"`
+	ParamRichness       sql.NullString `json:"param_richness"`
+	IsCategoryManual    bool           `json:"is_category_manual"`
+	LastStatusUpdatedAt time.Time      `json:"last_status_updated_at"`
 }
 
 type User struct {
-	ID        int64     `json:"id"`
-	Username  string    `json:"username"`
-	Rating    string    `json:"rating"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          int64     `json:"id"`
+	Username    string    `json:"username"`
+	Rating      string    `json:"rating"`
+	CreatedAt   time.Time `json:"created_at"`
+	SuccessRate string    `json:"success_rate"`
 }

@@ -6,12 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/lib/pq"
-	"github.com/pgvector/pgvector-go"
 	"go.uber.org/zap"
 )
 
@@ -20,15 +18,14 @@ const (
 	analysisTimeout   = 60 * time.Second
 )
 
-type vectorizer interface {
-	Vectorize(ctx context.Context, text string) ([]float32, error)
+type analyzer interface {
+	AnalyzeItem(ctx context.Context, itemID int64) error
 }
 
 type repository interface {
 	Create(ctx context.Context, userID int64, input CreateInput) (Item, error)
 	Get(ctx context.Context, itemID int64) (Item, error)
 	ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error)
-	MarkMatching(ctx context.Context, itemID int64, offerEmbedding, wantEmbedding []float32) (Item, error)
 }
 
 // PublishEvent sends an item lifecycle event after its database change commits.
@@ -36,31 +33,31 @@ type PublishEvent func(userID int64, eventType, entityID string, data map[string
 
 // PostgresService stores items and owns the background analysis worker.
 type PostgresService struct {
-	repo       repository
-	vectorizer vectorizer
-	publish    PublishEvent
-	logger     *zap.Logger
-	jobs       chan Item
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	repo     repository
+	analyzer analyzer
+	publish  PublishEvent
+	logger   *zap.Logger
+	jobs     chan int64
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
 }
 
 // NewPostgresService creates a PostgreSQL-backed item service and starts analysis.
-func NewPostgresService(database *sql.DB, vectorizer vectorizer, publish PublishEvent, logger *zap.Logger) *PostgresService {
-	return newPostgresService(&postgresRepository{database: database}, vectorizer, publish, logger)
+func NewPostgresService(database *sql.DB, analyzer analyzer, publish PublishEvent, logger *zap.Logger) *PostgresService {
+	return newPostgresService(&postgresRepository{database: database}, analyzer, publish, logger)
 }
 
-func newPostgresService(repo repository, vectorizer vectorizer, publish PublishEvent, logger *zap.Logger) *PostgresService {
+func newPostgresService(repo repository, analyzer analyzer, publish PublishEvent, logger *zap.Logger) *PostgresService {
 	ctx, cancel := context.WithCancel(context.Background())
 	service := &PostgresService{
-		repo:       repo,
-		vectorizer: vectorizer,
-		publish:    publish,
-		logger:     logger,
-		jobs:       make(chan Item, analysisQueueSize),
-		ctx:        ctx,
-		cancel:     cancel,
+		repo:     repo,
+		analyzer: analyzer,
+		publish:  publish,
+		logger:   logger,
+		jobs:     make(chan int64, analysisQueueSize),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 	service.wg.Add(1)
 	go service.runWorker()
@@ -87,7 +84,7 @@ func (s *PostgresService) Create(ctx context.Context, userID int64, input Create
 
 	s.notify(item, "item.created")
 	select {
-	case s.jobs <- item:
+	case s.jobs <- item.ID:
 		return item, nil
 	case <-s.ctx.Done():
 		return Item{}, errors.New("item analysis service is stopped")
@@ -110,31 +107,23 @@ func (s *PostgresService) runWorker() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case item := <-s.jobs:
-			s.analyze(item)
+		case itemID := <-s.jobs:
+			s.analyze(itemID)
 		}
 	}
 }
 
-func (s *PostgresService) analyze(item Item) {
+func (s *PostgresService) analyze(itemID int64) {
 	ctx, cancel := context.WithTimeout(s.ctx, analysisTimeout)
 	defer cancel()
 
-	offerText := strings.TrimSpace(item.OfferTitle + ". " + item.OfferDescription)
-	offerEmbedding, err := s.vectorizer.Vectorize(ctx, offerText)
-	if err != nil {
-		s.logger.Error("vectorize item offer", zap.Int64("item_id", item.ID), zap.Error(err))
+	if err := s.analyzer.AnalyzeItem(ctx, itemID); err != nil {
+		s.logger.Error("analyze item", zap.Int64("item_id", itemID), zap.Error(err))
 		return
 	}
-	wantEmbedding, err := s.vectorizer.Vectorize(ctx, item.WantDescription)
+	updated, err := s.repo.Get(ctx, itemID)
 	if err != nil {
-		s.logger.Error("vectorize item want", zap.Int64("item_id", item.ID), zap.Error(err))
-		return
-	}
-
-	updated, err := s.repo.MarkMatching(ctx, item.ID, offerEmbedding, wantEmbedding)
-	if err != nil {
-		s.logger.Error("complete item analysis", zap.Int64("item_id", item.ID), zap.Error(err))
+		s.logger.Error("load analyzed item", zap.Int64("item_id", itemID), zap.Error(err))
 		return
 	}
 	s.notify(updated, "item.status.updated")
@@ -220,24 +209,6 @@ func (r *postgresRepository) ListByUser(ctx context.Context, userID, afterID int
 		result = result[:limit]
 	}
 	return result, next, nil
-}
-
-func (r *postgresRepository) MarkMatching(ctx context.Context, itemID int64, offerEmbedding, wantEmbedding []float32) (Item, error) {
-	item, err := scanItem(r.database.QueryRowContext(ctx, `
-		UPDATE items
-		SET offer_embedding = $2, want_embedding = $3, status = 'MATCHING', updated_at = now()
-		WHERE id = $1 AND status = 'ANALYZING'
-		RETURNING id, user_id, offer_title, offer_description, want_description,
-		          image_urls, status::text, created_at, updated_at`,
-		itemID, pgvector.NewVector(offerEmbedding), pgvector.NewVector(wantEmbedding),
-	))
-	if errors.Is(err, sql.ErrNoRows) {
-		return Item{}, ErrNotFound
-	}
-	if err != nil {
-		return Item{}, fmt.Errorf("mark item matching: %w", err)
-	}
-	return item, nil
 }
 
 type rowScanner interface {

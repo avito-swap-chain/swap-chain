@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
+
+const defaultOllamaTimeout = 30 * time.Second
 
 type OllamaConfig struct {
 	BaseURL         string
@@ -29,7 +32,7 @@ type Ollama struct {
 
 func NewOllama(cfg OllamaConfig) *Ollama {
 	return &Ollama{
-		client: &http.Client{},
+		client: &http.Client{Timeout: defaultOllamaTimeout},
 		cfg:    cfg,
 	}
 }
@@ -54,7 +57,7 @@ func (o *Ollama) Vectorize(ctx context.Context, text string) ([]float32, error) 
 	if err != nil {
 		return nil, fmt.Errorf("vectorize - execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("vectorize: bad status: %d", resp.StatusCode)
@@ -108,7 +111,7 @@ func (o *Ollama) GenerateJSON(ctx context.Context, prompt string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("generate - execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("generate: bad status: %d", resp.StatusCode)
