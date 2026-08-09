@@ -2,177 +2,136 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"strings"
 	"testing"
 
 	"swap-chain/matching/model"
-	"swap-chain/shared/db"
 
-	pgvector "github.com/pgvector/pgvector-go"
 	"go.uber.org/zap"
 )
 
-type repoStub struct {
-	rowsByItem map[int64][]db.FindSimilarItemsRow
-	errByItem  map[int64]error
-	calls      []db.FindSimilarItemsParams
+type repoCall struct {
+	itemID int
+	limit  int
 }
 
-func (r *repoStub) FindSimilarItems(
-	_ context.Context,
-	arg db.FindSimilarItemsParams,
-) ([]db.FindSimilarItemsRow, error) {
-	r.calls = append(r.calls, arg)
-	if err := r.errByItem[arg.ID]; err != nil {
+type repoStub struct {
+	matchesByItem map[int][]model.ItemMatch
+	errByItem     map[int]error
+	matchable     bool
+	matchableErr  error
+	calls         []repoCall
+}
+
+func (r *repoStub) FindSimilarItems(_ context.Context, itemID, limit int) ([]model.ItemMatch, error) {
+	r.calls = append(r.calls, repoCall{itemID: itemID, limit: limit})
+	if err := r.errByItem[itemID]; err != nil {
 		return nil, err
 	}
-	return r.rowsByItem[arg.ID], nil
+	return r.matchesByItem[itemID], nil
 }
 
-type scorerStub struct {
-	score float64
+func (r *repoStub) IsSourceMatchable(context.Context, int) (bool, error) {
+	return r.matchable, r.matchableErr
 }
 
-func (s scorerStub) CalculateScore(model.ItemMatch) float64 {
-	return s.score
+type scorerStub struct{ score float64 }
+
+func (s scorerStub) CalculateScore(model.ItemMatch) float64 { return s.score }
+
+func TestMatchingFindCyclesRejectsNonMatchingSource(t *testing.T) {
+	repo := &repoStub{}
+	matching := newTestMatching(repo, 3)
+
+	_, err := matching.FindCycles(context.Background(), 42)
+	if !errors.Is(err, model.ErrItemNotMatchable) {
+		t.Fatalf("FindCycles() error = %v, want %v", err, model.ErrItemNotMatchable)
+	}
 }
 
 func TestMatchingFindCyclesReturnsErrorWhenNoCandidatesExist(t *testing.T) {
-	repo := &repoStub{rowsByItem: make(map[int64][]db.FindSimilarItemsRow)}
-	matching := NewMatching(
-		zap.NewNop(),
-		repo,
-		scorerStub{score: 1},
-		MatchingConfig{SimilarItemsAmount: 5, ChainLen: 3},
-	)
+	repo := &repoStub{matchable: true, matchesByItem: make(map[int][]model.ItemMatch)}
+	matching := newTestMatching(repo, 3)
 
 	cycles, err := matching.FindCycles(context.Background(), 42)
-	if err == nil {
-		t.Fatal("find cycles: expected error, got nil")
+	if err == nil || !strings.Contains(err.Error(), "no edges found for item 42") {
+		t.Fatalf("FindCycles() error = %v", err)
 	}
 	if cycles != nil {
-		t.Fatalf("cycles: got %+v, want nil", cycles)
+		t.Fatalf("FindCycles() cycles = %+v, want nil", cycles)
 	}
-	if !strings.Contains(err.Error(), "no edges found for item 42") {
-		t.Fatalf("error: got %q", err)
-	}
-	if len(repo.calls) != 1 {
-		t.Fatalf("repository calls: got %d, want 1", len(repo.calls))
-	}
-	if repo.calls[0].Limit != 5 {
-		t.Fatalf("repository limit: got %d, want 5", repo.calls[0].Limit)
+	if len(repo.calls) != 1 || repo.calls[0].limit != 5 {
+		t.Fatalf("repository calls = %+v", repo.calls)
 	}
 }
 
 func TestMatchingFindCyclesWrapsRepositoryErrorWhenGraphIsEmpty(t *testing.T) {
 	repoErr := errors.New("database unavailable")
-	repo := &repoStub{
-		rowsByItem: make(map[int64][]db.FindSimilarItemsRow),
-		errByItem:  map[int64]error{42: repoErr},
-	}
-	matching := NewMatching(
-		zap.NewNop(),
-		repo,
-		scorerStub{score: 1},
-		MatchingConfig{SimilarItemsAmount: 5, ChainLen: 3},
-	)
+	repo := &repoStub{matchable: true, errByItem: map[int]error{42: repoErr}}
+	matching := newTestMatching(repo, 3)
 
 	_, err := matching.FindCycles(context.Background(), 42)
 	if !errors.Is(err, repoErr) {
-		t.Fatalf("error: got %v, want wrapped %v", err, repoErr)
+		t.Fatalf("FindCycles() error = %v, want wrapped %v", err, repoErr)
 	}
 }
 
-func TestMatchingFindSimilarItemsMapsDatabaseRows(t *testing.T) {
-	repo := &repoStub{rowsByItem: map[int64][]db.FindSimilarItemsRow{
-		7: {
-			{
-				ID:               8,
-				OfferTitle:       "Игровая приставка",
-				OfferDescription: sql.NullString{String: "Описание вещи", Valid: true},
-				WantDescription:  sql.NullString{String: "Горный велосипед", Valid: true},
-				OfferEmbedding:   pgvector.NewVector([]float32{0.1, 0.2}),
-				WantEmbedding:    pgvector.NewVector([]float32{0.3, 0.4}),
-				Similarity:       0.91,
-			},
+func TestMatchingFiltersCandidatesBelowCompatibilityThreshold(t *testing.T) {
+	repo := &repoStub{
+		matchable: true,
+		matchesByItem: map[int][]model.ItemMatch{
+			1: {{SourceID: 1, TargetItem: model.Item{ID: 2}, Similarity: 0.49}},
 		},
-	}}
-	matching := NewMatching(
-		zap.NewNop(),
-		repo,
-		scorerStub{score: 1},
-		MatchingConfig{SimilarItemsAmount: 3},
-	)
+	}
+	matching := newTestMatching(repo, 3)
+	matching.cfg.CompatibilityThreshold = 0.5
 
-	matches, err := matching.findSimilarItems(context.Background(), 7)
-	if err != nil {
-		t.Fatalf("find similar items: %v", err)
-	}
-	if len(matches) != 1 {
-		t.Fatalf("matches amount: got %d, want 1", len(matches))
-	}
-
-	got := matches[0]
-	if got.SourceID != 7 || got.TargetItem.ID != 8 || got.Similarity != 0.91 {
-		t.Fatalf("mapped match: got %+v", got)
-	}
-	if got.TargetItem.OfferTitle != "Игровая приставка" {
-		t.Fatalf("offer title: got %q", got.TargetItem.OfferTitle)
-	}
-	if got.TargetItem.Meta.TitleLen != 17 {
-		t.Fatalf("title length: got %d, want 17", got.TargetItem.Meta.TitleLen)
-	}
-	if len(repo.calls) != 1 || repo.calls[0].Limit != 3 {
-		t.Fatalf("repository calls: got %+v", repo.calls)
+	_, err := matching.FindCycles(context.Background(), 1)
+	if err == nil || !strings.Contains(err.Error(), "no edges found") {
+		t.Fatalf("FindCycles() error = %v, want no edges", err)
 	}
 }
 
-func TestMatchingThreeItemCycleRegression(t *testing.T) {
-	t.Skip("known defect: assembleGraph does not load the closing edge at ChainLen depth")
-
-	repo := cycleRepo(map[int64]int64{1: 2, 2: 3, 3: 1})
-	matching := NewMatching(
-		zap.NewNop(),
-		repo,
-		scorerStub{score: 1},
-		MatchingConfig{SimilarItemsAmount: 5, ChainLen: 3},
-	)
+func TestMatchingThreeItemCycle(t *testing.T) {
+	matching := newTestMatching(cycleRepo(map[int]int{1: 2, 2: 3, 3: 1}), 3)
 
 	cycles, err := matching.FindCycles(context.Background(), 1)
 	if err != nil {
-		t.Fatalf("find cycles: %v", err)
+		t.Fatalf("FindCycles() error = %v", err)
 	}
 	if len(cycles) != 1 || len(cycles[0]) != 3 {
-		t.Fatalf("cycles: got %+v, want one three-item cycle", cycles)
+		t.Fatalf("cycles = %+v, want one three-item cycle", cycles)
 	}
 }
 
-func TestMatchingTwoItemCycleRegression(t *testing.T) {
-	t.Skip("known defect: matching does not enforce the minimum chain length of three")
-
-	repo := cycleRepo(map[int64]int64{1: 2, 2: 1})
-	matching := NewMatching(
-		zap.NewNop(),
-		repo,
-		scorerStub{score: 1},
-		MatchingConfig{SimilarItemsAmount: 5, ChainLen: 3},
-	)
+func TestMatchingTwoItemP2PCycle(t *testing.T) {
+	matching := newTestMatching(cycleRepo(map[int]int{1: 2, 2: 1}), 2)
 
 	cycles, err := matching.FindCycles(context.Background(), 1)
 	if err != nil {
-		t.Fatalf("find cycles: %v", err)
+		t.Fatalf("FindCycles() error = %v", err)
 	}
-	if len(cycles) != 0 {
-		t.Fatalf("cycles: got %+v, want two-item cycle rejected", cycles)
+	if len(cycles) != 1 || len(cycles[0]) != 2 {
+		t.Fatalf("cycles = %+v, want one two-item P2P cycle", cycles)
 	}
 }
 
-func cycleRepo(edges map[int64]int64) *repoStub {
-	rows := make(map[int64][]db.FindSimilarItemsRow, len(edges))
+func newTestMatching(repo MatchingRepo, chainLen int) *Matching {
+	return NewMatching(zap.NewNop(), repo, scorerStub{score: 1}, MatchingConfig{
+		SimilarItemsAmount: 5,
+		ChainLen:           chainLen,
+	})
+}
+
+func cycleRepo(edges map[int]int) *repoStub {
+	matches := make(map[int][]model.ItemMatch, len(edges))
 	for source, target := range edges {
-		rows[source] = []db.FindSimilarItemsRow{{ID: target, Similarity: 1}}
+		matches[source] = []model.ItemMatch{{
+			SourceID:   source,
+			TargetItem: model.Item{ID: target},
+			Similarity: 1,
+		}}
 	}
-	return &repoStub{rowsByItem: rows}
+	return &repoStub{matchable: true, matchesByItem: matches}
 }

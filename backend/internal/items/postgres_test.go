@@ -2,7 +2,6 @@ package items
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -10,10 +9,13 @@ import (
 )
 
 func TestPostgresServiceTransitionsItemToMatching(t *testing.T) {
-	repo := &fakeRepository{marked: make(chan Item, 1)}
-	vectorizer := &fakeVectorizer{vectors: [][]float32{{1, 2}, {3, 4}}}
+	repo := &fakeRepository{analyzed: make(chan int64, 1)}
+	analyzer := fakeAnalyzer{analyze: func(_ context.Context, itemID int64) error {
+		repo.analyzed <- itemID
+		return nil
+	}}
 	events := make(chan string, 2)
-	service := newPostgresService(repo, vectorizer, func(_ int64, eventType, _ string, _ map[string]any) {
+	service := newPostgresService(repo, analyzer, func(_ int64, eventType, _ string, _ map[string]any) {
 		events <- eventType
 	}, zap.NewNop())
 	t.Cleanup(service.Close)
@@ -35,9 +37,9 @@ func TestPostgresServiceTransitionsItemToMatching(t *testing.T) {
 	}
 
 	select {
-	case updated := <-repo.marked:
-		if updated.Status != "MATCHING" {
-			t.Fatalf("updated status = %q, want MATCHING", updated.Status)
+	case itemID := <-repo.analyzed:
+		if itemID != created.ID {
+			t.Fatalf("analyzed item = %d, want %d", itemID, created.ID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for analysis")
@@ -48,7 +50,7 @@ func TestPostgresServiceTransitionsItemToMatching(t *testing.T) {
 }
 
 type fakeRepository struct {
-	marked chan Item
+	analyzed chan int64
 }
 
 func (r *fakeRepository) Create(_ context.Context, userID int64, input CreateInput) (Item, error) {
@@ -65,29 +67,18 @@ func (r *fakeRepository) Create(_ context.Context, userID int64, input CreateInp
 	}, nil
 }
 
-func (r *fakeRepository) Get(context.Context, int64) (Item, error) {
-	return Item{}, ErrNotFound
+func (r *fakeRepository) Get(_ context.Context, itemID int64) (Item, error) {
+	return Item{ID: itemID, UserID: 7, Status: "MATCHING"}, nil
 }
 
 func (r *fakeRepository) ListByUser(context.Context, int64, int64, int) ([]Item, *int64, error) {
 	return nil, nil, nil
 }
 
-func (r *fakeRepository) MarkMatching(_ context.Context, itemID int64, _, _ []float32) (Item, error) {
-	item := Item{ID: itemID, UserID: 7, Status: "MATCHING"}
-	r.marked <- item
-	return item, nil
+type fakeAnalyzer struct {
+	analyze func(context.Context, int64) error
 }
 
-type fakeVectorizer struct {
-	mu      sync.Mutex
-	vectors [][]float32
-}
-
-func (v *fakeVectorizer) Vectorize(context.Context, string) ([]float32, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	result := v.vectors[0]
-	v.vectors = v.vectors[1:]
-	return result, nil
+func (a fakeAnalyzer) AnalyzeItem(ctx context.Context, itemID int64) error {
+	return a.analyze(ctx, itemID)
 }

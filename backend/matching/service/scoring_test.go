@@ -96,7 +96,7 @@ func TestMatchingCalculateChainScore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			matching := &Matching{cfg: MatchingConfig{PenaltyFactor: tt.penalty}}
-			got := matching.calculateChainScore(tt.chain)
+			got := matching.CalculateChainScore(tt.chain)
 			if !almostEqual(got, tt.want) {
 				t.Fatalf("chain score: got %.6f, want %.6f", got, tt.want)
 			}
