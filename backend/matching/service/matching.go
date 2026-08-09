@@ -12,8 +12,8 @@ import (
 )
 
 type MatchingRepo interface {
-	FindSimilarItems(ctx context.Context, sourceID int, limit int) ([]model.ItemMatch, error)
-	IsSourceMatchable(ctx context.Context, itemID int) (bool, error)
+	FindSimilarItems(ctx context.Context, sourceID int64, undefinedCategoryID int32, limit int) ([]model.ItemMatch, error)
+	ValidateSourceItem(ctx context.Context, itemID int64) error
 }
 
 type Scorer interface {
@@ -28,11 +28,13 @@ type Matching struct {
 }
 
 type MatchingConfig struct {
-	SimilarItemsAmount     int     // сколько похожих вещей мы берём из БД для каждого узла графа
-	CompatibilityThreshold float64 // минимальная схожесть желания и предложения для создания ребра
-	ChainLen               int     // длина цепочки (глубина графа)
-	PenaltyFactor          float64 // штраф за несбалансированные цепи, например: edgesScore = [90, 90, 10]
-	ChainRatingThreshold   float64 // граница рейтинга для цепи, все что ниже, не попадает в выдачу
+	SimilarItemsAmount              int     // сколько похожих вещей мы берём из БД для каждого узла графа
+	CompatibilityThreshold          float64 // минимальный порог для создания ребра
+	UndefinedCategoryID             int32   // fallback-категория для неопределённых offer/want
+	UndefinedCompatibilityThreshold float64 // повышенный порог для ребра с fallback-категорией
+	ChainLen                        int     // длина цепочки (глубина графа)
+	PenaltyFactor                   float64 // штраф за несбалансированные цепи, например: edgesScore = [90, 90, 10]
+	ChainRatingThreshold            float64 // граница рейтинга для цепи, все что ниже, не попадает в выдачу
 }
 
 func NewMatching(
@@ -48,9 +50,11 @@ func NewMatching(
 		return nil, fmt.Errorf("matching init: 'matching repo' is required")
 	case scorer == nil:
 		return nil, fmt.Errorf("matching init: 'scorer implementation' is required")
+	case cfg.UndefinedCategoryID <= 0:
+		return nil, fmt.Errorf("matching init: 'undefined category ID' must be positive")
 	}
 
-	if cfg.ChainLen < 3 || cfg.ChainLen > 3 {
+	if cfg.ChainLen < 2 || cfg.ChainLen > 3 {
 		return nil, fmt.Errorf("matching init: invalid 'max chain len' %d", cfg.ChainLen)
 	}
 	if cfg.SimilarItemsAmount <= 0 || cfg.SimilarItemsAmount > 40 {
@@ -64,6 +68,10 @@ func NewMatching(
 		cfg.CompatibilityThreshold < -1 || cfg.CompatibilityThreshold > 1 {
 		return nil, fmt.Errorf("matching init: invalid 'compatibility threshold' range %g", cfg.CompatibilityThreshold)
 	}
+	if math.IsNaN(cfg.UndefinedCompatibilityThreshold) || math.IsInf(cfg.UndefinedCompatibilityThreshold, 0) ||
+		cfg.UndefinedCompatibilityThreshold <= cfg.CompatibilityThreshold || cfg.UndefinedCompatibilityThreshold > 1 {
+		return nil, fmt.Errorf("matching init: invalid 'undefined category threshold' %g", cfg.UndefinedCompatibilityThreshold)
+	}
 	if math.IsNaN(cfg.PenaltyFactor) || math.IsInf(cfg.PenaltyFactor, 0) || cfg.PenaltyFactor < 0 {
 		return nil, fmt.Errorf("matching init: invalid 'penalty factor' %g", cfg.PenaltyFactor)
 	}
@@ -76,18 +84,14 @@ func NewMatching(
 	}, nil
 }
 
-func (m *Matching) FindCycles(ctx context.Context, itemID int) ([][]model.Edge, error) {
-	matchable, err := m.repo.IsSourceMatchable(ctx, itemID)
-	if err != nil {
+func (m *Matching) FindCycles(ctx context.Context, itemID int64) ([][]model.Edge, error) {
+	if err := m.repo.ValidateSourceItem(ctx, itemID); err != nil {
 		return nil, fmt.Errorf("validate source item %d: %w", itemID, err)
-	}
-	if !matchable {
-		return nil, fmt.Errorf("find cycles for item %d: %w", itemID, model.ErrItemNotMatchable)
 	}
 
 	graph := model.NewMemoryStore()
 
-	err = m.assembleGraph(ctx, itemID, graph)
+	err := m.assembleGraph(ctx, itemID, graph)
 	if err != nil {
 		return nil, err
 	}
@@ -100,10 +104,10 @@ func (m *Matching) FindCycles(ctx context.Context, itemID int) ([][]model.Edge, 
 	return m.filterChainsByScoreAndRoot(chains, itemID), nil
 }
 
-func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Graph) error {
+func (m *Matching) assembleGraph(ctx context.Context, rootID int64, graph model.Graph) error {
 	var errs []error
-	queue := make([]int, 0, 1)
-	visited := make(map[int]struct{})
+	queue := make([]int64, 0, 1)
+	visited := make(map[int64]struct{})
 	edgeCounter := 0
 
 	if err := graph.AddVertex(model.Vertex{ItemID: rootID}); err != nil {
@@ -113,7 +117,7 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 	visited[rootID] = struct{}{}
 
 	for i := 0; i < m.cfg.ChainLen; i++ {
-		nextQueue := make([]int, 0, len(queue))
+		nextQueue := make([]int64, 0, len(queue))
 
 		for _, candidateID := range queue {
 			matches, err := m.findSimilarItems(ctx, candidateID)
@@ -122,7 +126,7 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 			}
 
 			for _, match := range matches {
-				if match.Similarity < m.cfg.CompatibilityThreshold {
+				if !m.isCompatible(match) {
 					continue
 				}
 
@@ -154,13 +158,12 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 		}
 	}
 
-	// нужно хотя бы одно ребро для возможного обмена
 	joinedErrs := errors.Join(errs...)
 	switch {
 	case graph.EdgesAmount() < 1 && joinedErrs != nil:
 		return fmt.Errorf("assemble graph: %w", joinedErrs)
 	case graph.EdgesAmount() < 1:
-		return fmt.Errorf("assemble graph: no edges found for item %d", rootID)
+		return nil
 	case joinedErrs != nil:
 		m.logger.Warn("assemble graph: failed chains", zap.Error(joinedErrs))
 	}
@@ -174,8 +177,13 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 // returns:
 // - []model.ItemMatch - кандидаты на создание связи с itemID вещью
 // - error - ошибка если она была
-func (m *Matching) findSimilarItems(ctx context.Context, itemID int) ([]model.ItemMatch, error) {
-	matches, err := m.repo.FindSimilarItems(ctx, itemID, m.cfg.SimilarItemsAmount)
+func (m *Matching) findSimilarItems(ctx context.Context, itemID int64) ([]model.ItemMatch, error) {
+	matches, err := m.repo.FindSimilarItems(
+		ctx,
+		itemID,
+		m.cfg.UndefinedCategoryID,
+		m.cfg.SimilarItemsAmount,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("find similar items for item %d: %w", itemID, err)
 	}
@@ -183,9 +191,18 @@ func (m *Matching) findSimilarItems(ctx context.Context, itemID int) ([]model.It
 	return matches, nil
 }
 
+func (m *Matching) isCompatible(match model.ItemMatch) bool {
+	threshold := m.cfg.CompatibilityThreshold
+	if match.UsesUndefinedCategory {
+		threshold = m.cfg.UndefinedCompatibilityThreshold
+	}
+
+	return match.Similarity >= threshold
+}
+
 // filterChainsByScoreAndRoot - фильтрует цепочки по корневому узлу и рейтингу.
 // Корневой узел - та вещь, для которой мы строим цепочку.
-func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int) [][]model.Edge {
+func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int64) [][]model.Edge {
 	filteredChains := make([][]model.Edge, 0, len(chains))
 
 	for _, chain := range chains {
