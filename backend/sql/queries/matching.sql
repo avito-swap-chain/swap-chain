@@ -15,6 +15,8 @@ SELECT candidate_item.id,
        candidate_owner.success_rate AS user_success_rate,
        candidate_item.offer_embedding_local::vector AS offer_embedding_local,
        candidate_item.want_embedding_local::vector AS want_embedding_local,
+       (source_item.want_category_id = sqlc.arg(undefined_category_id)::int
+           OR candidate_item.offer_category_id = sqlc.arg(undefined_category_id)::int)::boolean AS uses_undefined_category,
        (1.0 - (candidate_item.offer_embedding_local <=> source_item.want_embedding_local))::float8 AS similarity
 FROM items AS candidate_item
 JOIN users AS candidate_owner ON candidate_owner.id = candidate_item.user_id
@@ -23,12 +25,14 @@ WHERE candidate_item.id != source_item.id
   AND candidate_item.user_id != source_item.user_id
   AND candidate_item.status = 'MATCHING'
   AND source_item.status = 'MATCHING'
-  AND candidate_item.offer_category_id = source_item.want_category_id
+  AND (candidate_item.offer_category_id = source_item.want_category_id
+       OR candidate_item.offer_category_id = sqlc.arg(undefined_category_id)::int
+       OR source_item.want_category_id = sqlc.arg(undefined_category_id)::int)
 ORDER BY candidate_item.offer_embedding_local <=> source_item.want_embedding_local
 LIMIT $2;
 
 -- name: GetMatchingSourceItem :one
-SELECT source_item.id
+SELECT source_item.id,
+       source_item.status
 FROM items AS source_item
-WHERE source_item.id = $1
-  AND source_item.status = 'MATCHING';
+WHERE source_item.id = $1;

@@ -62,12 +62,12 @@ UPDATE items
 SET offer_category_id = $1,
     want_category_id = $2,
     param_richness = $3,
-    is_category_manual = FALSE,
-    offer_embedding_local = $4::vector,
-    want_embedding_local = $5::vector,
+    is_category_manual = $4,
+    offer_embedding_local = $5::vector,
+    want_embedding_local = $6::vector,
     status = 'MATCHING',
     last_status_updated_at = NOW()
-WHERE id = $6
+WHERE id = $7
   AND status = 'ANALYZING'
 `
 
@@ -75,6 +75,7 @@ type CompleteItemAnalysisParams struct {
 	OfferCategoryID     sql.NullInt32       `json:"offer_category_id"`
 	WantCategoryID      sql.NullInt32       `json:"want_category_id"`
 	ParamRichness       sql.NullString      `json:"param_richness"`
+	IsCategoryManual    sql.NullBool        `json:"is_category_manual"`
 	OfferEmbeddingLocal *pgvector_go.Vector `json:"offer_embedding_local"`
 	WantEmbeddingLocal  *pgvector_go.Vector `json:"want_embedding_local"`
 	ID                  int64               `json:"id"`
@@ -85,6 +86,7 @@ func (q *Queries) CompleteItemAnalysis(ctx context.Context, arg CompleteItemAnal
 		arg.OfferCategoryID,
 		arg.WantCategoryID,
 		arg.ParamRichness,
+		arg.IsCategoryManual,
 		arg.OfferEmbeddingLocal,
 		arg.WantEmbeddingLocal,
 		arg.ID,
@@ -99,10 +101,10 @@ const getItemForAnalysis = `-- name: GetItemForAnalysis :one
 SELECT item.id,
        item.offer_title,
        item.offer_description,
-       item.want_description
+       item.want_description,
+       item.status
 FROM items AS item
 WHERE item.id = $1
-  AND item.status = 'ANALYZING'
 `
 
 type GetItemForAnalysisRow struct {
@@ -110,6 +112,7 @@ type GetItemForAnalysisRow struct {
 	OfferTitle       string         `json:"offer_title"`
 	OfferDescription sql.NullString `json:"offer_description"`
 	WantDescription  sql.NullString `json:"want_description"`
+	Status           NullItemStatus `json:"status"`
 }
 
 func (q *Queries) GetItemForAnalysis(ctx context.Context, id int64) (GetItemForAnalysisRow, error) {
@@ -120,6 +123,7 @@ func (q *Queries) GetItemForAnalysis(ctx context.Context, id int64) (GetItemForA
 		&i.OfferTitle,
 		&i.OfferDescription,
 		&i.WantDescription,
+		&i.Status,
 	)
 	return i, err
 }

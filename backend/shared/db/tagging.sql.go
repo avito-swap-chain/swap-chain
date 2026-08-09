@@ -17,9 +17,15 @@ SELECT category.id,
        (1.0 - (category.embedding_local <=> $1::vector))::float8 AS similarity
 FROM categories AS category
 WHERE category.embedding_local IS NOT NULL
+  AND category.id != $2
 ORDER BY category.embedding_local <=> $1::vector
 LIMIT 2
 `
+
+type FindCategoryParams struct {
+	EmbeddingLocal      *pgvector_go.Vector `json:"embedding_local"`
+	UndefinedCategoryID int32               `json:"undefined_category_id"`
+}
 
 type FindCategoryRow struct {
 	ID         int32   `json:"id"`
@@ -27,8 +33,8 @@ type FindCategoryRow struct {
 	Similarity float64 `json:"similarity"`
 }
 
-func (q *Queries) FindCategory(ctx context.Context, embeddingLocal *pgvector_go.Vector) ([]FindCategoryRow, error) {
-	rows, err := q.db.QueryContext(ctx, findCategory, embeddingLocal)
+func (q *Queries) FindCategory(ctx context.Context, arg FindCategoryParams) ([]FindCategoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, findCategory, arg.EmbeddingLocal, arg.UndefinedCategoryID)
 	if err != nil {
 		return nil, err
 	}
