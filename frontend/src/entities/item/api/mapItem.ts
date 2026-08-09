@@ -26,7 +26,9 @@ export const mapItem = (item: ApiItem): Item => ({
   title: item.offerTitle,
   category: '',
   condition: undefined,
-  photoUrl: item.imageUrls[0],
+  // `imageUrls` объявлен в контракте обязательным массивом, но бэкенд отдаёт null,
+  // когда картинок нет: без защиты обращение по индексу роняет весь список.
+  photoUrl: item.imageUrls?.[0],
   wish: item.wantDescription ? [{ category: '', description: item.wantDescription }] : [],
   status: STATUS[item.status],
 })

@@ -33,7 +33,7 @@ const mapParticipant = (participant: ApiParticipant, meId: number): ChainPartici
   givesItem: {
     id: String(participant.giveItem.id),
     title: participant.giveItem.offerTitle,
-    photoUrl: participant.giveItem.imageUrls[0],
+    photoUrl: participant.giveItem.imageUrls?.[0],
   },
   status: PARTICIPANT_STATUS[participant.status],
   // Отметки получения в контракте нет — до её появления стадия передачи не двигается

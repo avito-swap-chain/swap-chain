@@ -41,4 +41,11 @@ describe('mapItem — вещь из контракта в нашу модель'
     expect(mapItem(apiItem()).photoUrl).toBe('/mock/items/bike.jpg')
     expect(mapItem(apiItem({ imageUrls: [] })).photoUrl).toBeUndefined()
   })
+
+  it('бэкенд присылает null вместо пустого списка картинок — это не должно ронять список', () => {
+    // Контракт объявляет imageUrls обязательным массивом, но у вещи без фото приходит null.
+    const withoutImages = { ...apiItem(), imageUrls: null } as unknown as ApiItem
+
+    expect(mapItem(withoutImages).photoUrl).toBeUndefined()
+  })
 })
