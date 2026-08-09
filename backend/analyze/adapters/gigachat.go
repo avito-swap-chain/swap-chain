@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +38,7 @@ type GigaChatConfig struct {
 	FilesURL        string
 	ChatModel       string
 	EmbeddingsModel string
+	CABundleFile    string
 	Timeout         time.Duration
 }
 
@@ -99,15 +102,36 @@ func NewGigaChat(cfg GigaChatConfig) (*GigaChat, error) {
 		}
 	}
 
+	client := &http.Client{Timeout: cfg.Timeout}
+	if cfg.CABundleFile != "" {
+		tlsConfig, err := buildGigaChatTLSConfig(cfg.CABundleFile)
+		if err != nil {
+			return nil, fmt.Errorf("gigachat init: %w", err)
+		}
+		client.Transport = &http.Transport{TLSClientConfig: tlsConfig}
+	}
+
 	return &GigaChat{
-		cfg: cfg,
-		client: &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-			Timeout: cfg.Timeout,
-		},
+		cfg:    cfg,
+		client: client,
 	}, nil
+}
+
+func buildGigaChatTLSConfig(caBundleFile string) (*tls.Config, error) {
+	caPEM, err := os.ReadFile(caBundleFile)
+	if err != nil {
+		return nil, fmt.Errorf("read CA bundle %q: %w", caBundleFile, err)
+	}
+
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil {
+		rootCAs = x509.NewCertPool()
+	}
+	if !rootCAs.AppendCertsFromPEM(caPEM) {
+		return nil, fmt.Errorf("add certificates from CA bundle %q", caBundleFile)
+	}
+
+	return &tls.Config{RootCAs: rootCAs}, nil
 }
 
 func (g *GigaChat) GetToken(ctx context.Context) (string, error) {

@@ -39,7 +39,10 @@ func TestMatchingRepositoryFindsCrossOwnerCandidateIntegration(t *testing.T) {
 	_ = insertMatchingTestItem(t, database, ownerID, "Тот же владелец", vector)
 	candidateID := insertMatchingTestItem(t, database, candidateOwnerID, "Кандидат", vector)
 
-	repository := NewPostgreSQLMatching(db.New(database))
+	repository, err := NewPostgreSQLMatching(db.New(database))
+	if err != nil {
+		t.Fatalf("NewPostgreSQLMatching() error = %v", err)
+	}
 	matchable, err := repository.IsSourceMatchable(context.Background(), int(sourceID))
 	if err != nil || !matchable {
 		t.Fatalf("IsSourceMatchable() = %v, %v", matchable, err)

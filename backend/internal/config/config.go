@@ -122,8 +122,8 @@ func Load() (Config, error) {
 	if cfg.ChainLength, err = positiveIntFromEnv("MATCHING_CHAIN_LENGTH", defaultChainLength); err != nil {
 		return Config{}, err
 	}
-	if cfg.ChainLength < 2 || cfg.ChainLength > 3 {
-		return Config{}, fmt.Errorf("MATCHING_CHAIN_LENGTH must be between 2 and 3")
+	if cfg.ChainLength < 3 || cfg.ChainLength > 3 {
+		return Config{}, fmt.Errorf("MATCHING_CHAIN_LENGTH must be 3")
 	}
 	if cfg.PenaltyFactor, err = nonNegativeFloatFromEnv("MATCHING_PENALTY_FACTOR", defaultPenaltyFactor); err != nil {
 		return Config{}, err

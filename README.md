@@ -63,10 +63,24 @@ make config
 make up
 ```
 
+Или явно через Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+Первая загрузка скачает образы и модели Ollama (`bge-m3` и `llama3.1`),
+что может занять 10–15 минут. Следить за процессом можно командой:
+
+```bash
+docker compose logs -f ollama-pull
+```
+
 `make up` собирает backend, поднимает PostgreSQL+pgvector, Ollama, MinIO,
 дожидается здоровья сервисов, загружает модели, применяет миграции и запускает API.
 После старта доступны:
 
+- frontend: <http://localhost:18080>;
 - backend: <http://localhost:8080>;
 - health check: <http://localhost:8080/api/v1/health>;
 - Swagger UI: <http://localhost:8081>;

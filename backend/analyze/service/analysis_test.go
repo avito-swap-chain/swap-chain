@@ -67,9 +67,12 @@ func TestAnalysisCompletesItem(t *testing.T) {
 		{CategoryID: 2, Confidence: 0.9},
 		{CategoryID: 3, Confidence: 0.8},
 	}}
-	analysis := NewAnalysis(repo, scoreStub{value: 0.75}, tagging, &vectorStub{
+	analysis, err := NewAnalysis(repo, scoreStub{value: 0.75}, tagging, &vectorStub{
 		vectors: [][]float32{{1, 2}, {3, 4}},
 	})
+	if err != nil {
+		t.Fatalf("NewAnalysis() error = %v", err)
+	}
 
 	if err := analysis.AnalyzeItem(context.Background(), 7); err != nil {
 		t.Fatalf("AnalyzeItem() error = %v", err)
@@ -77,18 +80,15 @@ func TestAnalysisCompletesItem(t *testing.T) {
 	if !repo.complete.OfferCategoryID.Valid || repo.complete.OfferCategoryID.Int32 != 2 {
 		t.Fatalf("offer category = %+v", repo.complete.OfferCategoryID)
 	}
-	if repo.complete.IsCategoryManual {
-		t.Fatal("IsCategoryManual = true, want false")
-	}
 	if repo.complete.ParamRichness.String != "0.75" {
 		t.Fatalf("ParamRichness = %q", repo.complete.ParamRichness.String)
 	}
-	if len(repo.complete.OfferEmbedding.Slice()) != 2 || len(repo.complete.WantEmbedding.Slice()) != 2 {
+	if len(repo.complete.OfferEmbeddingLocal.Slice()) != 2 || len(repo.complete.WantEmbeddingLocal.Slice()) != 2 {
 		t.Fatal("embeddings were not passed to repository")
 	}
 }
 
-func TestAnalysisAllowsDeferredManualCategory(t *testing.T) {
+func TestAnalysisRequiresManualCategory(t *testing.T) {
 	repo := &analysisRepoStub{
 		item: db.GetItemForAnalysisRow{
 			ID:               7,
@@ -99,15 +99,18 @@ func TestAnalysisAllowsDeferredManualCategory(t *testing.T) {
 		updated: 1,
 	}
 	manual := &analyzemodel.CategoryMatch{IsManual: true}
-	analysis := NewAnalysis(repo, scoreStub{value: 0.5}, &tagStub{matches: []*analyzemodel.CategoryMatch{manual, manual}}, &vectorStub{
+	analysis, err := NewAnalysis(repo, scoreStub{value: 0.5}, &tagStub{matches: []*analyzemodel.CategoryMatch{manual, manual}}, &vectorStub{
 		vectors: [][]float32{{1}, {2}},
 	})
-
-	if err := analysis.AnalyzeItem(context.Background(), 7); err != nil {
-		t.Fatalf("AnalyzeItem() error = %v", err)
+	if err != nil {
+		t.Fatalf("NewAnalysis() error = %v", err)
 	}
-	if repo.complete.OfferCategoryID.Valid || repo.complete.WantCategoryID.Valid || !repo.complete.IsCategoryManual {
-		t.Fatalf("manual category params = %+v", repo.complete)
+
+	if err := analysis.AnalyzeItem(context.Background(), 7); !errors.Is(err, ErrManualCategoryRequired) {
+		t.Fatalf("AnalyzeItem() error = %v, want %v", err, ErrManualCategoryRequired)
+	}
+	if repo.complete.OfferCategoryID.Valid || repo.complete.WantCategoryID.Valid {
+		t.Fatalf("manual category should not update database, got %+v", repo.complete)
 	}
 }
 
@@ -118,7 +121,10 @@ func TestAnalysisRejectsInvalidRichness(t *testing.T) {
 		OfferDescription: sql.NullString{String: "Описание", Valid: true},
 		WantDescription:  sql.NullString{String: "Другая вещь", Valid: true},
 	}}
-	analysis := NewAnalysis(repo, scoreStub{value: 1.1}, &tagStub{}, &vectorStub{})
+	analysis, err := NewAnalysis(repo, scoreStub{value: 1.1}, &tagStub{}, &vectorStub{})
+	if err != nil {
+		t.Fatalf("NewAnalysis() error = %v", err)
+	}
 
 	if err := analysis.AnalyzeItem(context.Background(), 7); err == nil {
 		t.Fatal("AnalyzeItem() error = nil, want invalid richness error")
@@ -135,7 +141,11 @@ func (s generatorStub) GenerateJSON(context.Context, string) (string, error) {
 }
 
 func TestScoringParsesJSON(t *testing.T) {
-	score, err := NewScoring(generatorStub{response: `{"param_richness":0.625}`}).EvaluateDescription(context.Background(), "description")
+	scoring, err := NewScoring(generatorStub{response: `{"param_richness":0.625}`})
+	if err != nil {
+		t.Fatalf("NewScoring() error = %v", err)
+	}
+	score, err := scoring.EvaluateDescription(context.Background(), "description")
 	if err != nil {
 		t.Fatalf("EvaluateDescription() error = %v", err)
 	}
@@ -151,7 +161,10 @@ func (s visionStub) AnalyzePhoto(context.Context, []byte, string) (string, error
 }
 
 func TestVisionValidatesModelResponse(t *testing.T) {
-	vision := NewVision(visionStub{response: `{"marketplace_description":"Новый велосипед","visual_quality":"NEW","quality_score":0.9}`})
+	vision, err := NewVision(visionStub{response: `{"marketplace_description":"Новый велосипед","visual_quality":"NEW","quality_score":0.9}`})
+	if err != nil {
+		t.Fatalf("NewVision() error = %v", err)
+	}
 	result, err := vision.DescribeImage(context.Background(), []byte("image"))
 	if err != nil {
 		t.Fatalf("DescribeImage() error = %v", err)
@@ -162,7 +175,10 @@ func TestVisionValidatesModelResponse(t *testing.T) {
 }
 
 func TestVisionRejectsOutOfRangeScore(t *testing.T) {
-	vision := NewVision(visionStub{response: `{"marketplace_description":"Вещь","visual_quality":"GOOD","quality_score":1.5}`})
+	vision, err := NewVision(visionStub{response: `{"marketplace_description":"Вещь","visual_quality":"GOOD","quality_score":1.5}`})
+	if err != nil {
+		t.Fatalf("NewVision() error = %v", err)
+	}
 	if _, err := vision.DescribeImage(context.Background(), []byte("image")); err == nil {
 		t.Fatal("DescribeImage() error = nil, want range error")
 	}

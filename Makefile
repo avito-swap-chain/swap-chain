@@ -34,7 +34,8 @@ generate-go: ## Regenerate Go strict server and models
 	$(CLEAR_GOROOT) cd backend && go generate ./internal/api
 
 generate-frontend: ## Regenerate TypeScript API types
-	pnpm --dir frontend run generate:api
+	pnpm --dir frontend run api:sync
+	pnpm --dir frontend run api:gen
 
 config: ## Validate and render Docker Compose configuration
 	docker compose config --quiet

@@ -48,6 +48,9 @@ func (s *Vision) DescribeImage(ctx context.Context, imageBytes []byte) (*model.V
 	if err != nil {
 		return nil, fmt.Errorf("describe image: invalid quality from model: %w", err)
 	}
+	if rawResponse.QualityScore < 0 || rawResponse.QualityScore > 1 {
+		return nil, fmt.Errorf("describe image: quality score %v is outside [0,1]", rawResponse.QualityScore)
+	}
 
 	return &model.VisualAnalysis{
 		MarketplaceDescription: rawResponse.MarketplaceDescription,

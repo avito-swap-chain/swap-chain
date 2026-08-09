@@ -50,7 +50,7 @@ func NewMatching(
 		return nil, fmt.Errorf("matching init: 'scorer implementation' is required")
 	}
 
-	if cfg.ChainLen < 2 || cfg.ChainLen > 3 {
+	if cfg.ChainLen < 3 || cfg.ChainLen > 3 {
 		return nil, fmt.Errorf("matching init: invalid 'max chain len' %d", cfg.ChainLen)
 	}
 	if cfg.SimilarItemsAmount <= 0 || cfg.SimilarItemsAmount > 40 {

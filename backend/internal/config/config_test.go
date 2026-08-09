@@ -104,13 +104,13 @@ func TestLoadReadsMediaSettings(t *testing.T) {
 }
 
 func TestLoadRejectsInvalidChainLength(t *testing.T) {
-	for _, value := range []string{"1", "4"} {
+	for _, value := range []string{"1", "2", "4"} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv("MATCHING_CHAIN_LENGTH", value)
 
 			_, err := Load()
-			if err == nil || !strings.Contains(err.Error(), "between 2 and 3") {
-				t.Fatalf("Load() error = %v, want chain length range error", err)
+			if err == nil || !strings.Contains(err.Error(), "MATCHING_CHAIN_LENGTH must be 3") {
+				t.Fatalf("Load() error = %v, want chain length error", err)
 			}
 		})
 	}

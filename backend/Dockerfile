@@ -9,7 +9,10 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/api ./cmd/api \
 
 FROM alpine:3.22
 
-RUN apk --no-cache add ca-certificates \
+RUN apk --no-cache add ca-certificates curl \
+    && curl -fsSL -o /usr/local/share/ca-certificates/russian_trusted_root_ca.crt \
+       https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt \
+    && update-ca-certificates \
     && addgroup -S app \
     && adduser -S -G app app
 WORKDIR /app

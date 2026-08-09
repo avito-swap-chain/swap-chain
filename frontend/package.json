@@ -6,7 +6,7 @@
   "packageManager": "pnpm@11.3.0",
   "scripts": {
     "dev": "vite",
-    "api:sync": "cp ../avito-mono/api/openapi.yaml api/openapi.yaml",
+    "api:sync": "node -e \"require('fs').copyFileSync('../api/openapi.yaml', 'api/openapi.yaml')\"",
     "api:gen": "orval",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

@@ -42,7 +42,7 @@ func (s scorerStub) CalculateScore(model.ItemMatch) float64 { return s.score }
 
 func TestMatchingFindCyclesRejectsNonMatchingSource(t *testing.T) {
 	repo := &repoStub{}
-	matching := newTestMatching(repo, 3)
+	matching := newTestMatching(t, repo, 3)
 
 	_, err := matching.FindCycles(context.Background(), 42)
 	if !errors.Is(err, model.ErrItemNotMatchable) {
@@ -52,7 +52,7 @@ func TestMatchingFindCyclesRejectsNonMatchingSource(t *testing.T) {
 
 func TestMatchingFindCyclesReturnsErrorWhenNoCandidatesExist(t *testing.T) {
 	repo := &repoStub{matchable: true, matchesByItem: make(map[int][]model.ItemMatch)}
-	matching := newTestMatching(repo, 3)
+	matching := newTestMatching(t, repo, 3)
 
 	cycles, err := matching.FindCycles(context.Background(), 42)
 	if err == nil || !strings.Contains(err.Error(), "no edges found for item 42") {
@@ -69,7 +69,7 @@ func TestMatchingFindCyclesReturnsErrorWhenNoCandidatesExist(t *testing.T) {
 func TestMatchingFindCyclesWrapsRepositoryErrorWhenGraphIsEmpty(t *testing.T) {
 	repoErr := errors.New("database unavailable")
 	repo := &repoStub{matchable: true, errByItem: map[int]error{42: repoErr}}
-	matching := newTestMatching(repo, 3)
+	matching := newTestMatching(t, repo, 3)
 
 	_, err := matching.FindCycles(context.Background(), 42)
 	if !errors.Is(err, repoErr) {
@@ -84,7 +84,7 @@ func TestMatchingFiltersCandidatesBelowCompatibilityThreshold(t *testing.T) {
 			1: {{SourceID: 1, TargetItem: model.Item{ID: 2}, Similarity: 0.49}},
 		},
 	}
-	matching := newTestMatching(repo, 3)
+	matching := newTestMatching(t, repo, 3)
 	matching.cfg.CompatibilityThreshold = 0.5
 
 	_, err := matching.FindCycles(context.Background(), 1)
@@ -94,7 +94,7 @@ func TestMatchingFiltersCandidatesBelowCompatibilityThreshold(t *testing.T) {
 }
 
 func TestMatchingThreeItemCycle(t *testing.T) {
-	matching := newTestMatching(cycleRepo(map[int]int{1: 2, 2: 3, 3: 1}), 3)
+	matching := newTestMatching(t, cycleRepo(map[int]int{1: 2, 2: 3, 3: 1}), 3)
 
 	cycles, err := matching.FindCycles(context.Background(), 1)
 	if err != nil {
@@ -105,23 +105,26 @@ func TestMatchingThreeItemCycle(t *testing.T) {
 	}
 }
 
-func TestMatchingTwoItemP2PCycle(t *testing.T) {
-	matching := newTestMatching(cycleRepo(map[int]int{1: 2, 2: 1}), 2)
-
-	cycles, err := matching.FindCycles(context.Background(), 1)
-	if err != nil {
-		t.Fatalf("FindCycles() error = %v", err)
-	}
-	if len(cycles) != 1 || len(cycles[0]) != 2 {
-		t.Fatalf("cycles = %+v, want one two-item P2P cycle", cycles)
+func TestMatchingRejectsTwoItemChainLength(t *testing.T) {
+	_, err := NewMatching(zap.NewNop(), cycleRepo(map[int]int{1: 2, 2: 1}), scorerStub{score: 1}, MatchingConfig{
+		SimilarItemsAmount: 5,
+		ChainLen:           2,
+	})
+	if err == nil {
+		t.Fatal("NewMatching() error = nil, want error for chain length 2")
 	}
 }
 
-func newTestMatching(repo MatchingRepo, chainLen int) *Matching {
-	return NewMatching(zap.NewNop(), repo, scorerStub{score: 1}, MatchingConfig{
+func newTestMatching(t *testing.T, repo MatchingRepo, chainLen int) *Matching {
+	t.Helper()
+	m, err := NewMatching(zap.NewNop(), repo, scorerStub{score: 1}, MatchingConfig{
 		SimilarItemsAmount: 5,
 		ChainLen:           chainLen,
 	})
+	if err != nil {
+		t.Fatalf("NewMatching() error = %v", err)
+	}
+	return m
 }
 
 func cycleRepo(edges map[int]int) *repoStub {

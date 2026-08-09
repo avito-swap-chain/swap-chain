@@ -61,7 +61,7 @@ services:
       CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:18080}
       SESSION_TTL: ${SESSION_TTL:-24h}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.1}
       OLLAMA_EMBEDDINGS_MODEL: ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}
       MINIO_ENDPOINT: minio:9000
@@ -89,11 +89,12 @@ services:
         condition: service_completed_successfully
       minio:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
 
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
-    profiles: [ollama]
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
@@ -105,7 +106,6 @@ services:
 
   ollama-pull:
     image: ollama/ollama:latest
-    profiles: [ollama]
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

@@ -546,8 +546,16 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 		); err != nil {
 			return Chain{}, fmt.Errorf("scan chain: %w", err)
 		}
-		participant.GiveItem.ImageURLs = append([]string(nil), giveImages...)
-		participant.ReceiveItem.ImageURLs = append([]string(nil), receiveImages...)
+		if giveImages == nil {
+			participant.GiveItem.ImageURLs = []string{}
+		} else {
+			participant.GiveItem.ImageURLs = append([]string(nil), giveImages...)
+		}
+		if receiveImages == nil {
+			participant.ReceiveItem.ImageURLs = []string{}
+		} else {
+			participant.ReceiveItem.ImageURLs = append([]string(nil), receiveImages...)
+		}
 		chain.Participants = append(chain.Participants, participant)
 	}
 	if err := rows.Err(); err != nil {

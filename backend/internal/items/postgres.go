@@ -229,6 +229,10 @@ func scanItem(row rowScanner) (Item, error) {
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
-	item.ImageURLs = append([]string(nil), imageURLs...)
+	if imageURLs == nil {
+		item.ImageURLs = []string{}
+	} else {
+		item.ImageURLs = append([]string(nil), imageURLs...)
+	}
 	return item, err
 }
