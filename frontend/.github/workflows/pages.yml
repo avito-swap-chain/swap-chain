@@ -1,0 +1,63 @@
+name: Deploy to GitHub Pages
+
+# Демо должно открываться по ссылке без поднятого бэкенда: без VITE_API_URL фронт
+# работает на мок-данных, поэтому статики достаточно.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Параллельные деплои не нужны: важен последний, а не все по очереди.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Версию не указываем: она закреплена в package.json → packageManager,
+      # и второе объявление здесь ломает установку конфликтом версий.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Тесты и типы гоняются здесь же: выкладывать сломанное демо хуже, чем не выложить.
+      - run: pnpm test
+      - run: pnpm lint
+
+      - name: Build
+        env:
+          # Pages раздаёт сайт из подпапки с именем репозитория.
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: pnpm build
+
+      # Pages не умеет SPA-fallback: прямой заход на /exchange вернул бы 404,
+      # поэтому кладём копию index.html под этим именем — её отдаёт тот же роутер.
+      - run: cp dist/index.html dist/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

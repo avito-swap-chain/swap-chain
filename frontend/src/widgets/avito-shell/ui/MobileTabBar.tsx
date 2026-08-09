@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
-import { cx } from '@/shared/lib'
+import { asset, cx } from '@/shared/lib'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
 import { IconBox, IconChat, IconSwap } from '@/shared/ui'
 import type { Section } from '../lib/navigation'
@@ -64,7 +64,7 @@ export function MobileTabBar({ section }: { section: Section }) {
 
       {/* Профиля нет в MVP — показываем неактивным, как в остальном кабинете. */}
       <span className={cx(tabClass, 'cursor-not-allowed text-ink-3')} title="В демо не открывается">
-        <img src={persona.avatarUrl} alt="" className="size-6 rounded-full object-cover" />
+        <img src={asset(persona.avatarUrl)} alt="" className="size-6 rounded-full object-cover" />
         Профиль
       </span>
     </nav>

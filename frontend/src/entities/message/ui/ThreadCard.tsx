@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { cx } from '@/shared/lib'
+import { asset, cx } from '@/shared/lib'
 import { IconBox } from '@/shared/ui'
 import type { Thread } from '../model/types'
 
@@ -29,7 +29,7 @@ export function ThreadCard({ thread }: { thread: Thread }) {
       <span className="relative shrink-0">
         {thread.itemPhotoUrl ? (
           <img
-            src={thread.itemPhotoUrl}
+            src={asset(thread.itemPhotoUrl)}
             alt=""
             className="size-14 rounded-chip object-cover"
             width={56}
@@ -42,7 +42,7 @@ export function ThreadCard({ thread }: { thread: Thread }) {
         )}
         {thread.peerAvatarUrl && (
           <img
-            src={thread.peerAvatarUrl}
+            src={asset(thread.peerAvatarUrl)}
             alt=""
             className="absolute -bottom-1 -left-1 size-6 rounded-full border-2 border-card object-cover"
             width={24}

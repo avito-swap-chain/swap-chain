@@ -1,4 +1,4 @@
-import { cx } from '@/shared/lib'
+import { asset, cx } from '@/shared/lib'
 import type { ChainParticipant } from '../model/types'
 
 /**
@@ -24,6 +24,11 @@ export function ParticipantAvatar({
   }
 
   return (
-    <img src={participant.avatarUrl} alt="" loading="lazy" className={cx('object-cover', shape)} />
+    <img
+      src={asset(participant.avatarUrl)}
+      alt=""
+      loading="lazy"
+      className={cx('object-cover', shape)}
+    />
   )
 }

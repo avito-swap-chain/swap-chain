@@ -4,3 +4,9 @@
 # блокируются глобальной политикой и валят `pnpm dev`.
 verifyDepsBeforeRun: false
 minimumReleaseAge: 0
+
+# esbuild собирает нативный бинарник постустановочным скриптом. pnpm 11 такие скрипты
+# по умолчанию не выполняет и валит install (strictDepBuilds), поэтому разрешаем явно.
+# Настройка называется allowBuilds: onlyBuiltDependencies из прежних версий удалён.
+allowBuilds:
+  esbuild: true
