@@ -90,6 +90,36 @@ services:
       minio:
         condition: service_healthy
 
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    profiles: [ollama]
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: [ollama]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}..."
+        ollama pull ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}
+        echo "Pulling ${OLLAMA_CHAT_MODEL:-llama3.1}..."
+        ollama pull ${OLLAMA_CHAT_MODEL:-llama3.1}
+        echo "Models ready."
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
   swagger-ui:
     image: docker.swagger.io/swaggerapi/swagger-ui:v5.32.6
     restart: unless-stopped
@@ -103,3 +133,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  ollama_data:

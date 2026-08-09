@@ -3,7 +3,6 @@ package adapters
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -148,7 +147,7 @@ func (g *GigaChat) refreshToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)
@@ -272,7 +271,7 @@ func (g *GigaChat) uploadPhoto(ctx context.Context, token string, photoBytes []b
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)
@@ -306,7 +305,7 @@ func (g *GigaChat) doJSONRequest(ctx context.Context, url string, token string, 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)
