@@ -11,9 +11,10 @@ export function SwitchPersona() {
   const personaId = usePersonaStore((state) => state.personaId)
   const setPersonaId = usePersonaStore((state) => state.setPersonaId)
   const queryClient = useQueryClient()
+  const persona = PERSONAS.find((item) => item.id === personaId) ?? PERSONAS[0]
 
   return (
-    <label className="flex items-center gap-1.5">
+    <label className="flex items-center gap-2">
       {/* На узких окнах подпись прячется: в одну строку шапки лезут лок-ап, поиск и аккаунт,
           а смысл переключателя и так виден по имени в поле. Экранным читалкам она остаётся. */}
       <span className="text-[11px] leading-tight text-ink-3 max-sm:sr-only">Смотрю как</span>
@@ -33,6 +34,16 @@ export function SwitchPersona() {
           </option>
         ))}
       </select>
+
+      {/* Аватар аккаунта — крайний правый элемент шапки, как у Авито (40px, круглый).
+          Он же показывает, за кого сейчас смотрят: имя в поле дублируется лицом. */}
+      <img
+        src={persona.avatarUrl}
+        alt=""
+        width={40}
+        height={40}
+        className="size-10 shrink-0 rounded-full object-cover"
+      />
     </label>
   )
 }

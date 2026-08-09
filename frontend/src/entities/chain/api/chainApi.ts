@@ -1,3 +1,4 @@
+import { notify } from '@/shared/model/notifications'
 import { currentPersonaId, PERSONAS, type Persona } from '@/shared/model/persona'
 import { confirmReceiptFor } from '../lib/participants'
 import type { Chain, ChainParticipant, ParticipantStatus } from '../model/types'
@@ -242,6 +243,15 @@ function cancelRivals(formedId: string) {
     if (!lost) return chain
 
     const cancelled: Chain = { ...chain, status: 'cancelled', cancelledItemId: lost.givesItem.id }
+    // Отмену человек увидит и в списке, но узнать о ней он должен, даже если ушёл с экрана.
+    if (cancelled.participants.some((p) => p.userId === currentPersonaId())) {
+      notify({
+        kind: 'offer',
+        title: 'Вариант обмена отменён',
+        text: `«${lost.givesItem.title}» ушла в другую цепочку. Остальные ваши варианты в силе.`,
+        to: '/exchange',
+      })
+    }
     return cancelled
   })
 }
@@ -274,6 +284,12 @@ export async function respondToChain(id: string, decision: ChainDecision): Promi
       status: 'active',
       participants: current.participants.map((p) => ({ ...p, status: 'confirmed' })),
     }))
+    notify({
+      kind: 'chain',
+      title: 'Цепочка собралась',
+      text: 'Все участники согласны. Договоритесь о передаче и отметьте, когда получите вещь.',
+      to: `/exchange/${id}`,
+    })
     cancelRivals(id)
   }, 2500)
 }
@@ -307,5 +323,11 @@ export async function confirmReceipt(id: string): Promise<void> {
       status: 'completed',
       participants: chain.participants.map((p) => ({ ...p, receiptConfirmed: true })),
     }))
+    notify({
+      kind: 'chain',
+      title: 'Обмен завершён',
+      text: 'Все участники подтвердили получение вещей.',
+      to: `/exchange/${id}`,
+    })
   }, 2500)
 }

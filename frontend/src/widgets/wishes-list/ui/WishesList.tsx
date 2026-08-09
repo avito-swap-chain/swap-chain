@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { getMyItems, itemKeys, WishCard } from '@/entities/item'
-import { Notice } from '@/shared/ui'
+import { Button, EmptyState, Notice } from '@/shared/ui'
 
 /** Что пользователь ищет: желания берутся из его же вещей (wish — поле вещи). */
 export function WishesList() {
@@ -17,15 +17,15 @@ export function WishesList() {
   if (wanted.length === 0) {
     // Желание указывают у объявления, когда включают обмен, — туда и ведём из пустого списка.
     return (
-      <div className="flex flex-col items-center">
-        <Notice>Желаний пока нет. Укажите их у объявления, включив обмен.</Notice>
-        <Link
-          to="/"
-          className="rounded-sm text-[13px] font-semibold text-brand outline-offset-4 focus-visible:outline-2 focus-visible:outline-brand"
-        >
-          К моим объявлениям
-        </Link>
-      </div>
+      <EmptyState
+        title="Желаний пока нет"
+        description="Желание указывают у объявления, когда включают обмен. Чем больше вариантов — тем выше шанс, что цепочка соберётся."
+        action={
+          <Link to="/">
+            <Button variant="dark">К моим объявлениям</Button>
+          </Link>
+        }
+      />
     )
   }
 

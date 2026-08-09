@@ -1,59 +1,86 @@
 @import 'tailwindcss';
 
-/* Avito-style design tokens (Tailwind v4 @theme → утилиты bg-brand, rounded-btn, …)
- * Веб-шрифт Arial (как у Avito), фирменный азур #00AAFF, акцентный набор,
- * скругления и spacing по системе Avito. */
+/* Manrope — шрифт Авито. Ставим локально (@fontsource), а не с CDN:
+ * деплой обязан работать без внешних запросов. */
+@import '@fontsource-variable/manrope';
+
+/* Дизайн-токены сняты с рабочего Авито (CSS-переменные их дизайн-системы AKITA,
+ * слои palette → semantics → component) и переложены в Tailwind v4 @theme.
+ * Полный дамп — 2127 токенов светлой и тёмной темы — лежит в docs/design-tokens.
+ * Здесь только ядро: то, что реально используется в интерфейсе цепочки. */
 @theme {
+  /* --- акцент: palette-blue500, кнопки components-button-bg-accent* --- */
   --color-brand: #00aaff;
-  --color-brand-press: #0092de;
-  --color-brand-soft: #e5f6ff;
+  --color-brand-hover: #0099f7;
+  --color-brand-press: #008aed;
+  --color-brand-soft: #cfedff; /* semantics-bg-accent */
+  --color-brand-pale: #e6f6ff; /* palette-blue50 — фон своих сообщений в чате */
   --color-on-brand: #ffffff;
 
-  /* акцентный набор Avito — цвета из официального лого (редизайн 2022) */
+  /* акцентный набор из лого Авито */
   --color-accent-green: #04e061;
   --color-accent-violet: #965eeb;
   --color-accent-red: #ff4053;
 
-  /* нейтрали — тёплый светло-серый, как поверхности Avito */
-  --color-page: #f4f3f1;
+  /* нейтрали: semantics-bg-*, border-*, font-color-* */
+  --color-page: #f2f1f0;
   --color-card: #ffffff;
-  --color-ink: #0a0a0a;
-  --color-ink-2: #757579;
-  --color-ink-3: #a3a2a0;
-  --color-line: #eae9e6;
-  --color-line-2: #f2f1ef;
+  --color-ink: #000000;
+  --color-ink-2: #757575;
+  --color-ink-3: #a3a3a3;
+  --color-line: #ebeae8;
+  --color-line-2: #f2f1f0;
 
-  /* чёрная кнопка Avito («Найти») */
-  --color-dark: #0a0a0a;
-  --color-dark-press: #262626;
+  /* главная кнопка Авито — чёрная (components-button-bg-primary) */
+  --color-dark: #141414;
+  --color-dark-press: #1f1f1f;
 
-  /* статусные цвета. Как у Авито: статус — текст, а не плашка, и цвет несёт смысл.
-   * Оранжевый = «ход за вами» (у Авито так набраны «Ждёт отправки», «Уточните цену»),
-   * азур остаётся только на ссылках и кнопках. Заливки (--*-bg) — под баннеры. */
-  --color-attention: #f26100;
-  /* на точках степпера тот же сигнал звучит желтее — иначе точка теряется рядом с текстом */
-  --color-attention-dot: #ffa200;
-  --color-ok: #1f8a3f;
-  --color-ok-bg: #e7f4ea;
-  --color-stop: #e11d2e;
-  --color-stop-bg: #ffebec;
+  /* Статусные цвета. Как у Авито: статус — текст, а не плашка, цвет несёт смысл.
+   * Оранжевый = «ход за вами», азур остаётся ссылкам и кнопкам.
+   * Заливки (--*-bg) — под баннеры: semantics-bg-success / -warning / -error. */
+  --color-attention: #f79900; /* border-warning */
+  --color-attention-dot: #fca400; /* bar-warningFilled — на точках степпера читается лучше */
+  --color-attention-bg: #ffecc9;
+  --color-ok: #00b253; /* font-color-valid */
+  --color-ok-bg: #d2fcc4;
+  --color-stop: #ff4053; /* font-color-invalid, border-error */
+  --color-stop-bg: #ffe0e0;
 
+  /* фокус — отдельный оттенок, светлее акцента (semantics-border-focused) */
+  --color-focus: #45c1ff;
+
+  /* пузыри чата: свой — blue50, чужой — bg-default, системный — green50 */
+  --color-bubble-mine: #e6f6ff;
+  --color-bubble-their: #f2f1f0;
+  --color-bubble-system: #e2ffd6;
+
+  /* borderRadius-{s,m,l,xl} */
   --radius-btn: 12px;
   --radius-card: 16px;
   --radius-chip: 8px;
   --radius-input: 12px;
+  --radius-bubble: 20px;
 
-  --shadow-card: 0 2px 8px rgba(10, 20, 30, 0.06);
-  --shadow-pop: 0 8px 28px -10px rgba(10, 30, 50, 0.16);
+  /* boxShadow-size-{s,l}. У Авито тень — признак всплытия, а не карточки:
+   * карточки в потоке плоские, тень только у поповеров и липких панелей. */
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 4px 28px 0 rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 4px 24px 0 rgba(0, 0, 0, 0.12);
 
-  --font-sans: Arial, 'Helvetica Neue', Helvetica, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Manrope Variable', Manrope, Arial, 'Helvetica Neue', Helvetica, sans-serif;
 
-  /* ширина контейнера Авито (утилита max-w-page): шапка и контент стоят на одной сетке */
+  /* Порог десктопной раскладки кабинета. Сдвинут с 1024 на 900: у Авито мобильная вёрстка
+   * отдаётся телефонам по user-agent, а не по ширине окна, поэтому на узком окне ноутбука
+   * их сайт остаётся кабинетом. С 1024 мы показывали там нижнюю панель — и раскладка
+   * расходилась с оригиналом ровно на самых частых окнах (900–1024). */
+  --breakpoint-lg: 900px;
+
+  /* ширина контейнера Авито (утилита max-w-page): шапка и контент на одной сетке */
   --container-page: 1248px;
 }
 
 /* Только светлая тема — как веб-версия Avito. Системную тёмную не следуем,
- * чтобы на защите UI выглядел одинаково независимо от темы ОС жюри. */
+ * чтобы на защите UI выглядел одинаково независимо от темы ОС жюри.
+ * (Тёмные значения токенов сняты и лежат в docs/design-tokens — если понадобятся.) */
 @layer base {
   :root {
     color-scheme: light;

@@ -19,6 +19,15 @@ describe('getSection', () => {
     expect(getSection('/items/i1/barter')).toBe('items')
   })
 
+  it('список переписок и открытый диалог — раздел «Сообщения»', () => {
+    expect(getSection('/messages')).toBe('messages')
+    expect(getSection('/messages/3')).toBe('messages')
+  })
+
+  it('уведомления — свой раздел, а не «Мои объявления»', () => {
+    expect(getSection('/notifications')).toBe('notifications')
+  })
+
   it('незнакомый роут не ломает подсветку', () => {
     expect(getSection('/whatever')).toBe('items')
   })
@@ -32,6 +41,15 @@ describe('getBreadcrumbs', () => {
   it('на верхнем уровне крошек нет — там навигацию показывает меню кабинета', () => {
     expect(getBreadcrumbs('/')).toEqual([])
     expect(getBreadcrumbs('/exchange')).toEqual([])
+    expect(getBreadcrumbs('/messages')).toEqual([])
+  })
+
+  it('переписка лежит под разделом «Сообщения»', () => {
+    expect(getBreadcrumbs('/messages/3')).toEqual([
+      { label: 'Авито' },
+      { label: 'Сообщения', to: '/messages' },
+      { label: 'Переписка' },
+    ])
   })
 
   it('корень «Авито» некликабелен — главной Авито в демо нет', () => {

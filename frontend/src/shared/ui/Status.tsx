@@ -25,7 +25,8 @@ export function Status({ tone = 'neutral', children, className }: StatusProps) {
   return (
     <span
       className={cx(
-        'font-sans text-[12px] leading-4 font-semibold whitespace-nowrap',
+        /* размер `s` шкалы Авито (13/16); 12px в их шкале кегля нет */
+        'font-sans text-[13px] leading-4 font-semibold whitespace-nowrap',
         tones[tone],
         className,
       )}

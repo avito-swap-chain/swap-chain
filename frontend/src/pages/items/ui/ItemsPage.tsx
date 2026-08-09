@@ -13,9 +13,15 @@ export function ItemsPage() {
   return (
     <Screen width="wide">
       <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-[19px] font-bold">Мои объявления</h1>
-        {/* В колонке кнопка растягивается сама — на узких окнах это привычная нижняя кнопка. */}
-        <Button onClick={() => navigate('/items/new')}>Разместить объявление</Button>
+        {/* Заголовок раздела у Авито крупный — 32px на десктопе. */}
+        <h1 className="text-[22px] leading-7 font-bold lg:text-[32px] lg:leading-10">
+          Мои объявления
+        </h1>
+        {/* Главное действие в системе Авито чёрное: азур у них означает ссылку.
+            В колонке кнопка растягивается сама — на узких окнах это привычная нижняя кнопка. */}
+        <Button variant="dark" onClick={() => navigate('/items/new')}>
+          Разместить объявление
+        </Button>
       </div>
 
       <div className="px-4 pb-4">

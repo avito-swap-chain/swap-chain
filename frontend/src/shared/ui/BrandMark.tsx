@@ -8,8 +8,9 @@
  */
 export function BrandMark({ label = 'Обмен' }: { label?: string }) {
   return (
-    <span className="flex items-center gap-2 text-[17px] font-bold">
-      <svg viewBox="0 0 410 380" className="h-[17px] w-auto shrink-0" aria-hidden="true">
+    /* Размеры сняты с шапки Авито: знак 30×30, надпись вровень с ним по оптическому весу. */
+    <span className="flex items-center gap-2.5 text-[26px] leading-none font-bold">
+      <svg viewBox="0 0 410 380" className="h-[30px] w-auto shrink-0" aria-hidden="true">
         <circle cx="122.965" cy="256.711" r="122.559" className="fill-accent-green" />
         <circle cx="306.803" cy="100.051" r="99.645" className="fill-brand" />
         <circle cx="335.574" cy="289.745" r="74.058" className="fill-accent-red" />

@@ -9,7 +9,9 @@ export function Card({ padded = false, className, ...rest }: CardProps) {
   return (
     <div
       className={cx(
-        'rounded-card border border-line bg-card shadow-card',
+        /* У Авито карточка в потоке плоская: тень означает всплытие (поповер,
+         * липкая панель), а не «карточность». Поэтому только рамка. */
+        'rounded-card border border-line bg-card',
         padded && 'p-4',
         className,
       )}

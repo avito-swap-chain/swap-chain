@@ -7,6 +7,7 @@ import {
   findNeighbours,
   type Chain,
 } from '@/entities/chain'
+import { AskAboutItem } from '@/features/ask-about-item'
 import { RespondToExchange } from '@/features/respond-to-exchange'
 import { cx } from '@/shared/lib'
 import { Card } from '@/shared/ui'
@@ -51,6 +52,19 @@ export function OfferCard({ chain, variants }: OfferCardProps) {
         </p>
       ) : (
         <RespondToExchange chainId={chain.id} />
+      )}
+
+      {/* Спросить о вещи можно, пока решение не принято: после отмены собеседник уже неактуален. */}
+      {!cancelled && (
+        <AskAboutItem
+          thread={{
+            itemId: neighbours.giver.givesItem.id,
+            itemTitle: neighbours.giver.givesItem.title,
+            itemPhotoUrl: neighbours.giver.givesItem.photoUrl,
+            peerName: neighbours.giver.name,
+            peerAvatarUrl: neighbours.giver.avatarUrl,
+          }}
+        />
       )}
 
       <Link

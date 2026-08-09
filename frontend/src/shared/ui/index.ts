@@ -8,6 +8,7 @@ export { Select } from './Select'
 export { Banner } from './Banner'
 export { Screen, ScreenHeader } from './Screen'
 export { Notice } from './Notice'
+export { EmptyState } from './EmptyState'
 export {
   IconCheck,
   IconClock,
@@ -17,4 +18,9 @@ export {
   IconChevronLeft,
   IconImage,
   IconBox,
+  IconHeart,
+  IconBell,
+  IconChat,
+  IconStar,
+  IconSwap,
 } from './icons'
