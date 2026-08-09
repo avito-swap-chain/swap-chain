@@ -5,15 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"swap-chain/shared/db"
+
 	"swap-chain/matching/model"
 
 	"go.uber.org/zap"
 )
 
-
 type MatchingRepo interface {
-	FindSimilarItems(ctx context.Context, arg db.FindSimilarItemsParams) ([]db.FindSimilarItemsRow, error)
+	FindSimilarItems(ctx context.Context, sourceID int, limit int) ([]model.ItemMatch, error)
+	IsSourceMatchable(ctx context.Context, itemID int) (bool, error)
 }
 
 type Scorer interface {
@@ -21,17 +21,18 @@ type Scorer interface {
 }
 
 type Matching struct {
-	logger  *zap.Logger
-	repo    MatchingRepo
-	scorer  Scorer
-	cfg     MatchingConfig
+	logger *zap.Logger
+	repo   MatchingRepo
+	scorer Scorer
+	cfg    MatchingConfig
 }
 
 type MatchingConfig struct {
-	SimilarItemsAmount   int     // сколько похожих вещей мы берём из БД для каждого узла графа
-	ChainLen             int     // длина цепочки (глубина графа)
-	PenaltyFactor        float64 // штраф за несбалансированные цепи, например: edgesScore = [90, 90, 10]
-	ChainRatingThreshold float64 // граница рейтинга для цепи, все что ниже, не попадает в выдачу
+	SimilarItemsAmount     int     // сколько похожих вещей мы берём из БД для каждого узла графа
+	CompatibilityThreshold float64 // минимальная схожесть желания и предложения для создания ребра
+	ChainLen               int     // длина цепочки (глубина графа)
+	PenaltyFactor          float64 // штраф за несбалансированные цепи, например: edgesScore = [90, 90, 10]
+	ChainRatingThreshold   float64 // граница рейтинга для цепи, все что ниже, не попадает в выдачу
 }
 
 func NewMatching(
@@ -41,18 +42,25 @@ func NewMatching(
 	cfg MatchingConfig,
 ) *Matching {
 	return &Matching{
-		logger:  logger,
-		repo:    repo,
-		scorer:  scorer,
-		cfg:     cfg,
+		logger: logger,
+		repo:   repo,
+		scorer: scorer,
+		cfg:    cfg,
 	}
 }
 
-
 func (m *Matching) FindCycles(ctx context.Context, itemID int) ([][]model.Edge, error) {
+	matchable, err := m.repo.IsSourceMatchable(ctx, itemID)
+	if err != nil {
+		return nil, fmt.Errorf("validate source item %d: %w", itemID, err)
+	}
+	if !matchable {
+		return nil, fmt.Errorf("find cycles for item %d: %w", itemID, model.ErrItemNotMatchable)
+	}
+
 	graph := model.NewMemoryStore()
 
-	err := m.assembleGraph(ctx, itemID, graph)
+	err = m.assembleGraph(ctx, itemID, graph)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +93,10 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 			}
 
 			for _, match := range matches {
+				if match.Similarity < m.cfg.CompatibilityThreshold {
+					continue
+				}
+
 				graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID})
 				score := m.scorer.CalculateScore(match)
 
@@ -130,22 +142,12 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 // - []model.ItemMatch - кандидаты на создание связи с itemID вещью
 // - error - ошибка если она была
 func (m *Matching) findSimilarItems(ctx context.Context, itemID int) ([]model.ItemMatch, error) {
-	params := db.FindSimilarItemsParams{
-		ID:    int64(itemID),
-		Limit: int32(m.cfg.SimilarItemsAmount),
-	}
-
-	res, err := m.repo.FindSimilarItems(ctx, params)
+	matches, err := m.repo.FindSimilarItems(ctx, itemID, m.cfg.SimilarItemsAmount)
 	if err != nil {
-		return nil, fmt.Errorf("find similar items: %w", err)
+		return nil, fmt.Errorf("find similar items for item %d: %w", itemID, err)
 	}
 
-	candidateMatches := make([]model.ItemMatch, 0, len(res))
-	for _, dbCandidate := range res {
-		candidateMatches = append(candidateMatches, mapDBRowToItemMatch(itemID, dbCandidate))
-	}
-
-	return candidateMatches, nil
+	return matches, nil
 }
 
 // filterChainsByScoreAndRoot - фильтрует цепочки по корневому узлу и рейтингу.
@@ -166,7 +168,7 @@ func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int)
 			continue
 		}
 
-		if m.calculateChainScore(chain) >= m.cfg.ChainRatingThreshold {
+		if m.CalculateChainScore(chain) >= m.cfg.ChainRatingThreshold {
 			filteredChains = append(filteredChains, chain)
 		}
 	}
@@ -174,8 +176,8 @@ func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int)
 	return filteredChains
 }
 
-// calculateChainScore - рассчитывает рейтинг целой цепочки при помощи среднего скоректированного на дисперсию.
-func (m *Matching) calculateChainScore(chain []model.Edge) float64 {
+// CalculateChainScore - рассчитывает рейтинг целой цепочки при помощи среднего скоректированного на дисперсию.
+func (m *Matching) CalculateChainScore(chain []model.Edge) float64 {
 	if len(chain) == 0 {
 		return 0
 	}
@@ -198,25 +200,4 @@ func (m *Matching) calculateChainScore(chain []model.Edge) float64 {
 	lenPenalty := math.Pow(0.9, float64(len(chain)-2))
 
 	return (mean - (m.cfg.PenaltyFactor * stdDev)) * lenPenalty
-}
-
-// mapDBRowToItemMatch конвертирует плоскую строку из БД в доменную структуру связи.
-func mapDBRowToItemMatch(sourceID int, row db.FindSimilarItemsRow) model.ItemMatch {
-	return model.ItemMatch{
-		SourceID: sourceID,
-		TargetItem: model.Item{
-			ID:               int(row.ID),
-			OfferTitle:       row.OfferTitle,
-			OfferDescription: row.OfferDescription.String,
-			WantDescription:  row.WantDescription.String,
-			OfferVector:      row.OfferEmbedding.Slice(),
-			WantVector:       row.WantEmbedding.Slice(),
-			Meta: model.ItemMetadata{
-				TitleLen:       len([]rune(row.OfferTitle)),
-				DescriptionLen: len([]rune(row.OfferDescription.String)),
-				// НЕ ЗАБЫТЬ ПРОКИНУТЬ ПОЛЯ, КОГДА ОНИ ПОЯВЯТСЯ
-			},
-		},
-		Similarity: row.Similarity,
-	}
 }
