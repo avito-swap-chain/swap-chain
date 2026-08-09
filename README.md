@@ -10,10 +10,15 @@ Backend ищет замкнутые цепочки обмена, в которы
 - PostgreSQL 17 с расширением pgvector;
 - версионируемые up/down-миграции через `golang-migrate`;
 - HTTP backend с проверкой БД и запуском matching по идентификатору вещи;
+- единый OpenAPI strict transport, валидация запросов и JSON-ошибки;
+- demo-session через непрозрачный HttpOnly cookie и персональные SSE-события;
+- приватное MinIO-хранилище с загрузкой и выдачей изображений через backend;
+- React/Vite frontend, generated TypeScript API-типы и клиент с cookie credentials;
 - Swagger UI с актуальным OpenAPI-контрактом;
 - Docker Compose для полного локального запуска.
 
-Frontend в эту ветку намеренно не включён и не изменяется.
+React-приложение в `frontend/` пока использует mock API. Подключение его экранов
+к backend и персональному SSE выполняется отдельно от merge.
 
 ## Структура
 
@@ -25,7 +30,7 @@ swap-chain/
 ├── .env.example         # пример локальной конфигурации без секретов
 ├── .golangci.yaml       # правила анализа Go
 ├── AGENTS.md            # общие правила работы с проектом
-├── docker-compose.yml   # PostgreSQL, миграции, backend и Swagger UI
+├── docker-compose.yml   # PostgreSQL, MinIO, миграции, backend и Swagger UI
 ├── Makefile             # команды разработки
 └── README.md
 ```
@@ -37,6 +42,7 @@ swap-chain/
 - GNU Make для коротких команд (в Windows можно использовать установленный
   через Chocolatey `make`);
 - Go 1.26.5 и golangci-lint v2.12.2 для запуска backend вне контейнера.
+- Node.js 24+ и pnpm 11.3.0 для frontend.
 
 Если GoLand оставил ошибочный `GOROOT=D:\Goland` в текущем PowerShell-сеансе,
 удалите только эту переменную процесса перед запуском Go:
@@ -61,8 +67,8 @@ make config
 make up
 ```
 
-`make up` собирает backend, поднимает pgvector, дожидается готовности БД,
-применяет миграции и только после этого запускает API. После запуска доступны:
+`make up` собирает backend, поднимает pgvector и приватный MinIO, применяет
+миграции и только после этого запускает API. После запуска доступны:
 
 - backend: <http://localhost:8080>;
 - health check: <http://localhost:8080/health>;
@@ -72,7 +78,7 @@ make up
 Проверка matching для существующей вещи:
 
 ```bash
-curl http://localhost:8080/items/1/matching
+curl --cookie cookies.txt http://localhost:8080/api/v1/items/1/matching
 ```
 
 Остановить сервисы без удаления данных:
@@ -81,7 +87,7 @@ curl http://localhost:8080/items/1/matching
 make down
 ```
 
-Том PostgreSQL сохраняется. Разрушительная команда `docker compose down -v`
+Тома PostgreSQL и MinIO сохраняются. Разрушительная команда `docker compose down -v`
 намеренно не завернута в Makefile.
 
 ## Локальный запуск Go backend
@@ -89,7 +95,7 @@ make down
 Можно оставить в Docker только БД, а Go-процессы запускать на хосте:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres minio
 make migrate-up
 make run-backend
 ```
@@ -103,6 +109,7 @@ make run-backend
 ```text
 make help             показать все команды
 make config           проверить конфигурацию Compose
+make generate         пересобрать Go/TypeScript код из OpenAPI
 make build            собрать все Go-команды
 make run-backend      запустить API на хосте
 make up               поднять полное локальное окружение
@@ -114,7 +121,11 @@ make migrate-version  показать версию схемы
 make lint             запустить golangci-lint
 make test             запустить доступные тесты
 make test-go          запустить Go-тесты
+make typecheck-frontend проверить TypeScript API-клиент
 ```
+
+Для frontend отдельно доступны `pnpm --dir frontend dev`, `pnpm --dir frontend test`
+и `pnpm --dir frontend build`.
 
 Все команды Makefile имеют прямой эквивалент, например `cd backend && go test
 ./...` или `docker compose up -d --build`.
@@ -129,8 +140,17 @@ make test-go          запустить Go-тесты
 | `HTTP_ADDR` | адрес локального Go HTTP-сервера | `:8080` |
 | `DB_CONNECT_TIMEOUT` | таймаут проверки БД при старте | `10s` |
 | `SHUTDOWN_TIMEOUT` | таймаут корректной остановки HTTP | `10s` |
+| `CORS_ALLOWED_ORIGIN` | frontend origin, которому разрешены cookie-запросы | `http://localhost:5173` |
+| `SESSION_TTL` | срок жизни demo-session | `24h` |
+| `COOKIE_SECURE` | отправлять session cookie только по HTTPS | `false` |
+| `MINIO_ENDPOINT` | endpoint MinIO для локального Go-процесса | `localhost:9000` |
+| `MINIO_PORT` | loopback-only порт MinIO для локального Go-процесса | `9000` |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | локальные credentials MinIO | `minioadmin` |
+| `MINIO_BUCKET` | приватный bucket изображений | `swap-chain-media` |
+| `MINIO_USE_SSL` | использовать TLS между backend и MinIO | `false` |
+| `MEDIA_MAX_UPLOAD_BYTES` | максимальный размер одного изображения | `10485760` |
 | `MATCHING_SIMILAR_ITEMS` | кандидатов из БД на узел | `20` |
-| `MATCHING_CHAIN_LENGTH` | максимальная длина цепочки | `4` |
+| `MATCHING_CHAIN_LENGTH` | максимальная длина цепочки | `3` |
 | `MATCHING_PENALTY_FACTOR` | штраф за разброс score | `0.25` |
 | `MATCHING_CHAIN_THRESHOLD` | минимальный итоговый score | `0.30` |
 | `POSTGRES_*` | локальные имя БД, пользователь, пароль и порт | `swap_chain`, `5432` |
@@ -156,7 +176,17 @@ Backend не стартует, если не может подключиться
 реализованы:
 
 - `GET /health` — готовность backend и PostgreSQL;
-- `GET /items/{itemId}/matching` — поиск циклов для вещи.
+- `GET /api/v1/health` — версия health endpoint в общем API;
+- `POST /api/v1/users`, `POST|GET|DELETE /api/v1/session` — регистрация, вход по телефону, current session и выход;
+- `GET|POST /api/v1/items`, `GET /api/v1/items/{itemId}` — карточки обмена;
+- `POST /api/v1/media`, `GET /api/v1/media/{objectKey}` — загрузка изображения и постоянная выдача через backend;
+- `GET /api/v1/items/{itemId}/matching` — поиск эфемерных циклов для своей вещи;
+- chain endpoints — сохранение выбранной цепочки, чтение и решения участников;
+- `GET /api/v1/events` — персональный SSE stream текущей demo-session;
+
+Demo-session нужна только для хакатонного сценария без полноценного входа. Она
+изолирует запросы и события пользователей, но вход только по номеру телефона не
+подтверждает владение номером. После перезапуска backend сессии исчезают.
 
 ## Линтер и тесты
 
@@ -179,6 +209,8 @@ make build
   инфраструктурной интеграции;
 - Ollama нужен только для сценария создания embeddings и пока не включён в
   Compose;
+- распознавание содержимого загруженных фотографий пока не подключено;
+- demo-session не является production-аутентификацией;
 - CI и production deployment пока не добавляются.
 
 Общие правила архитектуры, миграций, тестирования и работы с ветками описаны в
