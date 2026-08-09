@@ -68,3 +68,60 @@ describe('mapChain — цепочка из контракта в нашу мод
     expect(chain.participants[0].givesItem.id).toBe('1')
   })
 })
+
+// Данные со стенда, цепочка 38: Алиса отдаёт Книгу Вере, Вера Клавиатуру Борису,
+// Борис Лампу Алисе. Бэкенд перечисляет участников в обратную сторону — по `giveItem`
+// соседа не найти, и без `receiveItem` экран называл контрагентов зеркально.
+const stand: ApiChain = {
+  id: 38,
+  status: 'ACCEPTED',
+  createdAt: '2026-08-09T17:03:55Z',
+  expiresAt: '2026-08-10T17:03:55Z',
+  participants: [
+    {
+      user: { id: 15, username: 'Алиса' },
+      giveItem: item(55, 'Книга'),
+      receiveItem: item(56, 'Лампа'),
+      status: 'APPROVED',
+    },
+    {
+      user: { id: 16, username: 'Борис' },
+      giveItem: item(56, 'Лампа'),
+      receiveItem: item(57, 'Клавиатура'),
+      status: 'APPROVED',
+    },
+    {
+      user: { id: 17, username: 'Вера' },
+      giveItem: item(57, 'Клавиатура'),
+      receiveItem: item(55, 'Книга'),
+      status: 'APPROVED',
+    },
+  ],
+}
+
+describe('mapChain — порядок участников', () => {
+  it('участники разворачиваются в порядок обхода круга: каждый отдаёт следующему', () => {
+    const { participants } = mapChain(stand, 15)
+
+    expect(participants.map((p) => p.name)).toEqual(['Алиса', 'Вера', 'Борис'])
+  })
+
+  it('вещь участника получает следующий по кругу', () => {
+    const { participants } = mapChain(stand, 15)
+    const received = stand.participants.map((p) => [p.user.username, p.receiveItem.offerTitle])
+
+    participants.forEach((participant, index) => {
+      const next = participants[(index + 1) % participants.length]
+      expect(received).toContainEqual([next.name, participant.givesItem.title])
+    })
+  })
+
+  it('противоречивые данные не теряют участников', () => {
+    const broken: ApiChain = {
+      ...stand,
+      participants: stand.participants.map((p) => ({ ...p, receiveItem: item(999, 'Ничьё') })),
+    }
+
+    expect(mapChain(broken, 15).participants).toHaveLength(3)
+  })
+})

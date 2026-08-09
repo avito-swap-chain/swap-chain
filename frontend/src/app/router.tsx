@@ -8,12 +8,17 @@ import { MessagesPage } from '@/pages/messages'
 import { NotificationsPage } from '@/pages/notifications'
 import { ThreadPage } from '@/pages/thread'
 import { AvitoShell } from '@/widgets/avito-shell'
+import { SessionGate } from './SessionGate'
 
 export const router = createBrowserRouter(
   [
     {
-      // Layout-роут: все экраны раздела живут внутри оболочки Авито.
-      element: <AvitoShell />,
+      // Layout-роут: все экраны раздела живут внутри оболочки Авито и за входом.
+      element: (
+        <SessionGate>
+          <AvitoShell />
+        </SessionGate>
+      ),
       children: [
         // Верхний уровень — разделы меню кабинета.
         { path: '/', element: <ItemsPage /> },

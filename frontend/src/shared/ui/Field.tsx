@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode } from 'react'
+import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
 import { cx } from '../lib'
 
 interface FieldProps {
@@ -18,15 +18,17 @@ export function Field({ label, children, className }: FieldProps) {
 
 type InputProps = InputHTMLAttributes<HTMLInputElement>
 
+/* размер `m` Авито: кегль 15/20, фокус — голубая рамка, а не аутлайн */
+const CONTROL =
+  'w-full rounded-input border border-line bg-card px-[15px] font-sans text-[15px] leading-5 font-semibold text-ink placeholder:font-normal placeholder:text-ink-3 focus-visible:border-focus focus-visible:outline-none'
+
 export function Input({ className, ...rest }: InputProps) {
-  return (
-    <input
-      className={cx(
-        /* размер `m` Авито: высота 44, кегль 15/20, фокус — голубая рамка, а не аутлайн */
-        'h-11 w-full rounded-input border border-line bg-card px-[15px] font-sans text-[15px] leading-5 font-semibold text-ink placeholder:font-normal placeholder:text-ink-3 focus-visible:border-focus focus-visible:outline-none',
-        className,
-      )}
-      {...rest}
-    />
-  )
+  return <input className={cx(CONTROL, 'h-11', className)} {...rest} />
+}
+
+type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>
+
+/** Многострочное поле: то же поле ввода, но растёт под текст, а не режет его в одну строку. */
+export function Textarea({ className, ...rest }: TextareaProps) {
+  return <textarea className={cx(CONTROL, 'resize-none py-2.5', className)} {...rest} />
 }

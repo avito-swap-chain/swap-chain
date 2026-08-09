@@ -26,6 +26,9 @@ export const mapItem = (item: ApiItem): Item => ({
   title: item.offerTitle,
   category: '',
   condition: undefined,
+  // Пустую строку сводим к `undefined`: у бэкенда описание обязательно, но у засеянных
+  // и старых вещей оно пустое, а «описание есть, но пустое» интерфейсу нечего показывать.
+  description: item.offerDescription || undefined,
   // `imageUrls` объявлен в контракте обязательным массивом, но бэкенд отдаёт null,
   // когда картинок нет: без защиты обращение по индексу роняет весь список.
   photoUrl: item.imageUrls?.[0],

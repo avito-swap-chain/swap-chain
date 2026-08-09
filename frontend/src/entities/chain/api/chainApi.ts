@@ -1,15 +1,15 @@
 import { unwrap } from '@/shared/api/fetcher'
 import {
   getChain as getChainRequest,
-  getSession,
   listChains,
   submitChainDecision,
 } from '@/shared/api/generated/endpoints'
-import type { Chain as ApiChain, ChainList, Session } from '@/shared/api/generated/model'
+import type { Chain as ApiChain, ChainList } from '@/shared/api/generated/model'
 import { isBackendConnected } from '@/shared/config/backend'
 import { notify } from '@/shared/model/notifications'
 import { mapChain } from './mapChain'
 import { currentPersonaId, PERSONAS, type Persona } from '@/shared/model/persona'
+import { currentUserId } from '@/shared/model/session'
 import { confirmReceiptFor } from '../lib/participants'
 import type { Chain, ChainParticipant, ParticipantStatus } from '../model/types'
 
@@ -25,7 +25,8 @@ export const chainKeys = {
 
 /**
  * Ответ участника на предложение: лайк — «этот вариант мне подходит», дизлайк — отказ
- * от одного варианта, а не от обмена вообще. Игнор — просто отсутствие ответа.
+ * от этого варианта, а не от обмена вообще: вариант распадётся, но вещь останется
+ * в подборе. Игнор — просто отсутствие ответа.
  */
 export type ChainDecision = 'like' | 'dislike'
 
@@ -225,23 +226,27 @@ const withPersonaStatus = (chain: Chain, personaId: string, status: ParticipantS
 
 /** Обмены, в которых участвует текущий пользователь, — чужие в кабинет не попадают. */
 /**
- * Кто «я» на стороне бэкенда. Сессия одна на приложение, поэтому держим её в модуле:
- * запрашивать её перед каждым чтением цепочек — лишний round-trip на каждый рендер.
+ * Отметки получения, сделанные при подключённом бэкенде. Стадии передачи в контракте нет
+ * (см. `shared/config/backend`), хранить их серверу негде — держим на фронте, иначе обмен
+ * на реальных данных обрывается на полпути и кнопка «получил» выглядит сломанной.
  */
-let sessionUserId: number | undefined
+const localReceipts = new Set<string>()
 
-async function currentUserId(): Promise<number> {
-  if (sessionUserId === undefined) {
-    sessionUserId = unwrap<Session>(await getSession()).user.id
-  }
-  return sessionUserId
-}
+const withLocalReceipt = (chain: Chain): Chain =>
+  localReceipts.has(chain.id)
+    ? {
+        ...chain,
+        participants: chain.participants.map((p) =>
+          p.isMe ? { ...p, receiptConfirmed: true } : p,
+        ),
+      }
+    : chain
 
 export async function getMyChains(): Promise<Chain[]> {
   if (isBackendConnected) {
     const meId = await currentUserId()
     const { chains: list } = unwrap<ChainList>(await listChains())
-    return list.map((chain) => mapChain(chain, meId))
+    return list.map((chain) => withLocalReceipt(mapChain(chain, meId)))
   }
 
   await delay(300)
@@ -255,7 +260,7 @@ export async function getMyChains(): Promise<Chain[]> {
 export async function getChain(id: string): Promise<Chain> {
   if (isBackendConnected) {
     const meId = await currentUserId()
-    return mapChain(unwrap<ApiChain>(await getChainRequest(Number(id))), meId)
+    return withLocalReceipt(mapChain(unwrap<ApiChain>(await getChainRequest(Number(id))), meId))
   }
 
   await delay(250)
@@ -292,8 +297,12 @@ function cancelRivals(formedId: string) {
 
 /**
  * Ответ на предложение. Лайк — «вариант подходит»: обмен стартует, только когда лайкнули все,
- * до этого вещь остаётся у владельца и участвует в других вариантах. Дизлайк снимает с варианта
- * одного человека, а не распускает цепочку: остальным сервис ищет замену.
+ * до этого вещь остаётся у владельца и участвует в других вариантах.
+ *
+ * Дизлайк распускает цепочку целиком. Замену вышедшему сервис не ищет: в цепочке максимум
+ * три участника, и собрать новый вариант с нуля дешевле, чем латать старый — часть тех же
+ * людей в него обычно и попадает. Отказ от варианта при этом не равен отказу от обмена:
+ * вещь остаётся свободной и участвует в других вариантах.
  */
 export async function respondToChain(id: string, decision: ChainDecision): Promise<void> {
   if (isBackendConnected) {
@@ -310,7 +319,10 @@ export async function respondToChain(id: string, decision: ChainDecision): Promi
   const personaId = currentPersonaId()
 
   if (decision === 'dislike') {
-    replace(id, (chain) => withPersonaStatus(chain, personaId, 'declined'))
+    replace(id, (chain) => ({
+      ...withPersonaStatus(chain, personaId, 'declined'),
+      status: 'dissolved',
+    }))
     return
   }
 
@@ -339,6 +351,13 @@ export async function respondToChain(id: string, decision: ChainDecision): Promi
 
 /** Выйти из цепочки до общего подтверждения — вещь снова свободна. */
 export async function leaveChain(id: string): Promise<void> {
+  if (isBackendConnected) {
+    // Отдельной ручки выхода в контракте нет: выход — это то же решение `DECLINED`,
+    // что и дизлайк, и цепочка распускается целиком.
+    unwrap(await submitChainDecision(Number(id), { decision: 'DECLINED' }))
+    return
+  }
+
   await delay(400)
   find(id)
   replace(id, (chain) => ({
@@ -352,6 +371,11 @@ export async function leaveChain(id: string): Promise<void> {
  * когда получение подтвердят все — обмен состоялся только тогда, когда его закрыли с обеих сторон.
  */
 export async function confirmReceipt(id: string): Promise<void> {
+  if (isBackendConnected) {
+    localReceipts.add(id)
+    return
+  }
+
   await delay(400)
   find(id)
   replace(id, (chain) => confirmReceiptFor(chain, currentPersonaId()))

@@ -1,6 +1,10 @@
 import { unwrap } from '@/shared/api/fetcher'
-import { createItem as createItemRequest, listItems } from '@/shared/api/generated/endpoints'
-import type { Item as ApiItem, ItemList } from '@/shared/api/generated/model'
+import {
+  createItem as createItemRequest,
+  listItems,
+  uploadMedia,
+} from '@/shared/api/generated/endpoints'
+import type { Item as ApiItem, ItemList, MediaUpload } from '@/shared/api/generated/model'
 import { isBackendConnected } from '@/shared/config/backend'
 import { currentPersonaId, PERSONAS } from '@/shared/model/persona'
 import { mapItem } from './mapItem'
@@ -17,7 +21,14 @@ export const itemKeys = {
 }
 
 /** Что пользователь заполняет в форме: вещь без служебных полей. */
-export type ItemDraft = Omit<Item, 'id' | 'status'>
+export type ItemDraft = Omit<Item, 'id' | 'status'> & {
+  /**
+   * Сам файл фотографии — живёт только до создания вещи. `photoUrl` рядом с ним это
+   * `blob:`-ссылка для предпросмотра, и бэкенду её отдавать нельзя: он принимает только
+   * свои же адреса из `POST /api/v1/media` и внешние http(s).
+   */
+  photoFile?: File
+}
 
 const [DASHA, MARK, LENA] = PERSONAS
 
@@ -192,15 +203,22 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
   if (wishes.length === 0) throw new Error('Не указано, что хочется взамен')
 
   if (isBackendConnected) {
+    // Фото сначала уезжает в хранилище бэкенда: в вещь идёт выданный им адрес, а не
+    // локальная `blob:`-ссылка — на ней создание вещи отваливалось с 422.
+    const uploaded = draft.photoFile
+      ? unwrap<MediaUpload>(await uploadMedia({ file: draft.photoFile }))
+      : undefined
+
     // Контракт принимает одну строку желания — склеиваем варианты через «или»: так бэк
     // хотя бы увидит все, пока не примет список (см. shared/config/backend).
     const created = unwrap<ApiItem>(
       await createItemRequest({
         offerTitle: draft.title,
-        offerDescription:
-          [draft.category, draft.condition].filter(Boolean).join(', ') || draft.title,
+        // Категорию и состояние сюда не подмешиваем: описание читает человек, а бэкенд
+        // по нему ищет обмен — служебным словам вроде «good» не место ни там, ни там.
+        offerDescription: draft.description?.trim() || draft.title,
         wantDescription: wishes.map((wish) => wish.description).join(' или '),
-        imageUrls: draft.photoUrl ? [draft.photoUrl] : [],
+        imageUrls: uploaded ? [uploaded.url] : [],
       }),
     )
     return mapItem(created)
@@ -210,7 +228,8 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
 
   const wish = wishes
 
-  const item: Item = { ...draft, wish, id: String(nextId++), status: 'searching' }
+  const { photoFile: _, ...fields } = draft
+  const item: Item = { ...fields, wish, id: String(nextId++), status: 'searching' }
   const ownerId = currentPersonaId()
   itemsByOwner = { ...itemsByOwner, [ownerId]: [item, ...(itemsByOwner[ownerId] ?? [])] }
   return item

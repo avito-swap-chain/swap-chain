@@ -8,7 +8,7 @@ function hintFor(chain: Chain): string {
   switch (chain.status) {
     case 'formed':
       if (needsMyAction(chain)) return 'ждём вашего решения'
-      // Отказавшийся ничего не ждёт: цепочка живёт без него, пока ему ищут замену.
+      // Отказавшийся ничего не ждёт. В норме сюда не попасть: отказ распускает цепочку.
       return findMe(chain)?.status === 'declined'
         ? 'вы отказались от варианта'
         : 'ждём остальных участников'

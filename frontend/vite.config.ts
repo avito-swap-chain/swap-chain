@@ -11,6 +11,14 @@ export default defineConfig({
    * `BASE_PATH=/avito-swap-chain-frontend/ pnpm build`. Локально и в Docker — корень.
    */
   base: process.env.BASE_PATH ?? '/',
+  /**
+   * Проверка на живом бэкенде: `API_PROXY=https://стенд VITE_API_URL=/ pnpm dev`.
+   * Ходить в стенд напрямую из dev-сервера нельзя: сессия лежит в куке `SameSite=Lax`,
+   * и на кросс-сайтовый запрос браузер её не приложит. Прокси делает API тем же origin.
+   */
+  server: process.env.API_PROXY
+    ? { proxy: { '/api': { target: process.env.API_PROXY, changeOrigin: true, secure: false } } }
+    : undefined,
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },

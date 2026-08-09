@@ -31,6 +31,16 @@ describe('mapItem — вещь из контракта в нашу модель'
     expect(item.condition).toBeUndefined()
   })
 
+  it('описание доезжает до модели — по нему бэкенд и ищет обмен', () => {
+    expect(mapItem(apiItem({ offerDescription: 'Рама 19", катался два сезона' })).description).toBe(
+      'Рама 19", катался два сезона',
+    )
+  })
+
+  it('пустое описание — это его отсутствие, а не пустая строка в интерфейсе', () => {
+    expect(mapItem(apiItem({ offerDescription: '' })).description).toBeUndefined()
+  })
+
   it('стадия обработки переводится в участие в обмене', () => {
     expect(mapItem(apiItem({ status: 'ANALYZING' })).status).toBe('idle')
     expect(mapItem(apiItem({ status: 'MATCHING' })).status).toBe('searching')
