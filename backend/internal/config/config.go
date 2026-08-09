@@ -9,50 +9,62 @@ import (
 )
 
 const (
-	defaultDatabaseURL        = "postgres://swap_chain:swap_chain@127.0.0.1:5432/swap_chain?sslmode=disable"
-	defaultMigrationsURL      = "file://migrations"
-	defaultHTTPAddress        = ":8080"
-	defaultDBConnectTimeout   = 10 * time.Second
-	defaultShutdownTimeout    = 10 * time.Second
-	defaultSimilarItemsAmount = 20
-	defaultChainLength        = 3
-	defaultPenaltyFactor      = 0.25
-	defaultChainThreshold     = 0.30
-	defaultCORSAllowedOrigin  = "http://localhost:5173"
-	defaultSessionTTL         = 24 * time.Hour
-	defaultOllamaBaseURL      = "http://localhost:11434"
-	defaultOllamaChatModel    = "llama3.1"
-	defaultOllamaEmbedModel   = "bge-m3"
-	defaultMinIOEndpoint      = "localhost:9000"
-	defaultMinIOAccessKey     = "minioadmin"
-	defaultMinIOSecretKey     = "minioadmin"
-	defaultMinIOBucket        = "swap-chain-media"
-	defaultMediaMaxBytes      = 10 << 20
+	defaultDatabaseURL            = "postgres://swap_chain:swap_chain@127.0.0.1:5432/swap_chain?sslmode=disable"
+	defaultMigrationsURL          = "file://migrations"
+	defaultHTTPAddress            = ":8080"
+	defaultDBConnectTimeout       = 10 * time.Second
+	defaultShutdownTimeout        = 10 * time.Second
+	defaultSimilarItemsAmount     = 20
+	defaultChainLength            = 3
+	defaultPenaltyFactor          = 0.25
+	defaultChainThreshold         = 0.30
+	defaultCompatibilityThreshold = 0.50
+	defaultCategorySimilarity     = 0.65
+	defaultCategoryMargin         = 0.05
+	defaultAnalysisPoll           = 30 * time.Second
+	defaultAnalysisStale          = 5 * time.Minute
+	defaultAnalysisBatch          = 100
+	defaultCORSAllowedOrigin      = "http://localhost:5173"
+	defaultSessionTTL             = 24 * time.Hour
+	defaultOllamaBaseURL          = "http://localhost:11434"
+	defaultOllamaChatModel        = "llama3.1"
+	defaultOllamaEmbedModel       = "bge-m3"
+	defaultMinIOEndpoint          = "localhost:9000"
+	defaultMinIOAccessKey         = "minioadmin"
+	defaultMinIOSecretKey         = "minioadmin"
+	defaultMinIOBucket            = "swap-chain-media"
+	defaultMediaMaxBytes          = 10 << 20
 )
 
 // Config contains runtime settings loaded from environment variables.
 type Config struct {
-	DatabaseURL           string
-	MigrationsURL         string
-	HTTPAddress           string
-	DBConnectTimeout      time.Duration
-	ShutdownTimeout       time.Duration
-	SimilarItemsAmount    int
-	ChainLength           int
-	PenaltyFactor         float64
-	ChainThreshold        float64
-	CORSAllowedOrigin     string
-	SessionTTL            time.Duration
-	CookieSecure          bool
-	OllamaBaseURL         string
-	OllamaChatModel       string
-	OllamaEmbeddingsModel string
-	MinIOEndpoint         string
-	MinIOAccessKey        string
-	MinIOSecretKey        string
-	MinIOBucket           string
-	MinIOUseSSL           bool
-	MediaMaxUploadBytes   int64
+	DatabaseURL                 string
+	MigrationsURL               string
+	HTTPAddress                 string
+	DBConnectTimeout            time.Duration
+	ShutdownTimeout             time.Duration
+	SimilarItemsAmount          int
+	ChainLength                 int
+	PenaltyFactor               float64
+	ChainThreshold              float64
+	CompatibilityThreshold      float64
+	CategorySimilarityThreshold float64
+	CategoryConfidenceMargin    float64
+	AnalysisPollInterval        time.Duration
+	AnalysisStaleAfter          time.Duration
+	AnalysisBatchSize           int
+	CORSAllowedOrigin           string
+	SessionTTL                  time.Duration
+	CookieSecure                bool
+	OllamaBaseURL               string
+	OllamaChatModel             string
+	OllamaEmbeddingsModel       string
+	MinIOEndpoint               string
+	MinIOAccessKey              string
+	MinIOSecretKey              string
+	MinIOBucket                 string
+	MinIOUseSSL                 bool
+	MediaMaxUploadBytes         int64
 }
 
 // Migration contains the settings required by the migration command only.
@@ -117,6 +129,24 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.ChainThreshold, err = boundedFloatFromEnv("MATCHING_CHAIN_THRESHOLD", defaultChainThreshold, 0, 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.CompatibilityThreshold, err = boundedFloatFromEnv("MATCHING_COMPATIBILITY_THRESHOLD", defaultCompatibilityThreshold, 0, 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.CategorySimilarityThreshold, err = boundedFloatFromEnv("ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD", defaultCategorySimilarity, 0, 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.CategoryConfidenceMargin, err = boundedFloatFromEnv("ANALYSIS_CATEGORY_CONFIDENCE_MARGIN", defaultCategoryMargin, 0, 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.AnalysisPollInterval, err = durationFromEnv("ANALYSIS_RECOVERY_POLL_INTERVAL", defaultAnalysisPoll); err != nil {
+		return Config{}, err
+	}
+	if cfg.AnalysisStaleAfter, err = durationFromEnv("ANALYSIS_STALE_AFTER", defaultAnalysisStale); err != nil {
+		return Config{}, err
+	}
+	if cfg.AnalysisBatchSize, err = positiveIntFromEnv("ANALYSIS_RECOVERY_BATCH_SIZE", defaultAnalysisBatch); err != nil {
 		return Config{}, err
 	}
 

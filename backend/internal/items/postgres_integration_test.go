@@ -3,11 +3,13 @@ package items
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/pgvector/pgvector-go"
 	"go.uber.org/zap"
 )
 
@@ -24,15 +26,26 @@ func TestPostgresServiceLifecycleIntegration(t *testing.T) {
 	t.Cleanup(func() { _ = database.Close() })
 
 	userID := time.Now().UnixNano()
+	phone := fmt.Sprintf("+7%010d", userID%10_000_000_000)
+	if _, err := database.ExecContext(context.Background(), `INSERT INTO users (id, username, phone) VALUES ($1, $2, $3)`, userID, fmt.Sprintf("items-test-%d", userID), phone); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
 	t.Cleanup(func() {
 		_, _ = database.ExecContext(context.Background(), `DELETE FROM users WHERE id = $1`, userID)
 	})
 
 	vector := make([]float32, 1024)
 	vector[0] = 1
-	vectorizer := &fakeVectorizer{vectors: [][]float32{vector, vector}}
+	analyzer := fakeAnalyzer{analyze: func(ctx context.Context, itemID int64) error {
+		_, err := database.ExecContext(ctx, `
+			UPDATE items
+			SET offer_embedding = $2, want_embedding = $2, status = 'MATCHING',
+			    last_status_updated_at = now(), updated_at = now()
+			WHERE id = $1 AND status = 'ANALYZING'`, itemID, pgvector.NewVector(vector))
+		return err
+	}}
 	updated := make(chan struct{}, 1)
-	service := NewPostgresService(database, vectorizer, func(_ int64, eventType, _ string, _ map[string]any) {
+	service := NewPostgresService(database, analyzer, func(_ int64, eventType, _ string, _ map[string]any) {
 		if eventType == "item.status.updated" {
 			updated <- struct{}{}
 		}

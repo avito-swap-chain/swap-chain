@@ -17,6 +17,12 @@ func TestLoadDefaults(t *testing.T) {
 		"MATCHING_CHAIN_LENGTH",
 		"MATCHING_PENALTY_FACTOR",
 		"MATCHING_CHAIN_THRESHOLD",
+		"MATCHING_COMPATIBILITY_THRESHOLD",
+		"ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD",
+		"ANALYSIS_CATEGORY_CONFIDENCE_MARGIN",
+		"ANALYSIS_RECOVERY_POLL_INTERVAL",
+		"ANALYSIS_STALE_AFTER",
+		"ANALYSIS_RECOVERY_BATCH_SIZE",
 		"CORS_ALLOWED_ORIGIN",
 		"SESSION_TTL",
 		"COOKIE_SECURE",
@@ -115,14 +121,32 @@ func TestLoadReadsMatchingSettings(t *testing.T) {
 	t.Setenv("MATCHING_CHAIN_LENGTH", "3")
 	t.Setenv("MATCHING_PENALTY_FACTOR", "0.4")
 	t.Setenv("MATCHING_CHAIN_THRESHOLD", "0.5")
+	t.Setenv("MATCHING_COMPATIBILITY_THRESHOLD", "0.6")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if cfg.SimilarItemsAmount != 12 || cfg.ChainLength != 3 || cfg.PenaltyFactor != 0.4 || cfg.ChainThreshold != 0.5 {
+	if cfg.SimilarItemsAmount != 12 || cfg.ChainLength != 3 || cfg.PenaltyFactor != 0.4 || cfg.ChainThreshold != 0.5 || cfg.CompatibilityThreshold != 0.6 {
 		t.Fatalf("unexpected matching config: %+v", cfg)
+	}
+}
+
+func TestLoadReadsAnalysisSettings(t *testing.T) {
+	t.Setenv("ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD", "0.7")
+	t.Setenv("ANALYSIS_CATEGORY_CONFIDENCE_MARGIN", "0.1")
+	t.Setenv("ANALYSIS_RECOVERY_POLL_INTERVAL", "15s")
+	t.Setenv("ANALYSIS_STALE_AFTER", "2m")
+	t.Setenv("ANALYSIS_RECOVERY_BATCH_SIZE", "25")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.CategorySimilarityThreshold != 0.7 || cfg.CategoryConfidenceMargin != 0.1 ||
+		cfg.AnalysisPollInterval != 15*time.Second || cfg.AnalysisStaleAfter != 2*time.Minute || cfg.AnalysisBatchSize != 25 {
+		t.Fatalf("unexpected analysis config: %+v", cfg)
 	}
 }
 

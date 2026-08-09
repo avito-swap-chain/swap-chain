@@ -19,6 +19,10 @@ linters:
     - unused
   exclusions:
     generated: lax
+    rules:
+      - path: "(?:internal/api/.*\\.gen\\.go|shared/db/.*\\.sql\\.go)"
+        linters:
+          - errcheck
 
 formatters:
   enable:

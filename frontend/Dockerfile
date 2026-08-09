@@ -3,8 +3,12 @@ FROM node:22-alpine AS build
 WORKDIR /app
 RUN corepack enable
 # pnpm-workspace.yaml обязателен рядом с манифестом: в pnpm 11 оттуда читаются
-# настройки проекта — разрешение сборочных скриптов (allowBuilds) и minimumReleaseAge.
+# настройки проекта — разрешение сборочных скриптов и minimumReleaseAge.
 # Без него install в чистом образе падает на политике свежести пакетов.
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+ENV CI=true
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .

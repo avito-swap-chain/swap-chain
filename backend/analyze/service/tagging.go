@@ -3,20 +3,16 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 
+	"swap-chain/analyze/model"
 	"swap-chain/shared/db"
 
 	"github.com/pgvector/pgvector-go"
 )
 
-type TaggingResult struct {
-	CategoryID int
-	Confidence float64
-	IsManual   bool // назначается, если система не уверена в категории
-}
-
 type TaggingRepo interface {
-	FindCategory(ctx context.Context, embedding pgvector.Vector) ([]db.FindCategoryRow, error)
+	FindCategory(ctx context.Context, embeddingLocal *pgvector.Vector) ([]db.FindCategoryRow, error)
 }
 
 type TaggingConfig struct {
@@ -30,16 +26,32 @@ type Tagging struct {
 	cfg        TaggingConfig
 }
 
-func NewTagging(vectorizer *Vectorizer, repo TaggingRepo, cfg TaggingConfig) *Tagging {
+func NewTagging(vectorizer *Vectorizer, repo TaggingRepo, cfg TaggingConfig) (*Tagging, error) {
+	switch {
+	case vectorizer == nil:
+		return nil, fmt.Errorf("tagging init: 'vectorizer' is required")
+	case repo == nil:
+		return nil, fmt.Errorf("tagging init: 'tagging repo' is required")
+	}
+
+	if math.IsNaN(cfg.SimilarityThreshold) || math.IsInf(cfg.SimilarityThreshold, 0) ||
+		cfg.SimilarityThreshold < -1 || cfg.SimilarityThreshold > 1 {
+		return nil, fmt.Errorf("tagging init: invalid 'similarity threshold' range %g", cfg.SimilarityThreshold)
+	}
+	if math.IsNaN(cfg.ConfidenceMargin) || math.IsInf(cfg.ConfidenceMargin, 0) ||
+		cfg.ConfidenceMargin < 0 || cfg.ConfidenceMargin > 2 {
+		return nil, fmt.Errorf("tagging init: invalid 'confidence margin' %g", cfg.ConfidenceMargin)
+	}
+
 	return &Tagging{
 		vectorizer: vectorizer,
 		repo:       repo,
 		cfg:        cfg,
-	}
+	}, nil
 }
 
 // DefineTag определяет наиболее подходящую категорию по текстовому описанию
-func (s *Tagging) DefineTag(ctx context.Context, title string, description string) (*TaggingResult, error) {
+func (s *Tagging) DefineTag(ctx context.Context, title string, description string) (*model.CategoryMatch, error) {
 	textForTagging := fmt.Sprintf("%s. %s", title, description)
 
 	vec, err := s.vectorizer.Vectorize(ctx, textForTagging)
@@ -48,16 +60,16 @@ func (s *Tagging) DefineTag(ctx context.Context, title string, description strin
 	}
 
 	vecArg := pgvector.NewVector(vec)
-	rows, err := s.repo.FindCategory(ctx, vecArg)
+	rows, err := s.repo.FindCategory(ctx, &vecArg)
 	if err != nil {
 		return nil, fmt.Errorf("find category error: %w", err)
 	}
 	isManual, topCategory := s.isNeedManual(rows)
 	if topCategory == nil || isManual {
-		return &TaggingResult{IsManual: true}, nil
+		return &model.CategoryMatch{IsManual: true}, nil
 	}
 
-	return &TaggingResult{
+	return &model.CategoryMatch{
 		CategoryID: int(topCategory.ID),
 		Confidence: topCategory.Similarity,
 		IsManual:   false,

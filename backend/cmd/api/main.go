@@ -24,6 +24,7 @@ import (
 	"swap-chain/internal/media"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
+	matchingrepository "swap-chain/matching/repository"
 	"swap-chain/matching/service"
 	"swap-chain/shared/db"
 
@@ -86,28 +87,58 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("initialize media storage: %w", err)
 	}
 	mediaService := media.NewService(mediaStorage, cfg.MediaMaxUploadBytes)
-	matcher := service.NewMatching(
-		logger,
-		queries,
-		service.NewScoring(),
-		service.MatchingConfig{
-			SimilarItemsAmount:   cfg.SimilarItemsAmount,
-			ChainLen:             cfg.ChainLength,
-			PenaltyFactor:        cfg.PenaltyFactor,
-			ChainRatingThreshold: cfg.ChainThreshold,
-		},
-	)
 	eventHub := events.NewHub()
 	sessions := session.NewManager(cfg.SessionTTL, cfg.CookieSecure)
 	ollamaConfig := adapters.DefaultOllamaConfig()
 	ollamaConfig.BaseURL = cfg.OllamaBaseURL
 	ollamaConfig.ChatModel = cfg.OllamaChatModel
 	ollamaConfig.EmbeddingsModel = cfg.OllamaEmbeddingsModel
-	vectorizer := analyzeservice.NewVectorizer(adapters.NewOllama(ollamaConfig))
-	itemService := items.NewPostgresService(database, vectorizer, func(userID int64, eventType, entityID string, data map[string]any) {
+	llmClient, err := adapters.NewOllama(ollamaConfig)
+	if err != nil {
+		return fmt.Errorf("create ollama client: %w", err)
+	}
+	vectorizer, err := analyzeservice.NewVectorizer(llmClient, llmClient)
+	if err != nil {
+		return fmt.Errorf("create vectorizer: %w", err)
+	}
+	tagging, err := analyzeservice.NewTagging(vectorizer, queries, analyzeservice.TaggingConfig{
+		SimilarityThreshold: cfg.CategorySimilarityThreshold,
+		ConfidenceMargin:    cfg.CategoryConfidenceMargin,
+	})
+	if err != nil {
+		return fmt.Errorf("create tagging: %w", err)
+	}
+	scoring, err := analyzeservice.NewScoring(llmClient)
+	if err != nil {
+		return fmt.Errorf("create scoring: %w", err)
+	}
+	analysis, err := analyzeservice.NewAnalysis(queries, scoring, tagging, vectorizer)
+	if err != nil {
+		return fmt.Errorf("create analysis: %w", err)
+	}
+	itemService := items.NewPostgresService(database, analysis, func(userID int64, eventType, entityID string, data map[string]any) {
 		eventHub.PublishToUser(userID, eventType, entityID, data)
 	}, logger)
 	defer itemService.Close()
+	matchingRepo, err := matchingrepository.NewPostgreSQLMatching(queries)
+	if err != nil {
+		return fmt.Errorf("create matching repo: %w", err)
+	}
+	matcher, err := service.NewMatching(
+		logger,
+		matchingRepo,
+		service.NewScoring(),
+		service.MatchingConfig{
+			SimilarItemsAmount:     cfg.SimilarItemsAmount,
+			CompatibilityThreshold: cfg.CompatibilityThreshold,
+			ChainLen:               cfg.ChainLength,
+			PenaltyFactor:          cfg.PenaltyFactor,
+			ChainRatingThreshold:   cfg.ChainThreshold,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("create matching: %w", err)
+	}
 	chainService := chains.NewPostgresService(database, func(userIDs []int64, eventType, entityID string, data map[string]any) {
 		eventHub.PublishToUsers(userIDs, eventType, entityID, data)
 	})
@@ -128,6 +159,15 @@ func run(logger *zap.Logger) error {
 	}
 	shutdownSignal, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
+	recoveryWorker, err := analyzeservice.NewAnalysisRecoveryWorker(queries, analysis, logger, analyzeservice.AnalysisRecoveryWorkerConfig{
+		PollInterval: cfg.AnalysisPollInterval,
+		StaleAfter:   cfg.AnalysisStaleAfter,
+		BatchSize:    int32(cfg.AnalysisBatchSize),
+	})
+	if err != nil {
+		return fmt.Errorf("create analysis recovery worker: %w", err)
+	}
+	go recoveryWorker.Start(shutdownSignal)
 	go runChainExpiry(shutdownSignal, chainService, logger)
 
 	serverErrors := make(chan error, 1)

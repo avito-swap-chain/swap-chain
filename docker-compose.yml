@@ -58,7 +58,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-swap_chain}:${POSTGRES_PASSWORD:-swap_chain}@postgres:5432/${POSTGRES_DB:-swap_chain}?sslmode=disable
       HTTP_ADDR: :8080
-      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:18080}
       SESSION_TTL: ${SESSION_TTL:-24h}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
@@ -74,6 +74,12 @@ services:
       MATCHING_CHAIN_LENGTH: ${MATCHING_CHAIN_LENGTH:-3}
       MATCHING_PENALTY_FACTOR: ${MATCHING_PENALTY_FACTOR:-0.25}
       MATCHING_CHAIN_THRESHOLD: ${MATCHING_CHAIN_THRESHOLD:-0.30}
+      MATCHING_COMPATIBILITY_THRESHOLD: ${MATCHING_COMPATIBILITY_THRESHOLD:-0.50}
+      ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD: ${ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD:-0.65}
+      ANALYSIS_CATEGORY_CONFIDENCE_MARGIN: ${ANALYSIS_CATEGORY_CONFIDENCE_MARGIN:-0.05}
+      ANALYSIS_RECOVERY_POLL_INTERVAL: ${ANALYSIS_RECOVERY_POLL_INTERVAL:-30s}
+      ANALYSIS_STALE_AFTER: ${ANALYSIS_STALE_AFTER:-5m}
+      ANALYSIS_RECOVERY_BATCH_SIZE: ${ANALYSIS_RECOVERY_BATCH_SIZE:-100}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     depends_on:
@@ -84,20 +90,35 @@ services:
       minio:
         condition: service_healthy
 
-  frontend:
-    image: swap-chain-frontend:local
-    build:
-      context: ./frontend
-      args:
-        # Фронт ходит за данными на свой же адрес: nginx внутри образа проксирует
-        # /api на backend. Один origin — сессионная кука (SameSite=Lax) доходит,
-        # и CORS настраивать не нужно.
-        VITE_API_URL: /
+  ollama:
+    image: ollama/ollama:latest
     restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT:-3000}:80"
+    profiles: [ollama]
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: [ollama]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}..."
+        ollama pull ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}
+        echo "Pulling ${OLLAMA_CHAT_MODEL:-llama3.1}..."
+        ollama pull ${OLLAMA_CHAT_MODEL:-llama3.1}
+        echo "Models ready."
+    environment:
+      OLLAMA_HOST: http://ollama:11434
     depends_on:
-      - backend
+      ollama:
+        condition: service_healthy
 
   swagger-ui:
     image: docker.swagger.io/swaggerapi/swagger-ui:v5.32.6
@@ -109,6 +130,23 @@ services:
     volumes:
       - ./api/openapi.yaml:/spec/openapi.yaml:ro
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Относительный путь, а не абсолютный: фронт запрашивает /api у своего же
+        # nginx, который проксирует на backend. С зашитым http://localhost:18080
+        # образ работал бы только на машине разработчика — в браузере пользователя
+        # этот адрес указывает на его собственный компьютер.
+        VITE_API_URL: ${VITE_API_URL:-/}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-18080}:80"
+    depends_on:
+      backend:
+        condition: service_started
+
 volumes:
   postgres_data:
   minio_data:
+  ollama_data:
