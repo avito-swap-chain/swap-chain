@@ -1,7 +1,7 @@
 package model
 
 type Item struct {
-	ID               int
+	ID               int64
 	OfferTitle       string
 	OfferDescription string
 	WantDescription  string
@@ -24,7 +24,8 @@ type ItemMetadata struct {
 
 // ItemMatch - представление связи между вещами, которое в отличии от обычного Edge используется в бизнес-правилах.
 type ItemMatch struct {
-	SourceID   int
-	TargetItem Item
-	Similarity float64
+	SourceID              int64
+	TargetItem            Item
+	Similarity            float64
+	UsesUndefinedCategory bool
 }

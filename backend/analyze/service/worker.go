@@ -2,18 +2,15 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
 	"go.uber.org/zap"
-
-	"swap-chain/shared/db"
 )
 
 type StaleAnalysisRepository interface {
-	ClaimStaleAnalyzingItems(ctx context.Context, arg db.ClaimStaleAnalyzingItemsParams) ([]int64, error)
+	ClaimStaleAnalyzingItems(ctx context.Context, staleBefore time.Time, batchSize int32) ([]int64, error)
 }
 
 type ItemAnalyzer interface {
@@ -101,10 +98,7 @@ func (w *AnalysisRecoveryWorker) recoverAndLog(ctx context.Context) {
 
 func (w *AnalysisRecoveryWorker) recoverOnce(ctx context.Context) error {
 	staleBefore := w.now().Add(-w.cfg.StaleAfter)
-	itemIDs, err := w.repo.ClaimStaleAnalyzingItems(ctx, db.ClaimStaleAnalyzingItemsParams{
-		StaleBefore: sql.NullTime{Time: staleBefore, Valid: true},
-		BatchSize:   w.cfg.BatchSize,
-	})
+	itemIDs, err := w.repo.ClaimStaleAnalyzingItems(ctx, staleBefore, w.cfg.BatchSize)
 	if err != nil {
 		return fmt.Errorf("claim stale analyzing items: %w", err)
 	}

@@ -27,7 +27,7 @@ func NewVectorizer(enricher adapters.Enricher, embedder adapters.Embedder) (*Vec
 	}, nil
 }
 
-func (s *Vectorizer) Vectorize(ctx context.Context, text string) ([]float32, error) {
+func (s *Vectorizer) EnrichAndVectorize(ctx context.Context, text string) ([]float32, error) {
 	prompt := BuildEnrichmentPrompt(text)
 	enrichedJSON, err := s.enricher.GenerateJSON(ctx, prompt)
 	if err != nil {

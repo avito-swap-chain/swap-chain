@@ -6,17 +6,17 @@ import (
 
 type InMemoryStore struct {
 	lock     sync.RWMutex
-	vertices map[int]Vertex
+	vertices map[int64]Vertex
 	edges    map[int]Edge // edgeID -> Edge
 
-	outEdges map[int]map[int]Edge // source -> target
+	outEdges map[int64]map[int64]Edge // source -> target
 }
 
 func NewMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
-		vertices: make(map[int]Vertex),
+		vertices: make(map[int64]Vertex),
 		edges:    make(map[int]Edge),
-		outEdges: make(map[int]map[int]Edge),
+		outEdges: make(map[int64]map[int64]Edge),
 	}
 }
 
@@ -29,12 +29,12 @@ func (s *InMemoryStore) AddVertex(vertex Vertex) error {
 	}
 
 	s.vertices[vertex.ItemID] = vertex
-	s.outEdges[vertex.ItemID] = make(map[int]Edge)
+	s.outEdges[vertex.ItemID] = make(map[int64]Edge)
 
 	return nil
 }
 
-func (s *InMemoryStore) Vertex(itemID int) (Vertex, error) {
+func (s *InMemoryStore) Vertex(itemID int64) (Vertex, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -79,22 +79,22 @@ func (s *InMemoryStore) Edge(edgeID int) (Edge, error) {
 func (s *InMemoryStore) VerticesAmount() int {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	
+
 	return len(s.vertices)
 }
 
 func (s *InMemoryStore) EdgesAmount() int {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	
+
 	return len(s.edges)
 }
 
-func (s *InMemoryStore) AdjacencyMap() (map[int][]Edge, error) {
+func (s *InMemoryStore) AdjacencyMap() (map[int64][]Edge, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	adjMap := make(map[int][]Edge)
+	adjMap := make(map[int64][]Edge)
 	for sourceID, targets := range s.outEdges {
 		edgesSlice := make([]Edge, 0, len(targets))
 		for _, edge := range targets {
@@ -114,8 +114,8 @@ func (s *InMemoryStore) FindCycles(maxDepth int) ([][]Edge, error) {
 
 	var allCycles [][]Edge
 
-	var dfs func(currentNode, startNode, depth int, path []Edge, visited map[int]bool)
-	dfs = func(currentNode, startNode, depth int, path []Edge, visited map[int]bool) {
+	var dfs func(currentNode, startNode int64, depth int, path []Edge, visited map[int64]bool)
+	dfs = func(currentNode, startNode int64, depth int, path []Edge, visited map[int64]bool) {
 		if depth > maxDepth {
 			return
 		}
@@ -126,7 +126,7 @@ func (s *InMemoryStore) FindCycles(maxDepth int) ([][]Edge, error) {
 			if neighbor < startNode {
 				continue
 			}
-			
+
 			if neighbor == startNode {
 				cycle := make([]Edge, len(path)+1)
 				copy(cycle, path)
@@ -148,7 +148,7 @@ func (s *InMemoryStore) FindCycles(maxDepth int) ([][]Edge, error) {
 	}
 
 	for node := range adjMap {
-		visited := make(map[int]bool)
+		visited := make(map[int64]bool)
 		visited[node] = true
 		dfs(node, node, 1, []Edge{}, visited)
 	}

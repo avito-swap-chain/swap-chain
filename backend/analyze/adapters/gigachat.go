@@ -18,16 +18,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"swap-chain/analyze/model"
 )
-
-type APIError struct {
-	StatusCode int
-	Message    string
-}
-
-func (e *APIError) Error() string {
-	return fmt.Sprintf("gigachat api error: status=%d, message=%s", e.StatusCode, e.Message)
-}
 
 type GigaChatConfig struct {
 	AuthKey         string
@@ -176,7 +169,7 @@ func (g *GigaChat) refreshToken(ctx context.Context) (string, error) {
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)
-		return "", &APIError{StatusCode: resp.StatusCode, Message: string(respBytes)}
+		return "", &model.APIError{StatusCode: resp.StatusCode, Message: string(respBytes)}
 	}
 
 	var tokenResp TokenResponse
@@ -216,7 +209,7 @@ func (g *GigaChat) GenerateJSON(ctx context.Context, prompt string) (string, err
 	}
 
 	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("empty choices")
+		return "", model.ErrEmptyChoices
 	}
 
 	return chatResp.Choices[0].Message.Content, nil
@@ -257,7 +250,7 @@ func (g *GigaChat) AnalyzePhoto(ctx context.Context, photoBytes []byte, prompt s
 	}
 
 	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("empty choices")
+		return "", model.ErrEmptyChoices
 	}
 
 	return chatResp.Choices[0].Message.Content, nil
@@ -300,7 +293,7 @@ func (g *GigaChat) uploadPhoto(ctx context.Context, token string, photoBytes []b
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)
-		return "", &APIError{StatusCode: resp.StatusCode, Message: string(respBytes)}
+		return "", &model.APIError{StatusCode: resp.StatusCode, Message: string(respBytes)}
 	}
 
 	var fileResp FileUploadResponse
@@ -334,7 +327,7 @@ func (g *GigaChat) doJSONRequest(ctx context.Context, url string, token string, 
 
 	if resp.StatusCode >= 400 {
 		respBytes, _ := io.ReadAll(resp.Body)
-		return &APIError{StatusCode: resp.StatusCode, Message: string(respBytes)}
+		return &model.APIError{StatusCode: resp.StatusCode, Message: string(respBytes)}
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(respBody); err != nil {

@@ -37,8 +37,6 @@ func (s *Vision) DescribeImage(ctx context.Context, imageBytes []byte) (*model.V
 		return nil, fmt.Errorf("describe image - adapter: %w", err)
 	}
 
-	fmt.Println("СЫРОЙ ОТВЕТ: ", resp)
-
 	var rawResponse RawResponse
 	if err := json.Unmarshal([]byte(resp), &rawResponse); err != nil {
 		return nil, fmt.Errorf("describe image: raw response - unmarshalling: %w", err)
