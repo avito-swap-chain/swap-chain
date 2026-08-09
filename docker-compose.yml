@@ -84,6 +84,21 @@ services:
       minio:
         condition: service_healthy
 
+  frontend:
+    image: swap-chain-frontend:local
+    build:
+      context: ./frontend
+      args:
+        # Фронт ходит за данными на свой же адрес: nginx внутри образа проксирует
+        # /api на backend. Один origin — сессионная кука (SameSite=Lax) доходит,
+        # и CORS настраивать не нужно.
+        VITE_API_URL: /
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+
   swagger-ui:
     image: docker.swagger.io/swaggerapi/swagger-ui:v5.32.6
     restart: unless-stopped
