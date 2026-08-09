@@ -93,19 +93,38 @@ func run(logger *zap.Logger) error {
 	ollamaConfig.BaseURL = cfg.OllamaBaseURL
 	ollamaConfig.ChatModel = cfg.OllamaChatModel
 	ollamaConfig.EmbeddingsModel = cfg.OllamaEmbeddingsModel
-	llmClient := adapters.NewOllama(ollamaConfig)
-	vectorizer := analyzeservice.NewVectorizer(llmClient)
-	tagging := analyzeservice.NewTagging(vectorizer, queries, analyzeservice.TaggingConfig{
+	llmClient, err := adapters.NewOllama(ollamaConfig)
+	if err != nil {
+		return fmt.Errorf("create ollama client: %w", err)
+	}
+	vectorizer, err := analyzeservice.NewVectorizer(llmClient, llmClient)
+	if err != nil {
+		return fmt.Errorf("create vectorizer: %w", err)
+	}
+	tagging, err := analyzeservice.NewTagging(vectorizer, queries, analyzeservice.TaggingConfig{
 		SimilarityThreshold: cfg.CategorySimilarityThreshold,
 		ConfidenceMargin:    cfg.CategoryConfidenceMargin,
 	})
-	analysis := analyzeservice.NewAnalysis(queries, analyzeservice.NewScoring(llmClient), tagging, vectorizer)
+	if err != nil {
+		return fmt.Errorf("create tagging: %w", err)
+	}
+	scoring, err := analyzeservice.NewScoring(llmClient)
+	if err != nil {
+		return fmt.Errorf("create scoring: %w", err)
+	}
+	analysis, err := analyzeservice.NewAnalysis(queries, scoring, tagging, vectorizer)
+	if err != nil {
+		return fmt.Errorf("create analysis: %w", err)
+	}
 	itemService := items.NewPostgresService(database, analysis, func(userID int64, eventType, entityID string, data map[string]any) {
 		eventHub.PublishToUser(userID, eventType, entityID, data)
 	}, logger)
 	defer itemService.Close()
-	matchingRepo := matchingrepository.NewPostgreSQLMatching(queries)
-	matcher := service.NewMatching(
+	matchingRepo, err := matchingrepository.NewPostgreSQLMatching(queries)
+	if err != nil {
+		return fmt.Errorf("create matching repo: %w", err)
+	}
+	matcher, err := service.NewMatching(
 		logger,
 		matchingRepo,
 		service.NewScoring(),
@@ -117,6 +136,9 @@ func run(logger *zap.Logger) error {
 			ChainRatingThreshold:   cfg.ChainThreshold,
 		},
 	)
+	if err != nil {
+		return fmt.Errorf("create matching: %w", err)
+	}
 	chainService := chains.NewPostgresService(database, func(userIDs []int64, eventType, entityID string, data map[string]any) {
 		eventHub.PublishToUsers(userIDs, eventType, entityID, data)
 	})

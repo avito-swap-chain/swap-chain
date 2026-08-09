@@ -9,8 +9,6 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"time"
-
-	pgvector_go "github.com/pgvector/pgvector-go"
 )
 
 type ChainStatus string

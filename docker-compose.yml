@@ -58,7 +58,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-swap_chain}:${POSTGRES_PASSWORD:-swap_chain}@postgres:5432/${POSTGRES_DB:-swap_chain}?sslmode=disable
       HTTP_ADDR: :8080
-      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:18080}
       SESSION_TTL: ${SESSION_TTL:-24h}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
@@ -129,6 +129,18 @@ services:
       - "${SWAGGER_PORT:-8081}:8080"
     volumes:
       - ./api/openapi.yaml:/spec/openapi.yaml:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:18080}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-18080}:80"
+    depends_on:
+      backend:
+        condition: service_started
 
 volumes:
   postgres_data:

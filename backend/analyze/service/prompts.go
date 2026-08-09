@@ -27,15 +27,6 @@ Return ONLY valid JSON with a number from 0 to 1:
 
 Description: %q`
 
-// VisionAnalysisPrompt requests the structured response expected by Vision.
-const VisionAnalysisPrompt = `Analyze the item photo and return ONLY valid JSON:
-{
-  "marketplace_description": "short factual description in Russian",
-  "visual_quality": "NEW|EXCELLENT|GOOD|FAIR|POOR",
-  "quality_score": 0.0
-}
-quality_score must be a number from 0 to 1.`
-
 func BuildEnrichmentPrompt(input string) string {
 	return fmt.Sprintf(enrichmentPromptTemplate, input)
 }

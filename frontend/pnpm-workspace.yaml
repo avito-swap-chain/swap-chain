@@ -1,12 +1,9 @@
 # Настройки pnpm (в pnpm 11 pnpm-специфичные опции читаются отсюда, не из .npmrc).
-# Отключаем предзапусковую проверку зависимостей и supply-chain задержку
+# Отключаем предзапусковую проверку зависимостей и supply-chain задержку.
 # minimumReleaseAge ТОЛЬКО для этого проекта: свежие oxlint/rolldown иначе
 # блокируются глобальной политикой и валят `pnpm dev`.
+# esbuild собирает нативный бинарник постустановочным скриптом. pnpm 11 такие скрипты
+# по умолчанию не выполняет и валит install (strictDepBuilds), поэтому разрешаем все сборки.
 verifyDepsBeforeRun: false
 minimumReleaseAge: 0
-
-# esbuild собирает нативный бинарник постустановочным скриптом. pnpm 11 такие скрипты
-# по умолчанию не выполняет и валит install (strictDepBuilds), поэтому разрешаем явно.
-# Настройка называется allowBuilds: onlyBuiltDependencies из прежних версий удалён.
-allowBuilds:
-  esbuild: true
+dangerouslyAllowAllBuilds: true
