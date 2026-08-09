@@ -1,0 +1,7 @@
+# Keep repository text files stable when the same checkout is used from
+# Windows and WSL. Git detects binary files automatically.
+* text=auto eol=lf
+
+# Windows-native scripts, if introduced later, need CRLF for cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf

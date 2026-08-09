@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -16,6 +17,18 @@ func TestLoadDefaults(t *testing.T) {
 		"MATCHING_CHAIN_LENGTH",
 		"MATCHING_PENALTY_FACTOR",
 		"MATCHING_CHAIN_THRESHOLD",
+		"CORS_ALLOWED_ORIGIN",
+		"SESSION_TTL",
+		"COOKIE_SECURE",
+		"OLLAMA_BASE_URL",
+		"OLLAMA_CHAT_MODEL",
+		"OLLAMA_EMBEDDINGS_MODEL",
+		"MINIO_ENDPOINT",
+		"MINIO_ACCESS_KEY",
+		"MINIO_SECRET_KEY",
+		"MINIO_BUCKET",
+		"MINIO_USE_SSL",
+		"MEDIA_MAX_UPLOAD_BYTES",
 	} {
 		t.Setenv(name, "")
 	}
@@ -31,14 +44,69 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ChainLength != defaultChainLength {
 		t.Fatalf("ChainLength = %d, want %d", cfg.ChainLength, defaultChainLength)
 	}
+	if cfg.OllamaBaseURL != defaultOllamaBaseURL || cfg.OllamaChatModel != defaultOllamaChatModel || cfg.OllamaEmbeddingsModel != defaultOllamaEmbedModel {
+		t.Fatalf("unexpected Ollama defaults: %+v", cfg)
+	}
+	if cfg.MinIOEndpoint != defaultMinIOEndpoint || cfg.MinIOBucket != defaultMinIOBucket || cfg.MediaMaxUploadBytes != defaultMediaMaxBytes {
+		t.Fatalf("unexpected media defaults: %+v", cfg)
+	}
+}
+
+func TestLoadReadsOllamaSettings(t *testing.T) {
+	t.Setenv("OLLAMA_BASE_URL", "http://ollama:11434")
+	t.Setenv("OLLAMA_CHAT_MODEL", "chat-model")
+	t.Setenv("OLLAMA_EMBEDDINGS_MODEL", "embedding-model")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OllamaBaseURL != "http://ollama:11434" || cfg.OllamaChatModel != "chat-model" || cfg.OllamaEmbeddingsModel != "embedding-model" {
+		t.Fatalf("unexpected Ollama config: %+v", cfg)
+	}
+}
+
+func TestLoadReadsSessionSettings(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGIN", "http://localhost:3000")
+	t.Setenv("SESSION_TTL", "2h")
+	t.Setenv("COOKIE_SECURE", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.CORSAllowedOrigin != "http://localhost:3000" || cfg.SessionTTL != 2*time.Hour || !cfg.CookieSecure {
+		t.Fatalf("unexpected session config: %+v", cfg)
+	}
+}
+
+func TestLoadReadsMediaSettings(t *testing.T) {
+	t.Setenv("MINIO_ENDPOINT", "minio:9000")
+	t.Setenv("MINIO_ACCESS_KEY", "access")
+	t.Setenv("MINIO_SECRET_KEY", "secret")
+	t.Setenv("MINIO_BUCKET", "images")
+	t.Setenv("MINIO_USE_SSL", "true")
+	t.Setenv("MEDIA_MAX_UPLOAD_BYTES", "2048")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.MinIOEndpoint != "minio:9000" || cfg.MinIOAccessKey != "access" || cfg.MinIOSecretKey != "secret" || cfg.MinIOBucket != "images" || !cfg.MinIOUseSSL || cfg.MediaMaxUploadBytes != 2048 {
+		t.Fatalf("unexpected media config: %+v", cfg)
+	}
 }
 
 func TestLoadRejectsInvalidChainLength(t *testing.T) {
-	t.Setenv("MATCHING_CHAIN_LENGTH", "1")
+	for _, value := range []string{"1", "4"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("MATCHING_CHAIN_LENGTH", value)
 
-	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "at least 2") {
-		t.Fatalf("Load() error = %v, want minimum chain length error", err)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), "between 2 and 3") {
+				t.Fatalf("Load() error = %v, want chain length range error", err)
+			}
+		})
 	}
 }
 

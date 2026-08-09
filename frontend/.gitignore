@@ -1,0 +1,32 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# скриншоты экранов для презентации (не часть сборки)
+screens/
+
+# сборка демо-ролика: исходники в docs/demo-source лежат в репозитории, артефакты — нет
+docs/demo-source/node_modules
+docs/demo-source/out
+docs/demo-source/public

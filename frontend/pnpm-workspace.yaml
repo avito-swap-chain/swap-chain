@@ -1,0 +1,6 @@
+# Настройки pnpm (в pnpm 11 pnpm-специфичные опции читаются отсюда, не из .npmrc).
+# Отключаем предзапусковую проверку зависимостей и supply-chain задержку
+# minimumReleaseAge ТОЛЬКО для этого проекта: свежие oxlint/rolldown иначе
+# блокируются глобальной политикой и валят `pnpm dev`.
+verifyDepsBeforeRun: false
+minimumReleaseAge: 0

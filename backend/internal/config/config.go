@@ -15,22 +15,44 @@ const (
 	defaultDBConnectTimeout   = 10 * time.Second
 	defaultShutdownTimeout    = 10 * time.Second
 	defaultSimilarItemsAmount = 20
-	defaultChainLength        = 4
+	defaultChainLength        = 3
 	defaultPenaltyFactor      = 0.25
 	defaultChainThreshold     = 0.30
+	defaultCORSAllowedOrigin  = "http://localhost:5173"
+	defaultSessionTTL         = 24 * time.Hour
+	defaultOllamaBaseURL      = "http://localhost:11434"
+	defaultOllamaChatModel    = "llama3.1"
+	defaultOllamaEmbedModel   = "bge-m3"
+	defaultMinIOEndpoint      = "localhost:9000"
+	defaultMinIOAccessKey     = "minioadmin"
+	defaultMinIOSecretKey     = "minioadmin"
+	defaultMinIOBucket        = "swap-chain-media"
+	defaultMediaMaxBytes      = 10 << 20
 )
 
 // Config contains runtime settings loaded from environment variables.
 type Config struct {
-	DatabaseURL        string
-	MigrationsURL      string
-	HTTPAddress        string
-	DBConnectTimeout   time.Duration
-	ShutdownTimeout    time.Duration
-	SimilarItemsAmount int
-	ChainLength        int
-	PenaltyFactor      float64
-	ChainThreshold     float64
+	DatabaseURL           string
+	MigrationsURL         string
+	HTTPAddress           string
+	DBConnectTimeout      time.Duration
+	ShutdownTimeout       time.Duration
+	SimilarItemsAmount    int
+	ChainLength           int
+	PenaltyFactor         float64
+	ChainThreshold        float64
+	CORSAllowedOrigin     string
+	SessionTTL            time.Duration
+	CookieSecure          bool
+	OllamaBaseURL         string
+	OllamaChatModel       string
+	OllamaEmbeddingsModel string
+	MinIOEndpoint         string
+	MinIOAccessKey        string
+	MinIOSecretKey        string
+	MinIOBucket           string
+	MinIOUseSSL           bool
+	MediaMaxUploadBytes   int64
 }
 
 // Migration contains the settings required by the migration command only.
@@ -50,9 +72,17 @@ func LoadMigration() Migration {
 // Load reads and validates application configuration from the environment.
 func Load() (Config, error) {
 	cfg := Config{
-		DatabaseURL:   envOrDefault("DATABASE_URL", defaultDatabaseURL),
-		MigrationsURL: envOrDefault("MIGRATIONS_URL", defaultMigrationsURL),
-		HTTPAddress:   envOrDefault("HTTP_ADDR", defaultHTTPAddress),
+		DatabaseURL:           envOrDefault("DATABASE_URL", defaultDatabaseURL),
+		MigrationsURL:         envOrDefault("MIGRATIONS_URL", defaultMigrationsURL),
+		HTTPAddress:           envOrDefault("HTTP_ADDR", defaultHTTPAddress),
+		CORSAllowedOrigin:     envOrDefault("CORS_ALLOWED_ORIGIN", defaultCORSAllowedOrigin),
+		OllamaBaseURL:         envOrDefault("OLLAMA_BASE_URL", defaultOllamaBaseURL),
+		OllamaChatModel:       envOrDefault("OLLAMA_CHAT_MODEL", defaultOllamaChatModel),
+		OllamaEmbeddingsModel: envOrDefault("OLLAMA_EMBEDDINGS_MODEL", defaultOllamaEmbedModel),
+		MinIOEndpoint:         envOrDefault("MINIO_ENDPOINT", defaultMinIOEndpoint),
+		MinIOAccessKey:        envOrDefault("MINIO_ACCESS_KEY", defaultMinIOAccessKey),
+		MinIOSecretKey:        envOrDefault("MINIO_SECRET_KEY", defaultMinIOSecretKey),
+		MinIOBucket:           envOrDefault("MINIO_BUCKET", defaultMinIOBucket),
 	}
 
 	var err error
@@ -62,14 +92,26 @@ func Load() (Config, error) {
 	if cfg.ShutdownTimeout, err = durationFromEnv("SHUTDOWN_TIMEOUT", defaultShutdownTimeout); err != nil {
 		return Config{}, err
 	}
+	if cfg.SessionTTL, err = durationFromEnv("SESSION_TTL", defaultSessionTTL); err != nil {
+		return Config{}, err
+	}
+	if cfg.CookieSecure, err = boolFromEnv("COOKIE_SECURE", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.MinIOUseSSL, err = boolFromEnv("MINIO_USE_SSL", false); err != nil {
+		return Config{}, err
+	}
+	if cfg.MediaMaxUploadBytes, err = positiveInt64FromEnv("MEDIA_MAX_UPLOAD_BYTES", defaultMediaMaxBytes); err != nil {
+		return Config{}, err
+	}
 	if cfg.SimilarItemsAmount, err = positiveIntFromEnv("MATCHING_SIMILAR_ITEMS", defaultSimilarItemsAmount); err != nil {
 		return Config{}, err
 	}
 	if cfg.ChainLength, err = positiveIntFromEnv("MATCHING_CHAIN_LENGTH", defaultChainLength); err != nil {
 		return Config{}, err
 	}
-	if cfg.ChainLength < 2 {
-		return Config{}, fmt.Errorf("MATCHING_CHAIN_LENGTH must be at least 2")
+	if cfg.ChainLength < 2 || cfg.ChainLength > 3 {
+		return Config{}, fmt.Errorf("MATCHING_CHAIN_LENGTH must be between 2 and 3")
 	}
 	if cfg.PenaltyFactor, err = nonNegativeFloatFromEnv("MATCHING_PENALTY_FACTOR", defaultPenaltyFactor); err != nil {
 		return Config{}, err
@@ -79,6 +121,19 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func boolFromEnv(name string, fallback bool) (bool, error) {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean: %q", name, value)
+	}
+	return parsed, nil
 }
 
 func envOrDefault(name, fallback string) string {
@@ -108,6 +163,19 @@ func positiveIntFromEnv(name string, fallback int) (int, error) {
 	}
 
 	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer: %q", name, value)
+	}
+	return parsed, nil
+}
+
+func positiveInt64FromEnv(name string, fallback int64) (int64, error) {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || parsed <= 0 {
 		return 0, fmt.Errorf("%s must be a positive integer: %q", name, value)
 	}
