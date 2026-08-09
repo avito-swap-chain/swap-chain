@@ -5,15 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"swap-chain/shared/db"
 	"swap-chain/matching/model"
+	"swap-chain/shared/db"
 
 	"go.uber.org/zap"
 )
-
-type VectorAdapter interface {
-	Vectorize(ctx context.Context, text string) ([]float64, error)
-}
 
 type MatchingRepo interface {
 	FindSimilarItems(ctx context.Context, arg db.FindSimilarItemsParams) ([]db.FindSimilarItemsRow, error)
@@ -24,11 +20,10 @@ type Scorer interface {
 }
 
 type Matching struct {
-	logger  *zap.Logger
-	adapter VectorAdapter
-	repo    MatchingRepo
-	scorer  Scorer
-	cfg     MatchingConfig
+	logger *zap.Logger
+	repo   MatchingRepo
+	scorer Scorer
+	cfg    MatchingConfig
 }
 
 type MatchingConfig struct {
@@ -40,22 +35,16 @@ type MatchingConfig struct {
 
 func NewMatching(
 	logger *zap.Logger,
-	adapter VectorAdapter,
 	repo MatchingRepo,
 	scorer Scorer,
 	cfg MatchingConfig,
 ) *Matching {
 	return &Matching{
-		logger:  logger,
-		adapter: adapter,
-		repo:    repo,
-		scorer:  scorer,
-		cfg:     cfg,
+		logger: logger,
+		repo:   repo,
+		scorer: scorer,
+		cfg:    cfg,
 	}
-}
-
-func (m *Matching) Vectorize(ctx context.Context, text string) ([]float64, error) {
-	return m.adapter.Vectorize(ctx, text)
 }
 
 func (m *Matching) FindCycles(ctx context.Context, itemID int) ([][]model.Edge, error) {
@@ -84,7 +73,7 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 	queue = append(queue, rootID)
 	visited[rootID] = struct{}{}
 
-	for i := 0; i < m.cfg.ChainLen-1; i++ {
+	for i := 0; i < m.cfg.ChainLen; i++ {
 		nextQueue := make([]int, 0, len(queue))
 
 		for _, candidateID := range queue {

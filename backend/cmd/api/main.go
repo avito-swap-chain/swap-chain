@@ -11,11 +11,19 @@ import (
 	"syscall"
 	"time"
 
+	"swap-chain/analyze/adapters"
+	analyzeservice "swap-chain/analyze/service"
 	applicationmatching "swap-chain/internal/application/matching"
+	"swap-chain/internal/chains"
 	"swap-chain/internal/config"
+	"swap-chain/internal/events"
+	"swap-chain/internal/httpapi"
+	"swap-chain/internal/httpserver"
 	"swap-chain/internal/infrastructure/postgres"
-	httptransport "swap-chain/internal/transport/http"
-	"swap-chain/matching/adapters"
+	"swap-chain/internal/items"
+	"swap-chain/internal/media"
+	"swap-chain/internal/session"
+	"swap-chain/internal/users"
 	"swap-chain/matching/service"
 	"swap-chain/shared/db"
 
@@ -25,8 +33,9 @@ import (
 const (
 	readHeaderTimeout = 5 * time.Second
 	readTimeout       = 15 * time.Second
-	writeTimeout      = 30 * time.Second
 	idleTimeout       = 60 * time.Second
+	chainExpiryPeriod = time.Minute
+	chainExpiryBatch  = 100
 )
 
 func main() {
@@ -64,9 +73,21 @@ func run(logger *zap.Logger) error {
 	}()
 
 	queries := db.New(database)
+	storageCtx, cancelStorage := context.WithTimeout(context.Background(), cfg.DBConnectTimeout)
+	mediaStorage, err := media.NewMinIOStorage(storageCtx, media.MinIOConfig{
+		Endpoint:  cfg.MinIOEndpoint,
+		AccessKey: cfg.MinIOAccessKey,
+		SecretKey: cfg.MinIOSecretKey,
+		Bucket:    cfg.MinIOBucket,
+		UseSSL:    cfg.MinIOUseSSL,
+	})
+	cancelStorage()
+	if err != nil {
+		return fmt.Errorf("initialize media storage: %w", err)
+	}
+	mediaService := media.NewService(mediaStorage, cfg.MediaMaxUploadBytes)
 	matcher := service.NewMatching(
 		logger,
-		adapters.NewOllama(),
 		queries,
 		service.NewScoring(),
 		service.MatchingConfig{
@@ -76,26 +97,44 @@ func run(logger *zap.Logger) error {
 			ChainRatingThreshold: cfg.ChainThreshold,
 		},
 	)
-	finder := applicationmatching.NewFindCycles(matcher)
-	handler := httptransport.NewHandler(database, finder, logger)
+	eventHub := events.NewHub()
+	sessions := session.NewManager(cfg.SessionTTL, cfg.CookieSecure)
+	ollamaConfig := adapters.DefaultOllamaConfig()
+	ollamaConfig.BaseURL = cfg.OllamaBaseURL
+	ollamaConfig.ChatModel = cfg.OllamaChatModel
+	ollamaConfig.EmbeddingsModel = cfg.OllamaEmbeddingsModel
+	vectorizer := analyzeservice.NewVectorizer(adapters.NewOllama(ollamaConfig))
+	itemService := items.NewPostgresService(database, vectorizer, func(userID int64, eventType, entityID string, data map[string]any) {
+		eventHub.PublishToUser(userID, eventType, entityID, data)
+	}, logger)
+	defer itemService.Close()
+	chainService := chains.NewPostgresService(database, func(userIDs []int64, eventType, entityID string, data map[string]any) {
+		eventHub.PublishToUsers(userIDs, eventType, entityID, data)
+	})
+	finder := applicationmatching.NewFindCycles(matcher, chainService)
+	userService := users.NewPostgresService(database)
+	handler := httpapi.NewHandler(database, finder, logger, itemService, mediaService, chainService, eventHub, sessions, userService)
+	router, err := httpserver.New(logger, handler, sessions, cfg.CORSAllowedOrigin, cfg.MediaMaxUploadBytes)
+	if err != nil {
+		return fmt.Errorf("create HTTP router: %w", err)
+	}
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
-		Handler:           handler.Routes(),
+		Handler:           router,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
+	shutdownSignal, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	go runChainExpiry(shutdownSignal, chainService, logger)
 
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("backend started", zap.String("address", cfg.HTTPAddress))
 		serverErrors <- server.ListenAndServe()
 	}()
-
-	shutdownSignal, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stopSignals()
 
 	select {
 	case err := <-serverErrors:
@@ -114,4 +153,25 @@ func run(logger *zap.Logger) error {
 	}
 
 	return nil
+}
+
+func runChainExpiry(ctx context.Context, service chains.Service, logger *zap.Logger) {
+	ticker := time.NewTicker(chainExpiryPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			expired, err := service.ExpirePending(ctx, chainExpiryBatch)
+			if err != nil {
+				logger.Error("expire pending chains", zap.Error(err))
+				continue
+			}
+			if expired > 0 {
+				logger.Info("expired pending chains", zap.Int("count", expired))
+			}
+		}
+	}
 }
