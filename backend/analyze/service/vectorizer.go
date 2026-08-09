@@ -3,35 +3,34 @@ package service
 import (
 	"context"
 	"encoding/json"
+	
+	"swap-chain/analyze/adapters"
 )
 
-type LLMClient interface {
-	GenerateJSON(ctx context.Context, prompt string) (string, error)
-	Vectorize(ctx context.Context, text string) ([]float32, error)
-}
-
 type Vectorizer struct {
-	client LLMClient
+	enricher adapters.Enricher
+	embedder adapters.Embedder
 }
 
-func NewVectorizer(client LLMClient) *Vectorizer {
+func NewVectorizer(enricher adapters.Enricher, embedder adapters.Embedder) *Vectorizer {
 	return &Vectorizer{
-		client: client,
+		enricher: enricher,
+		embedder: embedder,
 	}
 }
 
 func (s *Vectorizer) Vectorize(ctx context.Context, text string) ([]float32, error) {
 	prompt := BuildEnrichmentPrompt(text)
-	enrichedJSON, err := s.client.GenerateJSON(ctx, prompt)
+	enrichedJSON, err := s.enricher.GenerateJSON(ctx, prompt)
 	if err != nil {
-		return s.client.Vectorize(ctx, text)
+		return s.embedder.Vectorize(ctx, text)
 	}
 
 	var result struct {
 		Value string `json:"value"`
 	}
 	if err := json.Unmarshal([]byte(enrichedJSON), &result); err != nil {
-		return s.client.Vectorize(ctx, text)
+		return s.embedder.Vectorize(ctx, text)
 	}
 
 	enrichedText := result.Value
@@ -39,5 +38,5 @@ func (s *Vectorizer) Vectorize(ctx context.Context, text string) ([]float32, err
 		enrichedText = text
 	}
 
-	return s.client.Vectorize(ctx, enrichedText)
+	return s.embedder.Vectorize(ctx, enrichedText)
 }
