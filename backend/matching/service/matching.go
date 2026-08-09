@@ -106,7 +106,9 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 	visited := make(map[int]struct{})
 	edgeCounter := 0
 
-	graph.AddVertex(model.Vertex{ItemID: rootID})
+	if err := graph.AddVertex(model.Vertex{ItemID: rootID}); err != nil {
+		return fmt.Errorf("add root item %d to graph: %w", rootID, err)
+	}
 	queue = append(queue, rootID)
 	visited[rootID] = struct{}{}
 
@@ -127,12 +129,15 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 				graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID})
 				score := m.scorer.CalculateScore(match)
 
-				graph.AddEdge(model.Edge{
+				if err := graph.AddEdge(model.Edge{
 					ID:       edgeCounter,
 					SourceID: candidateID,
 					TargetID: match.TargetItem.ID,
 					Score:    score,
-				})
+				}); err != nil {
+					errs = append(errs, fmt.Errorf("add edge %d->%d: %w", candidateID, match.TargetItem.ID, err))
+					continue
+				}
 				edgeCounter++
 
 				if _, ok := visited[match.TargetItem.ID]; !ok {
@@ -151,11 +156,12 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int, graph model.Gr
 
 	// нужно хотя бы одно ребро для возможного обмена
 	joinedErrs := errors.Join(errs...)
-	if graph.EdgesAmount() < 1 && joinedErrs != nil {
+	switch {
+	case graph.EdgesAmount() < 1 && joinedErrs != nil:
 		return fmt.Errorf("assemble graph: %w", joinedErrs)
-	} else if graph.EdgesAmount() < 1 {
+	case graph.EdgesAmount() < 1:
 		return fmt.Errorf("assemble graph: no edges found for item %d", rootID)
-	} else if graph.EdgesAmount() > 0 && joinedErrs != nil {
+	case joinedErrs != nil:
 		m.logger.Warn("assemble graph: failed chains", zap.Error(joinedErrs))
 	}
 

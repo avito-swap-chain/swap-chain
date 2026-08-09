@@ -1,0 +1,107 @@
+@import 'tailwindcss';
+
+/* Manrope — шрифт Авито. Ставим локально (@fontsource), а не с CDN:
+ * деплой обязан работать без внешних запросов. */
+@import '@fontsource-variable/manrope';
+
+/* Дизайн-токены сняты с рабочего Авито (CSS-переменные их дизайн-системы AKITA,
+ * слои palette → semantics → component) и переложены в Tailwind v4 @theme.
+ * Полный дамп — 2127 токенов светлой и тёмной темы — лежит в docs/design-tokens.
+ * Здесь только ядро: то, что реально используется в интерфейсе цепочки. */
+@theme {
+  /* --- акцент: palette-blue500, кнопки components-button-bg-accent* --- */
+  --color-brand: #00aaff;
+  --color-brand-hover: #0099f7;
+  --color-brand-press: #008aed;
+  --color-brand-soft: #cfedff; /* semantics-bg-accent */
+  --color-brand-pale: #e6f6ff; /* palette-blue50 — фон своих сообщений в чате */
+  --color-on-brand: #ffffff;
+
+  /* акцентный набор из лого Авито */
+  --color-accent-green: #04e061;
+  --color-accent-violet: #965eeb;
+  --color-accent-red: #ff4053;
+
+  /* нейтрали: semantics-bg-*, border-*, font-color-* */
+  --color-page: #f2f1f0;
+  --color-card: #ffffff;
+  --color-ink: #000000;
+  --color-ink-2: #757575;
+  --color-ink-3: #a3a3a3;
+  --color-line: #ebeae8;
+  --color-line-2: #f2f1f0;
+
+  /* главная кнопка Авито — чёрная (components-button-bg-primary) */
+  --color-dark: #141414;
+  --color-dark-press: #1f1f1f;
+
+  /* Статусные цвета. Как у Авито: статус — текст, а не плашка, цвет несёт смысл.
+   * Оранжевый = «ход за вами», азур остаётся ссылкам и кнопкам.
+   * Заливки (--*-bg) — под баннеры: semantics-bg-success / -warning / -error. */
+  --color-attention: #f79900; /* border-warning */
+  --color-attention-dot: #fca400; /* bar-warningFilled — на точках степпера читается лучше */
+  --color-attention-bg: #ffecc9;
+  --color-ok: #00b253; /* font-color-valid */
+  --color-ok-bg: #d2fcc4;
+  --color-stop: #ff4053; /* font-color-invalid, border-error */
+  --color-stop-bg: #ffe0e0;
+
+  /* фокус — отдельный оттенок, светлее акцента (semantics-border-focused) */
+  --color-focus: #45c1ff;
+
+  /* пузыри чата: свой — blue50, чужой — bg-default, системный — green50 */
+  --color-bubble-mine: #e6f6ff;
+  --color-bubble-their: #f2f1f0;
+  --color-bubble-system: #e2ffd6;
+
+  /* borderRadius-{s,m,l,xl} */
+  --radius-btn: 12px;
+  --radius-card: 16px;
+  --radius-chip: 8px;
+  --radius-input: 12px;
+  --radius-bubble: 20px;
+
+  /* boxShadow-size-{s,l}. У Авито тень — признак всплытия, а не карточки:
+   * карточки в потоке плоские, тень только у поповеров и липких панелей. */
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 4px 28px 0 rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 4px 24px 0 rgba(0, 0, 0, 0.12);
+
+  --font-sans: 'Manrope Variable', Manrope, Arial, 'Helvetica Neue', Helvetica, sans-serif;
+
+  /* Порог десктопной раскладки кабинета. Сдвинут с 1024 на 900: у Авито мобильная вёрстка
+   * отдаётся телефонам по user-agent, а не по ширине окна, поэтому на узком окне ноутбука
+   * их сайт остаётся кабинетом. С 1024 мы показывали там нижнюю панель — и раскладка
+   * расходилась с оригиналом ровно на самых частых окнах (900–1024). */
+  --breakpoint-lg: 900px;
+
+  /* ширина контейнера Авито (утилита max-w-page): шапка и контент на одной сетке */
+  --container-page: 1248px;
+}
+
+/* Только светлая тема — как веб-версия Avito. Системную тёмную не следуем,
+ * чтобы на защите UI выглядел одинаково независимо от темы ОС жюри.
+ * (Тёмные значения токенов сняты и лежат в docs/design-tokens — если понадобятся.) */
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  body {
+    margin: 0;
+    min-height: 100svh;
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer utilities {
+  /* Ленты, которые прокручиваются пальцем: полоса прокрутки под меню кабинета
+   * на узких экранах читается как посторонняя линия. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

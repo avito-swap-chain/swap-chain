@@ -2,7 +2,7 @@ name: swap-chain
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:0.8.2-pg17
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-swap_chain}
@@ -19,6 +19,77 @@ services:
       retries: 10
       start_period: 5s
 
+  migrate:
+    image: swap-chain-backend:local
+    build:
+      context: ./backend
+    entrypoint: ["/app/migrate"]
+    command: ["up"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-swap_chain}:${POSTGRES_PASSWORD:-swap_chain}@postgres:5432/${POSTGRES_DB:-swap_chain}?sslmode=disable
+      MIGRATIONS_URL: file:///app/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  backend:
+    image: swap-chain-backend:local
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-swap_chain}:${POSTGRES_PASSWORD:-swap_chain}@postgres:5432/${POSTGRES_DB:-swap_chain}?sslmode=disable
+      HTTP_ADDR: :8080
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      SESSION_TTL: ${SESSION_TTL:-24h}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.1}
+      OLLAMA_EMBEDDINGS_MODEL: ${OLLAMA_EMBEDDINGS_MODEL:-bge-m3}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-swap-chain-media}
+      MINIO_USE_SSL: "false"
+      MEDIA_MAX_UPLOAD_BYTES: ${MEDIA_MAX_UPLOAD_BYTES:-10485760}
+      MATCHING_SIMILAR_ITEMS: ${MATCHING_SIMILAR_ITEMS:-20}
+      MATCHING_CHAIN_LENGTH: ${MATCHING_CHAIN_LENGTH:-3}
+      MATCHING_PENALTY_FACTOR: ${MATCHING_PENALTY_FACTOR:-0.25}
+      MATCHING_CHAIN_THRESHOLD: ${MATCHING_CHAIN_THRESHOLD:-0.30}
+      MATCHING_COMPATIBILITY_THRESHOLD: ${MATCHING_COMPATIBILITY_THRESHOLD:-0.50}
+      ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD: ${ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD:-0.65}
+      ANALYSIS_CATEGORY_CONFIDENCE_MARGIN: ${ANALYSIS_CATEGORY_CONFIDENCE_MARGIN:-0.05}
+      ANALYSIS_RECOVERY_POLL_INTERVAL: ${ANALYSIS_RECOVERY_POLL_INTERVAL:-30s}
+      ANALYSIS_STALE_AFTER: ${ANALYSIS_STALE_AFTER:-5m}
+      ANALYSIS_RECOVERY_BATCH_SIZE: ${ANALYSIS_RECOVERY_BATCH_SIZE:-100}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+
   swagger-ui:
     image: docker.swagger.io/swaggerapi/swagger-ui:v5.32.6
     restart: unless-stopped
@@ -31,3 +102,4 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:
