@@ -2,38 +2,29 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
-	"github.com/pgvector/pgvector-go"
+	"swap-chain/analyze/model"
 
-	analyzemodel "swap-chain/analyze/model"
-	"swap-chain/shared/db"
-)
-
-var (
-	ErrManualCategoryRequired = errors.New("manual category selection required")
-	ErrAnalysisStateChanged   = errors.New("item is no longer analyzing")
+	"golang.org/x/sync/errgroup"
 )
 
 type AnalysisRepository interface {
-	GetItemForAnalysis(ctx context.Context, id int64) (db.GetItemForAnalysisRow, error)
-	CompleteItemAnalysis(ctx context.Context, arg db.CompleteItemAnalysisParams) (int64, error)
+	GetItemForAnalysis(ctx context.Context, itemID int64) (model.AnalysisItem, error)
+	CompleteItemAnalysis(ctx context.Context, result model.AnalysisResult) (bool, error)
 }
 
 type ParamRichnessEvaluator interface {
-	EvaluateDescription(ctx context.Context, description string) (*analyzemodel.DescriptionScore, error)
+	EvaluateDescription(ctx context.Context, description string) (*model.DescriptionScore, error)
 }
 
 type CategoryDefiner interface {
-	DefineTag(ctx context.Context, title string, description string) (*analyzemodel.CategoryMatch, error)
+	DefineTag(ctx context.Context, embedding []float32) (*model.CategoryMatch, error)
 }
 
 type AnalysisVectorizer interface {
-	Vectorize(ctx context.Context, text string) ([]float32, error)
+	EnrichAndVectorize(ctx context.Context, text string) ([]float32, error)
 }
 
 // Analysis выполняет полный повторяемый сценарий анализа уже созданной вещи.
@@ -44,6 +35,13 @@ type Analysis struct {
 	tagging    CategoryDefiner
 	vectorizer AnalysisVectorizer
 }
+
+type analyzedText struct {
+	normalized string
+	embedding  []float32
+}
+
+const analysisConcurrency = 3
 
 func NewAnalysis(
 	repo AnalysisRepository,
@@ -76,70 +74,101 @@ func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 		return fmt.Errorf("get item %d for analysis: %w", itemID, err)
 	}
 
-	offerDescription := strings.TrimSpace(item.OfferDescription.String)
-	if !item.OfferDescription.Valid || offerDescription == "" {
+	offerDescription := normalizeText(item.OfferDescription)
+	if offerDescription == "" {
 		return fmt.Errorf("analyze item %d: offer description is empty", itemID)
 	}
 
-	wantDescription := strings.TrimSpace(item.WantDescription.String)
-	if !item.WantDescription.Valid || wantDescription == "" {
+	wantDescription := normalizeText(item.WantDescription)
+	if wantDescription == "" {
 		return fmt.Errorf("analyze item %d: want description is empty", itemID)
 	}
 
-	descriptionScore, err := s.scoring.EvaluateDescription(ctx, offerDescription)
-	if err != nil {
-		return fmt.Errorf("score item %d description: %w", itemID, err)
-	}
-	if descriptionScore.ParamRichness < 0 || descriptionScore.ParamRichness > 1 {
-		return fmt.Errorf("score item %d description: param richness %.4f is outside [0,1]", itemID, descriptionScore.ParamRichness)
+	offer := analyzedText{normalized: normalizeText(item.OfferTitle, offerDescription)}
+	want := analyzedText{normalized: wantDescription}
+
+	var descriptionScore *model.DescriptionScore
+	var offerCategory *model.CategoryMatch
+	var wantCategory *model.CategoryMatch
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(analysisConcurrency)
+
+	group.Go(func() error {
+		result, err := s.scoring.EvaluateDescription(groupCtx, offerDescription)
+		if err != nil {
+			return fmt.Errorf("score item %d description: %w", itemID, err)
+		}
+		if result == nil {
+			return fmt.Errorf("score item %d description: evaluator returned nil result", itemID)
+		}
+		if result.ParamRichness < 0 || result.ParamRichness > 1 {
+			return fmt.Errorf("score item %d description: param richness %.4f is outside [0,1]", itemID, result.ParamRichness)
+		}
+
+		descriptionScore = result
+		return nil
+	})
+
+	group.Go(func() error {
+		var err error
+		offer.embedding, err = s.vectorizer.EnrichAndVectorize(groupCtx, offer.normalized)
+		if err != nil {
+			return fmt.Errorf("vectorize item %d offer: %w", itemID, err)
+		}
+
+		offerCategory, err = s.tagging.DefineTag(groupCtx, offer.embedding)
+		if err != nil {
+			return fmt.Errorf("define item %d offer category: %w", itemID, err)
+		}
+		if offerCategory == nil {
+			return fmt.Errorf("define item %d offer category: category definer returned nil result", itemID)
+		}
+
+		return nil
+	})
+
+	group.Go(func() error {
+		var err error
+		want.embedding, err = s.vectorizer.EnrichAndVectorize(groupCtx, want.normalized)
+		if err != nil {
+			return fmt.Errorf("vectorize item %d want: %w", itemID, err)
+		}
+
+		wantCategory, err = s.tagging.DefineTag(groupCtx, want.embedding)
+		if err != nil {
+			return fmt.Errorf("define item %d want category: %w", itemID, err)
+		}
+		if wantCategory == nil {
+			return fmt.Errorf("define item %d want category: category definer returned nil result", itemID)
+		}
+
+		return nil
+	})
+
+	if err := group.Wait(); err != nil {
+		return err
 	}
 
-	offerCategory, err := s.tagging.DefineTag(ctx, item.OfferTitle, offerDescription)
-	if err != nil {
-		return fmt.Errorf("define item %d offer category: %w", itemID, err)
-	}
-	if offerCategory.IsManual {
-		return fmt.Errorf("define item %d offer category: %w", itemID, ErrManualCategoryRequired)
-	}
-
-	wantCategory, err := s.tagging.DefineTag(ctx, "", wantDescription)
-	if err != nil {
-		return fmt.Errorf("define item %d want category: %w", itemID, err)
-	}
-	if wantCategory.IsManual {
-		return fmt.Errorf("define item %d want category: %w", itemID, ErrManualCategoryRequired)
-	}
-
-	offerText := strings.TrimSpace(item.OfferTitle + " " + offerDescription)
-	offerVector, err := s.vectorizer.Vectorize(ctx, offerText)
-	if err != nil {
-		return fmt.Errorf("vectorize item %d offer: %w", itemID, err)
-	}
-
-	wantVector, err := s.vectorizer.Vectorize(ctx, wantDescription)
-	if err != nil {
-		return fmt.Errorf("vectorize item %d want: %w", itemID, err)
-	}
-	offerEmbedding := pgvector.NewVector(offerVector)
-	wantEmbedding := pgvector.NewVector(wantVector)
-
-	updated, err := s.repo.CompleteItemAnalysis(ctx, db.CompleteItemAnalysisParams{
-		OfferCategoryID: sql.NullInt32{Int32: int32(offerCategory.CategoryID), Valid: true},
-		WantCategoryID:  sql.NullInt32{Int32: int32(wantCategory.CategoryID), Valid: true},
-		ParamRichness: sql.NullString{
-			String: strconv.FormatFloat(descriptionScore.ParamRichness, 'f', -1, 64),
-			Valid:  true,
-		},
-		OfferEmbeddingLocal: &offerEmbedding,
-		WantEmbeddingLocal:  &wantEmbedding,
-		ID:                  item.ID,
+	updated, err := s.repo.CompleteItemAnalysis(ctx, model.AnalysisResult{
+		ItemID:           item.ID,
+		OfferCategoryID:  offerCategory.CategoryID,
+		WantCategoryID:   wantCategory.CategoryID,
+		ParamRichness:    descriptionScore.ParamRichness,
+		IsCategoryManual: offerCategory.IsManual || wantCategory.IsManual,
+		OfferEmbedding:   offer.embedding,
+		WantEmbedding:    want.embedding,
 	})
 	if err != nil {
 		return fmt.Errorf("complete item %d analysis: %w", itemID, err)
 	}
-	if updated != 1 {
-		return fmt.Errorf("complete item %d analysis: %w", itemID, ErrAnalysisStateChanged)
+	if !updated {
+		return fmt.Errorf("complete item %d analysis: %w", itemID, model.ErrAnalysisStateChanged)
 	}
 
 	return nil
+}
+
+func normalizeText(parts ...string) string {
+	return strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
 }
