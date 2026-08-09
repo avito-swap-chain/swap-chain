@@ -6,32 +6,33 @@ import (
 	"math"
 
 	"swap-chain/analyze/model"
-	"swap-chain/shared/db"
-
-	"github.com/pgvector/pgvector-go"
 )
 
 type TaggingRepo interface {
-	FindCategory(ctx context.Context, embeddingLocal *pgvector.Vector) ([]db.FindCategoryRow, error)
+	FindCategories(
+		ctx context.Context,
+		embedding []float32,
+		undefinedCategoryID int32,
+	) ([]model.CategoryCandidate, error)
 }
 
 type TaggingConfig struct {
 	SimilarityThreshold float64 // порог, не достигнув который, включается ручное тегирование
 	ConfidenceMargin    float64 // минимальный отрыв топ-1 от топ-2 категории для уверенности
+	UndefinedCategoryID int32   // fallback-категория, если уверенно определить категорию не удалось
 }
 
 type Tagging struct {
-	vectorizer *Vectorizer
-	repo       TaggingRepo
-	cfg        TaggingConfig
+	repo TaggingRepo
+	cfg  TaggingConfig
 }
 
-func NewTagging(vectorizer *Vectorizer, repo TaggingRepo, cfg TaggingConfig) (*Tagging, error) {
+func NewTagging(repo TaggingRepo, cfg TaggingConfig) (*Tagging, error) {
 	switch {
-	case vectorizer == nil:
-		return nil, fmt.Errorf("tagging init: 'vectorizer' is required")
 	case repo == nil:
 		return nil, fmt.Errorf("tagging init: 'tagging repo' is required")
+	case cfg.UndefinedCategoryID <= 0:
+		return nil, fmt.Errorf("tagging init: 'undefined category ID' must be positive")
 	}
 
 	if math.IsNaN(cfg.SimilarityThreshold) || math.IsInf(cfg.SimilarityThreshold, 0) ||
@@ -44,39 +45,43 @@ func NewTagging(vectorizer *Vectorizer, repo TaggingRepo, cfg TaggingConfig) (*T
 	}
 
 	return &Tagging{
-		vectorizer: vectorizer,
-		repo:       repo,
-		cfg:        cfg,
+		repo: repo,
+		cfg:  cfg,
 	}, nil
 }
 
-// DefineTag определяет наиболее подходящую категорию по текстовому описанию
-func (s *Tagging) DefineTag(ctx context.Context, title string, description string) (*model.CategoryMatch, error) {
-	textForTagging := fmt.Sprintf("%s. %s", title, description)
-
-	vec, err := s.vectorizer.Vectorize(ctx, textForTagging)
-	if err != nil {
-		return nil, fmt.Errorf("vectorize error: %w", err)
+// DefineTag определяет наиболее подходящую категорию по готовому embedding.
+// Вектор рассчитывает Analysis и переиспользует его для matching.
+func (s *Tagging) DefineTag(ctx context.Context, embedding []float32) (*model.CategoryMatch, error) {
+	if len(embedding) == 0 {
+		return nil, fmt.Errorf("define category: embedding is empty")
 	}
 
-	vecArg := pgvector.NewVector(vec)
-	rows, err := s.repo.FindCategory(ctx, &vecArg)
+	rows, err := s.repo.FindCategories(ctx, embedding, s.cfg.UndefinedCategoryID)
 	if err != nil {
 		return nil, fmt.Errorf("find category error: %w", err)
 	}
 	isManual, topCategory := s.isNeedManual(rows)
-	if topCategory == nil || isManual {
-		return &model.CategoryMatch{IsManual: true}, nil
+	if isManual {
+		match := &model.CategoryMatch{
+			CategoryID: s.cfg.UndefinedCategoryID,
+			IsManual:   true,
+		}
+		if topCategory != nil {
+			match.Confidence = topCategory.Similarity
+		}
+
+		return match, nil
 	}
 
 	return &model.CategoryMatch{
-		CategoryID: int(topCategory.ID),
+		CategoryID: topCategory.ID,
 		Confidence: topCategory.Similarity,
 		IsManual:   false,
 	}, nil
 }
 
-func (s *Tagging) isNeedManual(rows []db.FindCategoryRow) (bool, *db.FindCategoryRow) {
+func (s *Tagging) isNeedManual(rows []model.CategoryCandidate) (bool, *model.CategoryCandidate) {
 	if len(rows) == 0 {
 		return true, nil
 	}
