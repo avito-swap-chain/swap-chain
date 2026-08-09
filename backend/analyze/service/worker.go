@@ -49,6 +49,15 @@ func NewAnalysisRecoveryWorker(
 	logger *zap.Logger,
 	cfg AnalysisRecoveryWorkerConfig,
 ) (*AnalysisRecoveryWorker, error) {
+	switch {
+	case repo == nil:
+		return nil, fmt.Errorf("analysis recovery worker: repository is required")
+	case analyzer == nil:
+		return nil, fmt.Errorf("analysis recovery worker: analyzer is required")
+	case logger == nil:
+		return nil, fmt.Errorf("analysis recovery worker: logger is required")
+	}
+
 	if cfg.PollInterval <= 0 {
 		return nil, fmt.Errorf("analysis recovery worker: poll interval must be positive")
 	}

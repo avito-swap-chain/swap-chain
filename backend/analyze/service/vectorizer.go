@@ -3,7 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
-	
+	"fmt"
+
 	"swap-chain/analyze/adapters"
 )
 
@@ -12,11 +13,18 @@ type Vectorizer struct {
 	embedder adapters.Embedder
 }
 
-func NewVectorizer(enricher adapters.Enricher, embedder adapters.Embedder) *Vectorizer {
+func NewVectorizer(enricher adapters.Enricher, embedder adapters.Embedder) (*Vectorizer, error) {
+	switch {
+	case enricher == nil:
+		return nil, fmt.Errorf("vectorizer init: 'enricher' is required")
+	case embedder == nil:
+		return nil, fmt.Errorf("vectorizer init: 'embedder' is required")
+	}
+
 	return &Vectorizer{
 		enricher: enricher,
 		embedder: embedder,
-	}
+	}, nil
 }
 
 func (s *Vectorizer) Vectorize(ctx context.Context, text string) ([]float32, error) {

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"swap-chain/analyze/model"
 	"swap-chain/shared/db"
@@ -25,12 +26,28 @@ type Tagging struct {
 	cfg        TaggingConfig
 }
 
-func NewTagging(vectorizer *Vectorizer, repo TaggingRepo, cfg TaggingConfig) *Tagging {
+func NewTagging(vectorizer *Vectorizer, repo TaggingRepo, cfg TaggingConfig) (*Tagging, error) {
+	switch {
+	case vectorizer == nil:
+		return nil, fmt.Errorf("tagging init: 'vectorizer' is required")
+	case repo == nil:
+		return nil, fmt.Errorf("tagging init: 'tagging repo' is required")
+	}
+
+	if math.IsNaN(cfg.SimilarityThreshold) || math.IsInf(cfg.SimilarityThreshold, 0) ||
+		cfg.SimilarityThreshold < -1 || cfg.SimilarityThreshold > 1 {
+		return nil, fmt.Errorf("tagging init: invalid 'similarity threshold' range %g", cfg.SimilarityThreshold)
+	}
+	if math.IsNaN(cfg.ConfidenceMargin) || math.IsInf(cfg.ConfidenceMargin, 0) ||
+		cfg.ConfidenceMargin < 0 || cfg.ConfidenceMargin > 2 {
+		return nil, fmt.Errorf("tagging init: invalid 'confidence margin' %g", cfg.ConfidenceMargin)
+	}
+
 	return &Tagging{
 		vectorizer: vectorizer,
 		repo:       repo,
 		cfg:        cfg,
-	}
+	}, nil
 }
 
 // DefineTag определяет наиболее подходящую категорию по текстовому описанию

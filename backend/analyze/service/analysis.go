@@ -50,13 +50,24 @@ func NewAnalysis(
 	scoring ParamRichnessEvaluator,
 	tagging CategoryDefiner,
 	vectorizer AnalysisVectorizer,
-) *Analysis {
+) (*Analysis, error) {
+	switch {
+	case repo == nil:
+		return nil, fmt.Errorf("analysis init: 'analysis repo' is required")
+	case scoring == nil:
+		return nil, fmt.Errorf("analysis init: 'param richness evaluator' is required")
+	case tagging == nil:
+		return nil, fmt.Errorf("analysis init: 'category definer' is required")
+	case vectorizer == nil:
+		return nil, fmt.Errorf("analysis init: 'analysis vectorizer' is required")
+	}
+
 	return &Analysis{
 		repo:       repo,
 		scoring:    scoring,
 		tagging:    tagging,
 		vectorizer: vectorizer,
-	}
+	}, nil
 }
 
 func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {

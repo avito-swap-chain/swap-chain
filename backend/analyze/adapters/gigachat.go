@@ -70,7 +70,35 @@ type GigaChat struct {
 	client      *http.Client
 }
 
-func NewGigaChat(cfg GigaChatConfig) *GigaChat {
+func NewGigaChat(cfg GigaChatConfig) (*GigaChat, error) {
+	switch {
+	case strings.TrimSpace(cfg.AuthKey) == "":
+		return nil, fmt.Errorf("gigachat init: 'auth key' is required")
+	case strings.TrimSpace(cfg.Scope) == "":
+		return nil, fmt.Errorf("gigachat init: 'scope' is required")
+	case strings.TrimSpace(cfg.ChatModel) == "":
+		return nil, fmt.Errorf("gigachat init: 'chat model' is required")
+	case strings.TrimSpace(cfg.EmbeddingsModel) == "":
+		return nil, fmt.Errorf("gigachat init: 'embeddings model' is required")
+	case cfg.Timeout <= 0:
+		return nil, fmt.Errorf("gigachat init: 'timeout' must be positive")
+	}
+
+	urls := []struct {
+		name  string
+		value string
+	}{
+		{name: "oauth URL", value: cfg.OAuthURL},
+		{name: "chat URL", value: cfg.ChatURL},
+		{name: "embeddings URL", value: cfg.EmbeddingsURL},
+		{name: "files URL", value: cfg.FilesURL},
+	}
+	for _, endpoint := range urls {
+		if err := validateHTTPURL(endpoint.name, endpoint.value); err != nil {
+			return nil, fmt.Errorf("gigachat init: %w", err)
+		}
+	}
+
 	return &GigaChat{
 		cfg: cfg,
 		client: &http.Client{
@@ -79,7 +107,7 @@ func NewGigaChat(cfg GigaChatConfig) *GigaChat {
 			},
 			Timeout: cfg.Timeout,
 		},
-	}
+	}, nil
 }
 
 func (g *GigaChat) GetToken(ctx context.Context) (string, error) {

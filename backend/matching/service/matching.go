@@ -40,13 +40,40 @@ func NewMatching(
 	repo MatchingRepo,
 	scorer Scorer,
 	cfg MatchingConfig,
-) *Matching {
+) (*Matching, error) {
+	switch {
+	case logger == nil:
+		return nil, fmt.Errorf("matching init: 'logger' is required")
+	case repo == nil:
+		return nil, fmt.Errorf("matching init: 'matching repo' is required")
+	case scorer == nil:
+		return nil, fmt.Errorf("matching init: 'scorer implementation' is required")
+	}
+
+	if cfg.ChainLen < 2 || cfg.ChainLen > 3 {
+		return nil, fmt.Errorf("matching init: invalid 'max chain len' %d", cfg.ChainLen)
+	}
+	if cfg.SimilarItemsAmount <= 0 || cfg.SimilarItemsAmount > 40 {
+		return nil, fmt.Errorf("matching init: invalid 'similar items amount' range %d", cfg.SimilarItemsAmount)
+	}
+	if math.IsNaN(cfg.ChainRatingThreshold) || math.IsInf(cfg.ChainRatingThreshold, 0) ||
+		cfg.ChainRatingThreshold < 0 || cfg.ChainRatingThreshold > 1 {
+		return nil, fmt.Errorf("matching init: invalid 'chain rating threshold' range %g", cfg.ChainRatingThreshold)
+	}
+	if math.IsNaN(cfg.CompatibilityThreshold) || math.IsInf(cfg.CompatibilityThreshold, 0) ||
+		cfg.CompatibilityThreshold < -1 || cfg.CompatibilityThreshold > 1 {
+		return nil, fmt.Errorf("matching init: invalid 'compatibility threshold' range %g", cfg.CompatibilityThreshold)
+	}
+	if math.IsNaN(cfg.PenaltyFactor) || math.IsInf(cfg.PenaltyFactor, 0) || cfg.PenaltyFactor < 0 {
+		return nil, fmt.Errorf("matching init: invalid 'penalty factor' %g", cfg.PenaltyFactor)
+	}
+
 	return &Matching{
 		logger: logger,
 		repo:   repo,
 		scorer: scorer,
 		cfg:    cfg,
-	}
+	}, nil
 }
 
 func (m *Matching) FindCycles(ctx context.Context, itemID int) ([][]model.Edge, error) {

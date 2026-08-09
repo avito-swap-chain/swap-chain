@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"swap-chain/analyze/adapters"
 	"swap-chain/analyze/model"
 )
@@ -12,10 +13,14 @@ type Scoring struct {
 	enricher adapters.Enricher
 }
 
-func NewScoring(enricher adapters.Enricher) *Scoring {
+func NewScoring(enricher adapters.Enricher) (*Scoring, error) {
+	if enricher == nil {
+		return nil, fmt.Errorf("scoring init: 'enricher' is required")
+	}
+
 	return &Scoring{
 		enricher: enricher,
-	}
+	}, nil
 }
 
 // EvaluateDescription оценивает качество пользовательского описания товара

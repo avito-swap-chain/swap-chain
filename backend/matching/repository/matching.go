@@ -16,8 +16,12 @@ type Matching struct {
 	queries *db.Queries
 }
 
-func NewPostgreSQLMatching(queries *db.Queries) *Matching {
-	return &Matching{queries: queries}
+func NewPostgreSQLMatching(queries *db.Queries) (*Matching, error) {
+	if queries == nil {
+		return nil, fmt.Errorf("postgres matching repository init: 'queries' is required")
+	}
+
+	return &Matching{queries: queries}, nil
 }
 
 func (r *Matching) IsSourceMatchable(ctx context.Context, itemID int) (bool, error) {
