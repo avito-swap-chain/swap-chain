@@ -43,7 +43,6 @@ func TestMatchingFindCyclesReturnsErrorWhenNoCandidatesExist(t *testing.T) {
 	repo := &repoStub{rowsByItem: make(map[int64][]db.FindSimilarItemsRow)}
 	matching := NewMatching(
 		zap.NewNop(),
-		nil,
 		repo,
 		scorerStub{score: 1},
 		MatchingConfig{SimilarItemsAmount: 5, ChainLen: 3},
@@ -75,7 +74,6 @@ func TestMatchingFindCyclesWrapsRepositoryErrorWhenGraphIsEmpty(t *testing.T) {
 	}
 	matching := NewMatching(
 		zap.NewNop(),
-		nil,
 		repo,
 		scorerStub{score: 1},
 		MatchingConfig{SimilarItemsAmount: 5, ChainLen: 3},
@@ -103,7 +101,6 @@ func TestMatchingFindSimilarItemsMapsDatabaseRows(t *testing.T) {
 	}}
 	matching := NewMatching(
 		zap.NewNop(),
-		nil,
 		repo,
 		scorerStub{score: 1},
 		MatchingConfig{SimilarItemsAmount: 3},
@@ -138,7 +135,6 @@ func TestMatchingThreeItemCycleRegression(t *testing.T) {
 	repo := cycleRepo(map[int64]int64{1: 2, 2: 3, 3: 1})
 	matching := NewMatching(
 		zap.NewNop(),
-		nil,
 		repo,
 		scorerStub{score: 1},
 		MatchingConfig{SimilarItemsAmount: 5, ChainLen: 3},
@@ -159,7 +155,6 @@ func TestMatchingTwoItemCycleRegression(t *testing.T) {
 	repo := cycleRepo(map[int64]int64{1: 2, 2: 1})
 	matching := NewMatching(
 		zap.NewNop(),
-		nil,
 		repo,
 		scorerStub{score: 1},
 		MatchingConfig{SimilarItemsAmount: 5, ChainLen: 3},

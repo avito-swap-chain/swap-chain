@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help config build run-backend up down logs migrate-up migrate-down migrate-version lint lint-go test test-go
+.PHONY: help config generate generate-go generate-frontend build run-backend up down logs migrate-up migrate-down migrate-version lint lint-go test test-go typecheck-frontend
 
 ifeq ($(OS),Windows_NT)
 CLEAR_GOROOT := set GOROOT=&&
@@ -13,6 +13,7 @@ help: ## Show available commands
 	@echo Targets:
 	@echo   help            Show available commands
 	@echo   config          Validate Docker Compose configuration
+	@echo   generate        Regenerate Go server and TypeScript API types from OpenAPI
 	@echo   build           Build all backend commands
 	@echo   run-backend     Run backend against the configured database
 	@echo   up              Build and start database, migrations, backend, and Swagger UI
@@ -25,6 +26,15 @@ help: ## Show available commands
 	@echo   lint-go         Run golangci-lint for the backend
 	@echo   test            Run all initialized project tests
 	@echo   test-go         Run backend tests
+	@echo   typecheck-frontend Type-check the generated frontend API client
+
+generate: generate-go generate-frontend ## Regenerate artifacts from api/openapi.yaml
+
+generate-go: ## Regenerate Go strict server and models
+	$(CLEAR_GOROOT) cd backend && go generate ./internal/api
+
+generate-frontend: ## Regenerate TypeScript API types
+	pnpm --dir frontend run generate:api
 
 config: ## Validate and render Docker Compose configuration
 	docker compose config --quiet
@@ -62,11 +72,18 @@ else
 	@$(CLEAR_GOROOT) cd backend && golangci-lint run ./...
 endif
 
-test: test-go ## Run tests for initialized backend and frontend projects
+test: test-go typecheck-frontend ## Run tests for initialized backend and frontend projects
 ifeq ($(wildcard frontend/package.json),)
-	@echo Frontend tests skipped because frontend/package.json is not present
+	@echo Frontend checks skipped because frontend/package.json is not present
 else
-	@cd frontend && npm test -- --run
+	@echo Frontend API client checked
+endif
+
+typecheck-frontend: ## Type-check the generated frontend API client
+ifeq ($(wildcard frontend/package.json),)
+	@echo Frontend typecheck skipped because frontend/package.json is not present
+else
+	@pnpm --dir frontend exec tsc -b
 endif
 
 test-go: ## Run backend tests
