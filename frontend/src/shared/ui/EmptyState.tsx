@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { cx } from '../lib'
+import { asset, cx } from '../lib'
 
 /**
  * Пустой экран Авито устроен как разворот: слева заголовок, объяснение и одно действие,
@@ -49,7 +49,7 @@ export function EmptyState({
 
       {picture && (
         <img
-          src={picture.src}
+          src={asset(picture.src)}
           alt=""
           width={picture.width}
           height={picture.height}

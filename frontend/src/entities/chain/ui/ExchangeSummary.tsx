@@ -1,4 +1,4 @@
-import { cx, dative, genitive } from '@/shared/lib'
+import { asset, cx, dative, genitive } from '@/shared/lib'
 import { IconBox } from '@/shared/ui'
 import type { Neighbours } from '../lib/participants'
 import type { ChainParticipant } from '../model/types'
@@ -99,5 +99,7 @@ function Thumb({ item, className }: { item: ItemRef; className: string }) {
     )
   }
 
-  return <img src={item.photoUrl} alt="" loading="lazy" className={cx('object-cover', box)} />
+  return (
+    <img src={asset(item.photoUrl)} alt="" loading="lazy" className={cx('object-cover', box)} />
+  )
 }

@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
+import { asset } from '@/shared/lib'
 
 /**
  * Демо-инструмент: посмотреть один и тот же обмен глазами разных участников —
@@ -38,7 +39,7 @@ export function SwitchPersona() {
       {/* Аватар аккаунта — крайний правый элемент шапки, как у Авито (40px, круглый).
           Он же показывает, за кого сейчас смотрят: имя в поле дублируется лицом. */}
       <img
-        src={persona.avatarUrl}
+        src={asset(persona.avatarUrl)}
         alt=""
         width={40}
         height={40}

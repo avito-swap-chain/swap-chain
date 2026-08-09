@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { cx } from '@/shared/lib'
+import { asset, cx } from '@/shared/lib'
 import { Card, IconImage } from '@/shared/ui'
 import { CONDITION_LABEL } from '../model/dictionaries'
 import type { Item } from '../model/types'
@@ -24,7 +24,7 @@ export function ItemCard({ item, action }: ItemCardProps) {
     >
       {item.photoUrl ? (
         <img
-          src={item.photoUrl}
+          src={asset(item.photoUrl)}
           alt=""
           className="size-13 shrink-0 rounded-xl object-cover"
           loading="lazy"

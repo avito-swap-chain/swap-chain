@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getThread, markThreadRead, MessageList, messageKeys } from '@/entities/message'
 import { MessageComposer } from '@/features/send-message'
 import { IconBox, Notice, Screen, ScreenHeader } from '@/shared/ui'
+import { asset } from '@/shared/lib'
 
 /**
  * Экран переписки. Шапка держит контекст разговора — с кем и о какой вещи, — как в
@@ -32,7 +33,7 @@ export function ThreadPage() {
       <ScreenHeader title={thread?.peerName ?? 'Переписка'} onBack={() => navigate('/messages')}>
         {thread?.itemPhotoUrl ? (
           <img
-            src={thread.itemPhotoUrl}
+            src={asset(thread.itemPhotoUrl)}
             alt=""
             className="size-9 rounded-chip object-cover"
             width={36}

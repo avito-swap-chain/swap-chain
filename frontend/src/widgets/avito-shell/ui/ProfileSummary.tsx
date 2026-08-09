@@ -1,5 +1,5 @@
 import { usePersonaStore, PERSONAS } from '@/shared/model/persona'
-import { cx } from '@/shared/lib'
+import { asset, cx } from '@/shared/lib'
 import { IconStar } from '@/shared/ui'
 
 const STARS = [1, 2, 3, 4, 5]
@@ -33,7 +33,7 @@ export function ProfileSummary({ className }: { className?: string }) {
   return (
     <div className={cx('border-b border-line pb-4', className)}>
       <img
-        src={persona.avatarUrl}
+        src={asset(persona.avatarUrl)}
         alt=""
         className="size-[140px] rounded-full object-cover"
         width={140}
