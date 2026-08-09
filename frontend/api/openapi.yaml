@@ -1,0 +1,959 @@
+openapi: 3.0.3
+info:
+  title: Swap Chain API
+  version: 0.4.0
+  description: Shared REST and realtime contract for the swap-chain MVP.
+
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: system
+  - name: sessions
+  - name: users
+  - name: items
+  - name: media
+  - name: matching
+  - name: chains
+  - name: events
+
+paths:
+  /health:
+    get:
+      operationId: getLegacyHealth
+      deprecated: true
+      tags: [system]
+      summary: Check service and database health using the legacy path
+      responses:
+        "200":
+          description: Service and database are available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/health:
+    get:
+      operationId: getHealth
+      tags: [system]
+      summary: Check service and database health
+      responses:
+        "200":
+          description: Service and database are available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/session:
+    get:
+      operationId: getSession
+      tags: [sessions]
+      summary: Get the current demo session
+      responses:
+        "200":
+          description: Current demo session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: login
+      tags: [sessions]
+      summary: Log in by phone and establish an opaque cookie session
+      description: Demo-only identification without SMS or password verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session established
+          headers:
+            Set-Cookie:
+              description: Opaque HttpOnly demo-session cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      operationId: logout
+      tags: [sessions]
+      summary: Revoke the current session
+      responses:
+        "204":
+          description: Session revoked
+          headers:
+            Set-Cookie:
+              description: Expired opaque session cookie
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/users:
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Register a demo user and establish a session
+      description: Demo-only registration without phone verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User registered and session established
+          headers:
+            Set-Cookie:
+              description: Opaque HttpOnly session cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/users/{userId}/items:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: listUserItems
+      tags: [users, items]
+      summary: List exchange items owned by a user
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User exchange items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/items:
+    get:
+      operationId: listItems
+      tags: [items]
+      summary: List the current user's exchange items
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Exchange items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createItem
+      tags: [items]
+      summary: Create an exchange item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateItemRequest"
+      responses:
+        "201":
+          description: Exchange item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/media:
+    post:
+      operationId: uploadMedia
+      tags: [media]
+      summary: Upload an image for a future exchange item
+      description: Stores one image without recognition. The returned API-relative URL can be used in an item's imageUrls.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Image stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaUpload"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          description: Image exceeds the configured upload limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Unsupported image media type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/media/{objectKey}:
+    parameters:
+      - name: objectKey
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(jpg|png|webp)$"
+    get:
+      operationId: getMedia
+      tags: [media]
+      summary: Read a stored image through the backend
+      responses:
+        "200":
+          description: Stored image bytes
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/items/{itemId}:
+    parameters:
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: getItem
+      tags: [items]
+      summary: Get an exchange item
+      responses:
+        "200":
+          description: Exchange item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/items/{itemId}/matching:
+    parameters:
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: findMatchingCycles
+      tags: [matching]
+      summary: Find exchange cycles that contain the requested item
+      responses:
+        "200":
+          description: Matching completed; cycles can be empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/chains:
+    post:
+      operationId: createChain
+      tags: [chains]
+      summary: Create a pending exchange chain from a matching cycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChainRequest"
+      responses:
+        "201":
+          description: Pending exchange chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chain"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      operationId: listChains
+      tags: [chains]
+      summary: List chains involving the current user
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ChainStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Chains involving the current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChainList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/chains/{chainId}:
+    parameters:
+      - name: chainId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: getChain
+      tags: [chains]
+      summary: Get a chain involving the current user
+      responses:
+        "200":
+          description: Exchange chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chain"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/chains/{chainId}/decision:
+    parameters:
+      - name: chainId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: submitChainDecision
+      tags: [chains]
+      summary: Approve or decline participation in a chain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitChainDecisionRequest"
+      responses:
+        "200":
+          description: Updated chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Chain"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/events:
+    get:
+      operationId: subscribeEvents
+      tags: [events]
+      summary: Subscribe to server-sent events
+      responses:
+        "200":
+          description: Server-sent event stream. Each data field contains a PipelineEvent JSON object.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+            Connection:
+              schema:
+                type: string
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  responses:
+    BadRequest:
+      description: Request cannot be parsed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationError:
+      description: Request violates validation rules
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: A demo session cookie is required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The current user cannot access this resource
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: The command conflicts with the current resource state
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotImplemented:
+      description: Operation is defined but its business service is not connected yet
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ServiceUnavailable:
+      description: A required backend dependency is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, database, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        database:
+          type: string
+          enum: [up]
+        timestamp:
+          type: string
+          format: date-time
+
+    CreateUserRequest:
+      type: object
+      required: [username, phone]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 100
+        phone:
+          type: string
+          minLength: 10
+          maxLength: 32
+
+    LoginRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          minLength: 10
+          maxLength: 32
+
+    CurrentUser:
+      type: object
+      required: [id, username, phone, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        phone:
+          type: string
+          description: Canonical E.164-like phone used for demo login
+        createdAt:
+          type: string
+          format: date-time
+
+    Session:
+      type: object
+      required: [user, expiresAt]
+      properties:
+        user:
+          $ref: "#/components/schemas/CurrentUser"
+        expiresAt:
+          type: string
+          format: date-time
+
+    CreateItemRequest:
+      type: object
+      required: [offerTitle, offerDescription, wantDescription]
+      properties:
+        offerTitle:
+          type: string
+          minLength: 1
+          maxLength: 255
+        offerDescription:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        wantDescription:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        imageUrls:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uri-reference
+
+    MediaUpload:
+      type: object
+      required: [url, contentType, size]
+      properties:
+        url:
+          type: string
+          format: uri-reference
+        contentType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+        size:
+          type: integer
+          format: int64
+          minimum: 1
+
+    Item:
+      type: object
+      required:
+        - id
+        - userId
+        - offerTitle
+        - offerDescription
+        - wantDescription
+        - imageUrls
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        offerTitle:
+          type: string
+        offerDescription:
+          type: string
+        wantDescription:
+          type: string
+        imageUrls:
+          type: array
+          items:
+            type: string
+            format: uri-reference
+        status:
+          $ref: "#/components/schemas/ItemStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ItemList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+        nextCursor:
+          type: string
+          nullable: true
+
+    ItemStatus:
+      type: string
+      enum: [ANALYZING, MATCHING, LOCKED]
+
+    ChainStatus:
+      type: string
+      enum: [PENDING, ACCEPTED, REJECTED]
+
+    ParticipantStatus:
+      type: string
+      enum: [WAITING, APPROVED, DECLINED]
+
+    ChainDecision:
+      type: string
+      enum: [APPROVED, DECLINED]
+
+    UserSummary:
+      type: object
+      required: [id, username]
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+
+    UserProfile:
+      type: object
+      required: [id, username, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ChainParticipant:
+      type: object
+      required: [user, giveItem, receiveItem, status]
+      properties:
+        user:
+          $ref: "#/components/schemas/UserSummary"
+        giveItem:
+          $ref: "#/components/schemas/Item"
+        receiveItem:
+          $ref: "#/components/schemas/Item"
+        status:
+          $ref: "#/components/schemas/ParticipantStatus"
+
+    Chain:
+      type: object
+      required: [id, status, participants, createdAt, expiresAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          $ref: "#/components/schemas/ChainStatus"
+        participants:
+          type: array
+          minItems: 2
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ChainParticipant"
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    ChainList:
+      type: object
+      required: [chains]
+      properties:
+        chains:
+          type: array
+          items:
+            $ref: "#/components/schemas/Chain"
+        nextCursor:
+          type: string
+          nullable: true
+
+    MatchingResponse:
+      type: object
+      required: [itemId, cycles]
+      properties:
+        itemId:
+          type: integer
+          format: int64
+          minimum: 1
+        cycles:
+          type: array
+          items:
+            $ref: "#/components/schemas/MatchingCycle"
+
+    MatchingCycle:
+      type: object
+      required: [edges]
+      properties:
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/MatchingEdge"
+
+    MatchingEdge:
+      type: object
+      required: [sourceItemId, targetItemId, score]
+      properties:
+        sourceItemId:
+          type: integer
+          format: int64
+          minimum: 1
+        targetItemId:
+          type: integer
+          format: int64
+          minimum: 1
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    ChainEdge:
+      type: object
+      required: [sourceItemId, targetItemId]
+      properties:
+        sourceItemId:
+          type: integer
+          format: int64
+          minimum: 1
+        targetItemId:
+          type: integer
+          format: int64
+          minimum: 1
+
+    CreateChainRequest:
+      type: object
+      required: [edges]
+      properties:
+        edges:
+          type: array
+          minItems: 2
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ChainEdge"
+
+    SubmitChainDecisionRequest:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          $ref: "#/components/schemas/ChainDecision"
+
+    PipelineEvent:
+      type: object
+      required: [id, type, occurredAt]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          example: item.status.updated
+        entityId:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        data:
+          type: object
+          additionalProperties: true
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+        requestId:
+          type: string
+        details:
+          type: object
+          additionalProperties: true

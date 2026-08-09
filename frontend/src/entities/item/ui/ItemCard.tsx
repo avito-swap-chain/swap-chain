@@ -37,9 +37,15 @@ export function ItemCard({ item, action }: ItemCardProps) {
 
       <div className="min-w-0 flex-1">
         <b className="block truncate text-[14.5px] font-bold">{item.title}</b>
-        <span className="block truncate text-[12.5px] text-ink-2">
-          {item.category} · {CONDITION_LABEL[item.condition]}
-        </span>
+        {/* Подпись собирается из того, что известно: по данным бэкенда категории и состояния
+            нет, и строка «·» без частей выглядела бы поломкой. */}
+        {(item.category || item.condition) && (
+          <span className="block truncate text-[12.5px] text-ink-2">
+            {[item.category, item.condition && CONDITION_LABEL[item.condition]]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        )}
       </div>
 
       <div

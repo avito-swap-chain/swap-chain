@@ -6,6 +6,8 @@ export interface Persona {
   name: string
   rating: number
   avatarUrl: string
+  /** Сколько отзывов набрано: рядом с рейтингом в кабинете Авито всегда стоит их число. */
+  reviews: number
   /** Что персона искала на Авито — запросы, а не объявления. */
   searches: string[]
   /** Названия объявлений, сохранённых в избранное. */
@@ -25,6 +27,7 @@ export const PERSONAS: Persona[] = [
   {
     id: 'u1',
     name: 'Даша',
+    reviews: 24,
     rating: 4.8,
     avatarUrl: '/mock/avatars/u32.jpg',
     searches: ['умные часы', 'механическая клавиатура', 'фитнес-браслет'],
@@ -33,6 +36,7 @@ export const PERSONAS: Persona[] = [
   {
     id: 'u2',
     name: 'Марк',
+    reviews: 41,
     rating: 4.9,
     avatarUrl: '/mock/avatars/u12.jpg',
     searches: ['монитор', 'горный велосипед', 'графический планшет'],
@@ -41,6 +45,7 @@ export const PERSONAS: Persona[] = [
   {
     id: 'u3',
     name: 'Лена',
+    reviews: 17,
     rating: 4.7,
     avatarUrl: '/mock/avatars/u47.jpg',
     searches: ['кофеварка', 'умные часы', 'горный велосипед', 'виниловый проигрыватель'],

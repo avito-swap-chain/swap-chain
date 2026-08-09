@@ -25,7 +25,7 @@ export function ExchangePage() {
   return (
     <Screen width="wide">
       <div className="flex flex-col gap-3.5 p-4">
-        <h1 className="text-[19px] font-bold">Обмен</h1>
+        <h1 className="text-[22px] leading-7 font-bold lg:text-[32px] lg:leading-10">Обмен</h1>
 
         {/* Баннер над вкладками: зовёт в цепочку независимо от того, что сейчас открыто. */}
         <PendingDealBanner />
@@ -47,8 +47,9 @@ export function ExchangePage() {
               )}
             >
               {t.label}
+              {/* Полоса активной вкладки у Авито чёрная — в их системе азур означает ссылку. */}
               {tab === t.key && (
-                <span className="absolute inset-x-0 -bottom-px h-[2.5px] rounded bg-brand" />
+                <span className="absolute inset-x-0 -bottom-px h-[2.5px] rounded bg-ink" />
               )}
             </button>
           ))}

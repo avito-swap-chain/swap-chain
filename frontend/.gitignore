@@ -30,3 +30,7 @@ screens/
 docs/demo-source/node_modules
 docs/demo-source/out
 docs/demo-source/public
+
+# локальные переменные окружения
+.env
+.env.local

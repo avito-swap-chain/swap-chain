@@ -74,6 +74,48 @@ export const IconImage = (props: IconProps) => (
   </Icon>
 )
 
+/** Обмен: две встречные стрелки — цикл, а не отправка в одну сторону. */
+export const IconSwap = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5" />
+  </Icon>
+)
+
+/** Звезда рейтинга — единственная залитая иконка: у Авито рейтинг набран плашками, а не контуром. */
+export const IconStar = ({ size = 16, className }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M12 3.5l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.9l6.1-.8z" />
+  </svg>
+)
+
+/* Иконки шапки Авито: избранное, уведомления, сообщения. В демо они декоративны —
+ * стоят там же, где у Авито, чтобы шапка читалась как настоящий кабинет. */
+export const IconHeart = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <path d="M12 20s-7-4.4-7-9a4 4 0 017-2.6A4 4 0 0119 11c0 4.6-7 9-7 9z" />
+  </Icon>
+)
+
+export const IconBell = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <path d="M18 15V10a6 6 0 10-12 0v5l-1.5 3h15z" />
+    <path d="M10 21h4" />
+  </Icon>
+)
+
+export const IconChat = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <path d="M20 12a7 7 0 01-9.9 6.4L4 20l1.6-5.5A7 7 0 1120 12z" />
+  </Icon>
+)
+
 /** Плейсхолдер вещи, пока нет фото. */
 export const IconBox = (props: IconProps) => (
   <Icon strokeWidth={1.5} {...props}>

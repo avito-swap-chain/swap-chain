@@ -1,4 +1,9 @@
+import { unwrap } from '@/shared/api/fetcher'
+import { createItem as createItemRequest, listItems } from '@/shared/api/generated/endpoints'
+import type { Item as ApiItem, ItemList } from '@/shared/api/generated/model'
+import { isBackendConnected } from '@/shared/config/backend'
 import { currentPersonaId, PERSONAS } from '@/shared/model/persona'
+import { mapItem } from './mapItem'
 import type { Item, Wish } from '../model/types'
 
 /** Ключи кэша TanStack Query для вещей. */
@@ -160,6 +165,11 @@ function usableWishes(wish: Wish[]): Wish[] {
 }
 
 export async function getMyItems(): Promise<Item[]> {
+  if (isBackendConnected) {
+    const { items } = unwrap<ItemList>(await listItems())
+    return items.map(mapItem)
+  }
+
   await delay(300)
   return itemsByOwner[currentPersonaId()] ?? []
 }
@@ -178,10 +188,27 @@ export function itemsOfOthers(): Item[] {
 
 /** Новая вещь сразу уходит в подбор — сервис ищет для неё цепочку. */
 export async function createItem(draft: ItemDraft): Promise<Item> {
+  const wishes = usableWishes(draft.wish)
+  if (wishes.length === 0) throw new Error('Не указано, что хочется взамен')
+
+  if (isBackendConnected) {
+    // Контракт принимает одну строку желания — склеиваем варианты через «или»: так бэк
+    // хотя бы увидит все, пока не примет список (см. shared/config/backend).
+    const created = unwrap<ApiItem>(
+      await createItemRequest({
+        offerTitle: draft.title,
+        offerDescription:
+          [draft.category, draft.condition].filter(Boolean).join(', ') || draft.title,
+        wantDescription: wishes.map((wish) => wish.description).join(' или '),
+        imageUrls: draft.photoUrl ? [draft.photoUrl] : [],
+      }),
+    )
+    return mapItem(created)
+  }
+
   await delay(400)
 
-  const wish = usableWishes(draft.wish)
-  if (wish.length === 0) throw new Error('Не указано, что хочется взамен')
+  const wish = wishes
 
   const item: Item = { ...draft, wish, id: String(nextId++), status: 'searching' }
   const ownerId = currentPersonaId()

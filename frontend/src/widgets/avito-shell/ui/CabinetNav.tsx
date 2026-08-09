@@ -5,15 +5,22 @@ import { cx } from '@/shared/lib'
 import type { Section } from '../lib/navigation'
 
 /** Разделы кабинета, которых нет в MVP: показываем неактивными — ради правдоподобия контекста. */
-const DECOR = ['Сообщения', 'Кошелёк']
+const DECOR = ['Кошелёк']
 
 const ITEMS_URL = '/'
 const EXCHANGE_URL = '/exchange'
+const MESSAGES_URL = '/messages'
+const NOTIFICATIONS_URL = '/notifications'
 
 // Одна разметка на оба вида: на узких окнах — чипы в горизонтальной ленте,
 // от `lg` — строки вертикального меню слева, как в кабинете Авито.
 const itemClass =
-  'shrink-0 rounded-chip px-2.5 py-1.5 text-[13px] font-semibold outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand lg:w-full lg:rounded-btn lg:px-3 lg:py-2.5 lg:text-[14px]'
+  'shrink-0 rounded-chip px-2.5 py-1.5 text-[13px] font-semibold outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand lg:w-full lg:rounded-none lg:px-0 lg:py-[7px] lg:text-[15px]'
+
+/* В кабинете Авито пункты меню — обычные голубые ссылки, а текущий раздел набран
+ * чёрным жирным без подложки. Заливка остаётся только чипам на узких экранах. */
+const restClass = 'text-ink-2 hover:bg-line-2 lg:bg-transparent lg:font-normal lg:text-brand'
+const currentClass = 'bg-line-2 text-ink lg:bg-transparent lg:font-bold lg:text-ink'
 
 /**
  * Меню личного кабинета — единственный верхний уровень навигации.
@@ -34,14 +41,14 @@ export function CabinetNav({ section, className }: { section: Section; className
     <nav
       aria-label="Личный кабинет"
       className={cx(
-        'no-scrollbar flex gap-1 overflow-x-auto px-3 py-1.5 max-lg:border-b max-lg:border-line-2 sm:py-2 lg:sticky lg:top-6 lg:w-56 lg:shrink-0 lg:flex-col lg:gap-0.5 lg:self-start lg:overflow-visible lg:rounded-card lg:border lg:border-line lg:bg-card lg:p-2 lg:shadow-card',
+        'no-scrollbar flex gap-1 overflow-x-auto px-3 py-1.5 max-lg:border-b max-lg:border-line-2 sm:py-2 lg:flex-col lg:gap-0 lg:overflow-visible lg:px-0 lg:pt-4 lg:pb-0',
         className,
       )}
     >
       <Link
         to={ITEMS_URL}
         aria-current={pathname === ITEMS_URL ? 'page' : undefined}
-        className={cx(itemClass, isExchange ? 'text-ink-2 hover:bg-line-2' : 'bg-line-2 text-ink')}
+        className={cx(itemClass, isExchange ? restClass : currentClass)}
       >
         Мои объявления
       </Link>
@@ -52,18 +59,35 @@ export function CabinetNav({ section, className }: { section: Section; className
         className={cx(
           itemClass,
           'flex items-center gap-1.5',
-          isExchange ? 'bg-line-2 text-ink' : 'text-ink-2 hover:bg-line-2',
+          isExchange ? currentClass : restClass,
         )}
       >
         Обмен
         {waiting > 0 && (
           <span
             title="Ждут вашего действия"
-            className="grid min-w-[18px] place-items-center rounded-full bg-brand px-1 text-[10.5px] leading-[18px] font-bold text-on-brand lg:ml-auto"
+            /* Счётчики у Авито красные — азур в их системе означает ссылку, а не тревогу. */
+            className="grid min-w-[18px] place-items-center rounded-full bg-accent-red px-1 text-[10.5px] leading-[18px] font-bold text-white lg:ml-auto"
           >
             {waiting}
           </span>
         )}
+      </Link>
+
+      <Link
+        to={MESSAGES_URL}
+        aria-current={pathname === MESSAGES_URL ? 'page' : undefined}
+        className={cx(itemClass, section === 'messages' ? currentClass : restClass)}
+      >
+        Сообщения
+      </Link>
+
+      <Link
+        to={NOTIFICATIONS_URL}
+        aria-current={pathname === NOTIFICATIONS_URL ? 'page' : undefined}
+        className={cx(itemClass, section === 'notifications' ? currentClass : restClass)}
+      >
+        Уведомления
       </Link>
 
       {DECOR.map((label) => (
