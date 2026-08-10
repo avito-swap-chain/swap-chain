@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help config generate generate-go generate-frontend build run-backend up down logs migrate-up migrate-down migrate-version lint lint-go test test-go typecheck-frontend
+.PHONY: help config generate generate-go generate-frontend build run-backend up down logs migrate-up migrate-down migrate-version lint lint-go test test-go test-integration typecheck-frontend
 
 ifeq ($(OS),Windows_NT)
 CLEAR_GOROOT := set GOROOT=&&
@@ -16,7 +16,7 @@ help: ## Show available commands
 	@echo   generate        Regenerate Go server and TypeScript API types from OpenAPI
 	@echo   build           Build all backend commands
 	@echo   run-backend     Run backend against the configured database
-	@echo   up              Build and start database, migrations, backend, and Swagger UI
+	@echo   up              Build services and wait until the local environment is ready
 	@echo   down            Stop services without deleting database data
 	@echo   logs            Follow service logs
 	@echo   migrate-up      Apply all pending database migrations
@@ -26,6 +26,7 @@ help: ## Show available commands
 	@echo   lint-go         Run golangci-lint for the backend
 	@echo   test            Run all initialized project tests
 	@echo   test-go         Run backend tests
+	@echo   test-integration Run isolated PostgreSQL migration and exchange-flow tests
 	@echo   typecheck-frontend Type-check the generated frontend API client
 
 generate: generate-go generate-frontend ## Regenerate artifacts from api/openapi.yaml
@@ -46,8 +47,8 @@ build: ## Build all backend commands
 run-backend: ## Run backend against the configured database
 	$(CLEAR_GOROOT) cd backend && go run ./cmd/api
 
-up: ## Start the complete local environment
-	docker compose up -d --build
+up: ## Start the complete local environment and wait until it is ready
+	docker compose up -d --build --wait
 
 down: ## Stop local services without deleting database data
 	docker compose down
@@ -93,3 +94,6 @@ ifeq ($(wildcard backend/go.mod),)
 else
 	@$(CLEAR_GOROOT) cd backend && go test ./...
 endif
+
+test-integration: ## Run isolated PostgreSQL migration and exchange-flow tests (requires TEST_DATABASE_URL)
+	@$(CLEAR_GOROOT) cd backend && go test -count=1 -v ./internal/integration
