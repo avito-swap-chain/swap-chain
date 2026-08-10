@@ -1,5 +1,5 @@
 import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from 'remotion'
-import { SURFACE } from './Demo'
+import { SURFACE } from './surface'
 
 const BRAND = '#00aaff'
 const INK = '#0a0a0a'

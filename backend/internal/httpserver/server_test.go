@@ -232,17 +232,15 @@ func TestChatContractUsesSessionActorAndMapsLifecycle(t *testing.T) {
 
 	participant := newSessionClient(t, server.URL, 1)
 	created := postJSON(t, participant, server.URL+"/api/v1/chains/42/chat/2/messages", validChatPayload)
+	defer closeBody(t, created.Body)
 	if created.StatusCode != http.StatusCreated {
 		body := readBody(t, created.Body)
-		closeBody(t, created.Body)
 		t.Fatalf("send status = %d, want %d; body=%s", created.StatusCode, http.StatusCreated, body)
 	}
 	var sent api.ChatMessage
 	if err := json.NewDecoder(created.Body).Decode(&sent); err != nil {
-		closeBody(t, created.Body)
 		t.Fatalf("decode sent message: %v", err)
 	}
-	closeBody(t, created.Body)
 	if sent.Sender.Id != 1 || sent.Recipient.Id != 2 || sent.Text != "Привет участникам!" {
 		t.Fatalf("sent message = %+v", sent)
 	}
@@ -257,57 +255,51 @@ func TestChatContractUsesSessionActorAndMapsLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list messages: %v", err)
 	}
+	defer closeBody(t, listed.Body)
 	if listed.StatusCode != http.StatusOK {
 		body := readBody(t, listed.Body)
-		closeBody(t, listed.Body)
 		t.Fatalf("list status = %d, want %d; body=%s", listed.StatusCode, http.StatusOK, body)
 	}
 	var messages api.ChatMessageList
 	if err := json.NewDecoder(listed.Body).Decode(&messages); err != nil {
-		closeBody(t, listed.Body)
 		t.Fatalf("decode messages: %v", err)
 	}
-	closeBody(t, listed.Body)
 	if len(messages.Messages) != 1 || messages.NextAfterId == nil || *messages.NextAfterId != sent.Id {
 		t.Fatalf("messages = %+v", messages)
 	}
 
 	counterpart := newSessionClient(t, server.URL, 2)
 	received := postJSON(t, counterpart, server.URL+"/api/v1/chains/42/chat/1/messages", validChatPayload)
+	defer closeBody(t, received.Body)
 	if received.StatusCode != http.StatusCreated {
 		body := readBody(t, received.Body)
-		closeBody(t, received.Body)
 		t.Fatalf("counterpart send status = %d, want %d; body=%s", received.StatusCode, http.StatusCreated, body)
 	}
 	var incoming api.ChatMessage
 	if err := json.NewDecoder(received.Body).Decode(&incoming); err != nil {
-		closeBody(t, received.Body)
 		t.Fatalf("decode counterpart message: %v", err)
 	}
-	closeBody(t, received.Body)
 
 	threadsResponse, err := participant.Get(server.URL + "/api/v1/chat/threads")
 	if err != nil {
 		t.Fatalf("list chat threads: %v", err)
 	}
+	defer closeBody(t, threadsResponse.Body)
 	var threads api.ChatThreadList
 	if err := json.NewDecoder(threadsResponse.Body).Decode(&threads); err != nil {
-		closeBody(t, threadsResponse.Body)
 		t.Fatalf("decode chat threads: %v", err)
 	}
-	closeBody(t, threadsResponse.Body)
 	if threadsResponse.StatusCode != http.StatusOK || len(threads.Threads) != 1 || threads.Threads[0].Counterpart.Id != 2 ||
 		threads.Threads[0].ReceiveItem == nil || threads.Threads[0].ReceiveItem.Id != 202 || threads.TotalUnreadCount != 1 {
 		t.Fatalf("threads status=%d body=%+v", threadsResponse.StatusCode, threads)
 	}
 
 	marked := postJSON(t, participant, server.URL+"/api/v1/chains/42/chat/2/read", fmt.Sprintf(`{"lastReadMessageId":%d}`, incoming.Id))
+	defer closeBody(t, marked.Body)
 	var readState api.ChatReadState
 	if err := json.NewDecoder(marked.Body).Decode(&readState); err != nil {
-		closeBody(t, marked.Body)
 		t.Fatalf("decode read state: %v", err)
 	}
-	closeBody(t, marked.Body)
 	if marked.StatusCode != http.StatusOK || readState.UnreadCount != 0 || readState.LastReadMessageId != incoming.Id {
 		t.Fatalf("read state status=%d body=%+v", marked.StatusCode, readState)
 	}
@@ -355,17 +347,15 @@ func TestAdminDeliveryContractEnforcesRoleAndMapsTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list as admin: %v", err)
 	}
+	defer closeBody(t, listed.Body)
 	if listed.StatusCode != http.StatusOK {
 		body := readBody(t, listed.Body)
-		closeBody(t, listed.Body)
 		t.Fatalf("admin list status = %d, want %d; body=%s", listed.StatusCode, http.StatusOK, body)
 	}
 	var list api.AdminDeliveryList
 	if err := json.NewDecoder(listed.Body).Decode(&list); err != nil {
-		closeBody(t, listed.Body)
 		t.Fatalf("decode admin list: %v", err)
 	}
-	closeBody(t, listed.Body)
 	if len(list.Deliveries) != 1 || list.Deliveries[0].Status != api.AdminDeliveryStatusAWAITINGPVZ {
 		t.Fatalf("admin deliveries = %#v", list.Deliveries)
 	}
@@ -401,17 +391,15 @@ func TestChainReceiptContractUsesSessionRecipient(t *testing.T) {
 
 	recipient := newSessionClient(t, server.URL, 2)
 	received := postJSON(t, recipient, server.URL+"/api/v1/chains/12/receipt", "")
+	defer closeBody(t, received.Body)
 	if received.StatusCode != http.StatusOK {
 		body := readBody(t, received.Body)
-		closeBody(t, received.Body)
 		t.Fatalf("receipt status = %d, want %d; body=%s", received.StatusCode, http.StatusOK, body)
 	}
 	var receipt api.ChainReceipt
 	if err := json.NewDecoder(received.Body).Decode(&receipt); err != nil {
-		closeBody(t, received.Body)
 		t.Fatalf("decode receipt: %v", err)
 	}
-	closeBody(t, received.Body)
 	if receipt.Delivery.Status != api.AdminDeliveryStatusRECEIVED || receipt.ChainStatus != api.COMPLETED {
 		t.Fatalf("receipt = %+v", receipt)
 	}
@@ -1081,8 +1069,8 @@ func (s *testChatService) ListThreads(_ context.Context, actorID int64) ([]chatm
 			continue
 		}
 		if thread.LastMessage == nil || message.ID > thread.LastMessage.ID {
-			copy := message
-			thread.LastMessage = &copy
+			messageCopy := message
+			thread.LastMessage = &messageCopy
 		}
 		if message.Sender.ID == counterpartID && message.ID > watermark {
 			thread.UnreadCount++

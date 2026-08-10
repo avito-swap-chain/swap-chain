@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -21,7 +22,7 @@ func main() {
 	}
 }
 
-func run(arguments []string) error {
+func run(arguments []string) (returnErr error) {
 	if len(arguments) > 0 && arguments[0] == "--help" {
 		fmt.Println("usage: demo-seed")
 		fmt.Println("  Inserts demo users and items with guaranteed 3-person exchange cycle.")
@@ -40,7 +41,9 @@ func run(arguments []string) error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		returnErr = errors.Join(returnErr, db.Close())
+	}()
 
 	users := []userSeed{
 		{username: "Алиса", phone: "+79001000001", role: "USER"},

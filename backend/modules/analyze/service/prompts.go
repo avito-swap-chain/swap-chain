@@ -21,12 +21,6 @@ Schema:
 
 Input text: "%s"`
 
-const paramRichnessPromptTemplate = `Evaluate how informative this marketplace item description is.
-Return ONLY valid JSON with a number from 0 to 1:
-{"param_richness": 0.0}
-
-Description: %q`
-
 func BuildEnrichmentPrompt(input string) string {
 	return fmt.Sprintf(enrichmentPromptTemplate, input)
 }

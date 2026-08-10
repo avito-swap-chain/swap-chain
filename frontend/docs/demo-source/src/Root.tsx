@@ -1,9 +1,6 @@
-import { Composition, staticFile } from 'remotion'
+import { Composition } from 'remotion'
 import { Demo } from './Demo'
 import { totalFrames } from './scenes'
-
-/** Подложка сгенерирована скриптом music.py под длительность ролика. */
-export const MUSIC = staticFile('music.wav')
 
 const FPS = 30
 

@@ -247,15 +247,16 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	wantDescription := current.WantDescription
 	status := current.Status
 	matchingChanged := false
-	if input.Withdraw {
+	switch {
+	case input.Withdraw:
 		wantDescription = ""
 		status = "WITHDRAWN"
 		matchingChanged = current.Status != "WITHDRAWN"
-	} else if input.WantDescription != nil {
+	case input.WantDescription != nil:
 		wantDescription = *input.WantDescription
 		status = "ANALYZING"
 		matchingChanged = true
-	} else if input.OfferDescription != nil && current.Status != "WITHDRAWN" {
+	case input.OfferDescription != nil && current.Status != "WITHDRAWN":
 		status = "ANALYZING"
 		matchingChanged = true
 	}

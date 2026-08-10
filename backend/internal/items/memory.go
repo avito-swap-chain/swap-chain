@@ -79,13 +79,14 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 	if input.OfferDescription != nil {
 		item.OfferDescription = *input.OfferDescription
 	}
-	if input.Withdraw {
+	switch {
+	case input.Withdraw:
 		item.WantDescription = ""
 		item.Status = "WITHDRAWN"
-	} else if input.WantDescription != nil {
+	case input.WantDescription != nil:
 		item.WantDescription = *input.WantDescription
 		item.Status = "ANALYZING"
-	} else if input.OfferDescription != nil && item.Status != "WITHDRAWN" {
+	case input.OfferDescription != nil && item.Status != "WITHDRAWN":
 		item.Status = "ANALYZING"
 	}
 	item.UpdatedAt = time.Now().UTC()

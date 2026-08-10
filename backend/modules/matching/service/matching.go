@@ -146,7 +146,11 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int64, graph model.
 					continue
 				}
 
-				graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID})
+				if err := graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID}); err != nil &&
+					!errors.Is(err, model.ErrVertexAlreadyExists) {
+					errs = append(errs, fmt.Errorf("add vertex %d: %w", match.TargetItem.ID, err))
+					continue
+				}
 				score := m.scorer.CalculateScore(match)
 				m.debug("edge accepted",
 					zap.Int64("source_item_id", candidateID),
@@ -210,10 +214,6 @@ func (m *Matching) findSimilarItems(ctx context.Context, itemID int64) ([]model.
 	}
 
 	return matches, nil
-}
-
-func (m *Matching) isCompatible(match model.ItemMatch) bool {
-	return match.Similarity >= m.compatibilityThreshold(match)
 }
 
 func (m *Matching) compatibilityThreshold(match model.ItemMatch) float64 {

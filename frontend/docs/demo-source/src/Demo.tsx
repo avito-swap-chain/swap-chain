@@ -9,15 +9,11 @@ import {
 } from 'remotion'
 import { Caption } from './Caption'
 import { Intro } from './Intro'
-import { MUSIC } from './Root'
-import { Phone, SHOT_HEIGHT, STATUS_BAR_HEIGHT } from './Phone'
+import { MUSIC } from './media'
+import { Phone } from './Phone'
+import { SHOT_HEIGHT, STATUS_BAR_HEIGHT } from './phoneDimensions'
 import { INTRO_SECONDS, timeline, type Scene } from './scenes'
-
-/** Тот же шрифт и фон, что в приложении: Remotion системный шрифт не наследует. */
-export const SURFACE = {
-  backgroundColor: '#f4f3f1',
-  fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
-} as const
+import { SURFACE } from './surface'
 
 /**
  * Обычный кадр — подпись сверху и телефон под ней; акцентный — телефон во весь рост.
