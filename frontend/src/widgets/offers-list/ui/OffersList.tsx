@@ -8,6 +8,7 @@ import {
   type Chain,
 } from '@/entities/chain'
 import { OfferCard } from './OfferCard'
+import { isBackendConnected } from '@/shared/config/backend'
 
 /**
  * Что человеку нужно увидеть в блоке предложений: варианты, ждущие ответа, и те, что
@@ -28,10 +29,12 @@ export function OffersList() {
   const { data } = useQuery({
     queryKey: chainKeys.my(),
     queryFn: getMyChains,
-    // Вебсокетов в MVP нет: пока варианты собираются, опросом подтягиваем ответы остальных
-    // участников и отмену предложений, чью вещь забрала другая цепочка.
+    // С бэкендом обновления приносит поток событий — опрос остаётся только для моков,
+    // где ответы остальных участников появляются по таймеру.
     refetchInterval: (query) =>
-      query.state.data?.some((chain) => chain.status === 'formed') ? 2000 : false,
+      !isBackendConnected && query.state.data?.some((chain) => chain.status === 'formed')
+        ? 2000
+        : false,
   })
 
   const offers = data?.filter(isInbox).sort(answerableFirst) ?? []

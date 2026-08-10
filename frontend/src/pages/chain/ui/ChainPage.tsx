@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { chainKeys, DealStatusLabel, getChain } from '@/entities/chain'
 import { Notice, Screen, ScreenHeader } from '@/shared/ui'
 import { ChainBoard } from '@/widgets/chain-board'
+import { isBackendConnected } from '@/shared/config/backend'
 
 /**
  * Один роут на всю сделку: предложение, ожидание, передача, завершение и распад —
@@ -20,9 +21,11 @@ export function ChainPage() {
   } = useQuery({
     queryKey: chainKeys.detail(id),
     queryFn: () => getChain(id),
-    // Вебсокетов в MVP нет: пока цепочка в движении — подтягиваем ответы на предложение
-    // и отметки о получении, которые делают остальные участники.
+    // С бэкендом обновления приносит поток событий (`app/BackendEvents`) — опрашивать
+    // сверх него незачем. Опрос остаётся только для моков: там событий не от кого получать,
+    // а ответы соседей приходят по таймеру, и без опроса демо стоит на месте.
     refetchInterval: (query) => {
+      if (isBackendConnected) return false
       const status = query.state.data?.status
       return status === 'formed' || status === 'active' ? 2000 : false
     },
