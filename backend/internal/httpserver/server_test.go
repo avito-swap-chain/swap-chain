@@ -26,7 +26,7 @@ import (
 	"swap-chain/internal/media"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
-	"swap-chain/matching/model"
+	"swap-chain/modules/matching/model"
 )
 
 func TestHealthAndMatchingRoutesUseIntegratedServices(t *testing.T) {

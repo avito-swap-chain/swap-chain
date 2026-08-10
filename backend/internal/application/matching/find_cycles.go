@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"swap-chain/internal/cyclekey"
-	"swap-chain/matching/model"
+	"swap-chain/modules/matching/model"
 )
 
 // ErrInvalidItemID reports an invalid item identifier at the application boundary.

@@ -8,7 +8,7 @@ import (
 	"math"
 	"strconv"
 
-	"swap-chain/matching/model"
+	"swap-chain/modules/matching/model"
 	"swap-chain/shared/db"
 )
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"swap-chain/analyze/model"
+	"swap-chain/modules/analyze/model"
 
 	"go.uber.org/zap"
 )

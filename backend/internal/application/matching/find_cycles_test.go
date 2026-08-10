@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"swap-chain/matching/model"
+	"swap-chain/modules/matching/model"
 )
 
 type matcherStub struct {

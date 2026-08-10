@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"swap-chain/analyze/model"
+	"swap-chain/modules/analyze/model"
 
 	"golang.org/x/sync/errgroup"
 )

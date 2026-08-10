@@ -10,8 +10,8 @@ import (
 
 	"github.com/pgvector/pgvector-go"
 
-	"swap-chain/analyze/model"
-	"swap-chain/analyze/service"
+	"swap-chain/modules/analyze/model"
+	"swap-chain/modules/analyze/service"
 	"swap-chain/shared/db"
 )
 

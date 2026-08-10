@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"swap-chain/matching/model"
+	"swap-chain/modules/matching/model"
 
 	"go.uber.org/zap"
 )

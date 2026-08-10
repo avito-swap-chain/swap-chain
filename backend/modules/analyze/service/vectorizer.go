@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"swap-chain/analyze/adapters"
+	"swap-chain/modules/analyze/adapters"
 )
 
 type Vectorizer struct {

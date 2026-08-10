@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"swap-chain/analyze/model"
+	"swap-chain/modules/analyze/model"
 )
 
 func TestTaggingRequiresManualSelectionWithoutCategories(t *testing.T) {

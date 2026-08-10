@@ -11,9 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"swap-chain/analyze/adapters"
-	analyzerepository "swap-chain/analyze/repository"
-	analyzeservice "swap-chain/analyze/service"
 	applicationmatching "swap-chain/internal/application/matching"
 	"swap-chain/internal/chains"
 	"swap-chain/internal/config"
@@ -25,8 +22,11 @@ import (
 	"swap-chain/internal/media"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
-	matchingrepository "swap-chain/matching/repository"
-	"swap-chain/matching/service"
+	"swap-chain/modules/analyze/adapters"
+	analyzerepository "swap-chain/modules/analyze/repository"
+	analyzeservice "swap-chain/modules/analyze/service"
+	matchingrepository "swap-chain/modules/matching/repository"
+	"swap-chain/modules/matching/service"
 	"swap-chain/shared/db"
 
 	"go.uber.org/zap"

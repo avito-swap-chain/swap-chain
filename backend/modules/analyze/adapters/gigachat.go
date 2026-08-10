@@ -19,7 +19,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"swap-chain/analyze/model"
+	"swap-chain/modules/analyze/model"
 )
 
 type GigaChatConfig struct {

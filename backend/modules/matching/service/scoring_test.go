@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"swap-chain/matching/model"
+	"swap-chain/modules/matching/model"
 )
 
 func TestScoringCalculateScore(t *testing.T) {

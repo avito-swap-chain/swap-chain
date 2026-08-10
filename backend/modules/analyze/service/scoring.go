@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"swap-chain/analyze/adapters"
-	"swap-chain/analyze/model"
+	"swap-chain/modules/analyze/adapters"
+	"swap-chain/modules/analyze/model"
 )
 
 type Scoring struct {

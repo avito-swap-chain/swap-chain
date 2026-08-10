@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"swap-chain/analyze/model"
+	"swap-chain/modules/analyze/model"
 )
 
 type TaggingRepo interface {
