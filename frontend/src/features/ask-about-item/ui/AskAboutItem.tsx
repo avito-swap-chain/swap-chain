@@ -1,6 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { getThread, MessageList, messageKeys, type ThreadRef } from '@/entities/message'
+import { MessageList, threadPath, useThreadMessages, type ThreadRef } from '@/entities/message'
 import { MessageComposer } from '@/features/send-message'
 import { Link } from 'react-router-dom'
 
@@ -14,11 +13,9 @@ import { Link } from 'react-router-dom'
 export function AskAboutItem({ thread }: { thread: ThreadRef }) {
   const [open, setOpen] = useState(false)
 
-  const { data } = useQuery({
-    queryKey: messageKeys.thread(thread.itemId),
-    queryFn: () => getThread(thread.itemId),
-    enabled: open,
-  })
+  // Свёрнутая панель не подписывается на ленту: держать long-poll на каждой карточке
+  // предложения — это по запросу на карточку, а разговора там ещё может и не быть.
+  const { data: messages = [] } = useThreadMessages(thread, open)
 
   if (!open) {
     return (
@@ -31,8 +28,6 @@ export function AskAboutItem({ thread }: { thread: ThreadRef }) {
       </button>
     )
   }
-
-  const messages = data?.messages ?? []
 
   return (
     <section
@@ -62,7 +57,7 @@ export function AskAboutItem({ thread }: { thread: ThreadRef }) {
       {/* Длинный разговор дочитывают целиком — для этого есть отдельный экран. */}
       {messages.length > 0 && (
         <Link
-          to={`/messages/${thread.itemId}`}
+          to={threadPath(thread)}
           className="rounded-sm text-center text-[13px] font-semibold text-brand outline-offset-4 focus-visible:outline-2 focus-visible:outline-brand"
         >
           Открыть переписку

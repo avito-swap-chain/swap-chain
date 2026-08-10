@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.5.0
+ * OpenAPI spec version: 0.6.0
  */
 
 export type ChainStatus = typeof ChainStatus[keyof typeof ChainStatus];
@@ -13,4 +13,5 @@ export const ChainStatus = {
   PENDING: 'PENDING',
   ACCEPTED: 'ACCEPTED',
   REJECTED: 'REJECTED',
+  COMPLETED: 'COMPLETED',
 } as const;

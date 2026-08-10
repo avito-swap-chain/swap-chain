@@ -15,7 +15,9 @@ export const isBackendConnected = Boolean(import.meta.env.VITE_API_URL)
  * - желание списком вариантов — в контракте одна строка `wantDescription`;
  * - стадия передачи и отметка получения — в `ChainStatus` только PENDING / ACCEPTED / REJECTED;
  * - отмена варианта из-за ушедшей вещи (`cancelled`) — статуса нет;
- * - переписка и уведомления — эндпоинтов нет, поток событий SSE описан без типов событий;
+ * - уведомления — эндпоинтов нет, поток событий SSE описан без типов событий;
+ * - служебный канал «Авито Обмен» в переписке — это пояснение интерфейса, а не разговор:
+ *   отправитель сообщения в контракте всегда пользователь;
  * - подсказки желания и распознавание фото — эндпоинтов нет.
  */
 export const MOCKED_ANYWAY = [
@@ -24,6 +26,6 @@ export const MOCKED_ANYWAY = [
   'item.wish[]',
   'chain.transfer',
   'chain.cancelled',
-  'messages',
+  'messages.service',
   'notifications',
 ] as const

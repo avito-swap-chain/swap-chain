@@ -3,12 +3,20 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.5.0
+ * OpenAPI spec version: 0.6.0
  */
 import type {
+  AdminDelivery,
+  AdminDeliveryList,
+  AdminDeliveryTransitionRequest,
   BadRequestResponse,
   Chain,
   ChainList,
+  ChainReceipt,
+  ChatMessage,
+  ChatMessageList,
+  ChatReadState,
+  ChatThreadList,
   ConflictResponse,
   CreateChainRequest,
   CreateItemRequest,
@@ -19,15 +27,19 @@ import type {
   InternalErrorResponse,
   Item,
   ItemList,
+  ListAdminDeliveriesParams,
   ListChainsParams,
+  ListChatMessagesParams,
   ListItemsParams,
   ListUserItemsParams,
   LivenessResponse,
   LoginRequest,
+  MarkChatThreadReadRequest,
   MatchingResponse,
   MediaUpload,
   NotFoundResponse,
   NotImplementedResponse,
+  SendChatMessageRequest,
   ServiceUnavailableResponse,
   Session,
   SubmitChainDecisionRequest,
@@ -1060,6 +1072,479 @@ export const submitChainDecision = async (chainId: number,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(submitChainDecisionRequest)
+  }
+);}
+
+
+
+export type confirmChainReceiptResponse200 = {
+  data: ChainReceipt
+  status: 200
+}
+
+export type confirmChainReceiptResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type confirmChainReceiptResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type confirmChainReceiptResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type confirmChainReceiptResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type confirmChainReceiptResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type confirmChainReceiptResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type confirmChainReceiptResponseSuccess = (confirmChainReceiptResponse200) & {
+  headers: Headers;
+};
+export type confirmChainReceiptResponseError = (confirmChainReceiptResponse400 | confirmChainReceiptResponse401 | confirmChainReceiptResponse403 | confirmChainReceiptResponse404 | confirmChainReceiptResponse409 | confirmChainReceiptResponse500) & {
+  headers: Headers;
+};
+
+export type confirmChainReceiptResponse = (confirmChainReceiptResponseSuccess | confirmChainReceiptResponseError)
+
+export const getConfirmChainReceiptUrl = (chainId: number,) => {
+
+
+
+
+  return `/api/v1/chains/${chainId}/receipt`
+}
+
+/**
+ * The authenticated session identifies the recipient. The server selects the one item directed to that participant, so the client cannot confirm another delivery. The item must already be IN_DELIVERY. Repeating a successful confirmation is idempotent, including after the chain becomes COMPLETED. The last receipt atomically completes the chain.
+ * @summary Confirm receipt of the current participant's incoming item
+ */
+export const confirmChainReceipt = async (chainId: number, options?: Parameters<typeof apiFetch>[1]): Promise<confirmChainReceiptResponse> => {
+
+  return apiFetch<confirmChainReceiptResponse>(getConfirmChainReceiptUrl(chainId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type listChatThreadsResponse200 = {
+  data: ChatThreadList
+  status: 200
+}
+
+export type listChatThreadsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listChatThreadsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listChatThreadsResponseSuccess = (listChatThreadsResponse200) & {
+  headers: Headers;
+};
+export type listChatThreadsResponseError = (listChatThreadsResponse401 | listChatThreadsResponse500) & {
+  headers: Headers;
+};
+
+export type listChatThreadsResponse = (listChatThreadsResponseSuccess | listChatThreadsResponseError)
+
+export const getListChatThreadsUrl = () => {
+
+
+
+
+  return `/api/v1/chat/threads`
+}
+
+/**
+ * Returns one thread per exchange chain and neighboring participant. A neighbor either gives an item to the authenticated user or receives an item from them. Threads exist as soon as a matched chain is persisted, including while its status is PENDING.
+ * @summary List all direct exchange-chain conversations
+ */
+export const listChatThreads = async ( options?: Parameters<typeof apiFetch>[1]): Promise<listChatThreadsResponse> => {
+
+  return apiFetch<listChatThreadsResponse>(getListChatThreadsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type listChatMessagesResponse200 = {
+  data: ChatMessageList
+  status: 200
+}
+
+export type listChatMessagesResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listChatMessagesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listChatMessagesResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listChatMessagesResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listChatMessagesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listChatMessagesResponseSuccess = (listChatMessagesResponse200) & {
+  headers: Headers;
+};
+export type listChatMessagesResponseError = (listChatMessagesResponse400 | listChatMessagesResponse401 | listChatMessagesResponse403 | listChatMessagesResponse404 | listChatMessagesResponse500) & {
+  headers: Headers;
+};
+
+export type listChatMessagesResponse = (listChatMessagesResponseSuccess | listChatMessagesResponseError)
+
+export const getListChatMessagesUrl = (chainId: number,
+    counterpartId: number,
+    params?: ListChatMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/chains/${chainId}/chat/${counterpartId}/messages?${stringifiedParams}` : `/api/v1/chains/${chainId}/chat/${counterpartId}/messages`
+}
+
+/**
+ * Available only when the authenticated user and counterpart are neighbors in the selected chain. The chain may still be PENDING. Returns immediately when messages newer than afterId exist; otherwise waits up to waitSeconds. PostgreSQL remains the source of truth.
+ * @summary Read or wait for direct-thread messages
+ */
+export const listChatMessages = async (chainId: number,
+    counterpartId: number,
+    params?: ListChatMessagesParams, options?: Parameters<typeof apiFetch>[1]): Promise<listChatMessagesResponse> => {
+
+  return apiFetch<listChatMessagesResponse>(getListChatMessagesUrl(chainId,counterpartId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type sendChatMessageResponse200 = {
+  data: ChatMessage
+  status: 200
+}
+
+export type sendChatMessageResponse201 = {
+  data: ChatMessage
+  status: 201
+}
+
+export type sendChatMessageResponse400 = {
+  data: ValidationErrorResponse
+  status: 400
+}
+
+export type sendChatMessageResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type sendChatMessageResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type sendChatMessageResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type sendChatMessageResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type sendChatMessageResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type sendChatMessageResponseSuccess = (sendChatMessageResponse200 | sendChatMessageResponse201) & {
+  headers: Headers;
+};
+export type sendChatMessageResponseError = (sendChatMessageResponse400 | sendChatMessageResponse401 | sendChatMessageResponse403 | sendChatMessageResponse404 | sendChatMessageResponse409 | sendChatMessageResponse500) & {
+  headers: Headers;
+};
+
+export type sendChatMessageResponse = (sendChatMessageResponseSuccess | sendChatMessageResponseError)
+
+export const getSendChatMessageUrl = (chainId: number,
+    counterpartId: number,) => {
+
+
+
+
+  return `/api/v1/chains/${chainId}/chat/${counterpartId}/messages`
+}
+
+/**
+ * The authenticated session is always the sender. clientMessageId is an idempotency key scoped to the chain, sender and counterpart. Retrying the same key and text returns the original message; reusing the key with different text returns 409. PENDING chains are supported.
+ * @summary Send a direct message to a neighboring participant
+ */
+export const sendChatMessage = async (chainId: number,
+    counterpartId: number,
+    sendChatMessageRequest: SendChatMessageRequest, options?: Parameters<typeof apiFetch>[1]): Promise<sendChatMessageResponse> => {
+
+  return apiFetch<sendChatMessageResponse>(getSendChatMessageUrl(chainId,counterpartId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(sendChatMessageRequest)
+  }
+);}
+
+
+
+export type markChatThreadReadResponse200 = {
+  data: ChatReadState
+  status: 200
+}
+
+export type markChatThreadReadResponse400 = {
+  data: ValidationErrorResponse
+  status: 400
+}
+
+export type markChatThreadReadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type markChatThreadReadResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type markChatThreadReadResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type markChatThreadReadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type markChatThreadReadResponseSuccess = (markChatThreadReadResponse200) & {
+  headers: Headers;
+};
+export type markChatThreadReadResponseError = (markChatThreadReadResponse400 | markChatThreadReadResponse401 | markChatThreadReadResponse403 | markChatThreadReadResponse404 | markChatThreadReadResponse500) & {
+  headers: Headers;
+};
+
+export type markChatThreadReadResponse = (markChatThreadReadResponseSuccess | markChatThreadReadResponseError)
+
+export const getMarkChatThreadReadUrl = (chainId: number,
+    counterpartId: number,) => {
+
+
+
+
+  return `/api/v1/chains/${chainId}/chat/${counterpartId}/read`
+}
+
+/**
+ * Advances the authenticated user's read watermark. Repeating a request or sending an older message ID is safe and never moves the watermark back.
+ * @summary Mark direct-thread messages as read
+ */
+export const markChatThreadRead = async (chainId: number,
+    counterpartId: number,
+    markChatThreadReadRequest: MarkChatThreadReadRequest, options?: Parameters<typeof apiFetch>[1]): Promise<markChatThreadReadResponse> => {
+
+  return apiFetch<markChatThreadReadResponse>(getMarkChatThreadReadUrl(chainId,counterpartId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(markChatThreadReadRequest)
+  }
+);}
+
+
+
+export type listAdminDeliveriesResponse200 = {
+  data: AdminDeliveryList
+  status: 200
+}
+
+export type listAdminDeliveriesResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listAdminDeliveriesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listAdminDeliveriesResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listAdminDeliveriesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listAdminDeliveriesResponseSuccess = (listAdminDeliveriesResponse200) & {
+  headers: Headers;
+};
+export type listAdminDeliveriesResponseError = (listAdminDeliveriesResponse400 | listAdminDeliveriesResponse401 | listAdminDeliveriesResponse403 | listAdminDeliveriesResponse500) & {
+  headers: Headers;
+};
+
+export type listAdminDeliveriesResponse = (listAdminDeliveriesResponseSuccess | listAdminDeliveriesResponseError)
+
+export const getListAdminDeliveriesUrl = (params?: ListAdminDeliveriesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/admin/deliveries?${stringifiedParams}` : `/api/v1/admin/deliveries`
+}
+
+/**
+ * Requires an authenticated user with the ADMIN role.
+ * @summary List assembled-chain item deliveries for pickup-point staff
+ */
+export const listAdminDeliveries = async (params?: ListAdminDeliveriesParams, options?: Parameters<typeof apiFetch>[1]): Promise<listAdminDeliveriesResponse> => {
+
+  return apiFetch<listAdminDeliveriesResponse>(getListAdminDeliveriesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type transitionAdminDeliveryResponse200 = {
+  data: AdminDelivery
+  status: 200
+}
+
+export type transitionAdminDeliveryResponse400 = {
+  data: ValidationErrorResponse
+  status: 400
+}
+
+export type transitionAdminDeliveryResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type transitionAdminDeliveryResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type transitionAdminDeliveryResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type transitionAdminDeliveryResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type transitionAdminDeliveryResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type transitionAdminDeliveryResponseSuccess = (transitionAdminDeliveryResponse200) & {
+  headers: Headers;
+};
+export type transitionAdminDeliveryResponseError = (transitionAdminDeliveryResponse400 | transitionAdminDeliveryResponse401 | transitionAdminDeliveryResponse403 | transitionAdminDeliveryResponse404 | transitionAdminDeliveryResponse409 | transitionAdminDeliveryResponse500) & {
+  headers: Headers;
+};
+
+export type transitionAdminDeliveryResponse = (transitionAdminDeliveryResponseSuccess | transitionAdminDeliveryResponseError)
+
+export const getTransitionAdminDeliveryUrl = (deliveryId: number,) => {
+
+
+
+
+  return `/api/v1/admin/deliveries/${deliveryId}/transition`
+}
+
+/**
+ * Repeating a transition to the current status is idempotent.
+ * @summary Confirm pickup-point receipt, dispatch, or recipient hand-off
+ */
+export const transitionAdminDelivery = async (deliveryId: number,
+    adminDeliveryTransitionRequest: AdminDeliveryTransitionRequest, options?: Parameters<typeof apiFetch>[1]): Promise<transitionAdminDeliveryResponse> => {
+
+  return apiFetch<transitionAdminDeliveryResponse>(getTransitionAdminDeliveryUrl(deliveryId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(adminDeliveryTransitionRequest)
   }
 );}
 

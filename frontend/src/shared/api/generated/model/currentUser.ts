@@ -3,13 +3,15 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.5.0
+ * OpenAPI spec version: 0.6.0
  */
+import type { UserRole } from './userRole';
 
 export interface CurrentUser {
   id: number;
   username: string;
   /** Canonical E.164-like phone used for demo login */
   phone: string;
+  role: UserRole;
   createdAt: string;
 }

@@ -1,5 +1,6 @@
 import { unwrap } from '@/shared/api/fetcher'
 import {
+  confirmChainReceipt,
   getChain as getChainRequest,
   listChains,
   submitChainDecision,
@@ -225,28 +226,11 @@ const withPersonaStatus = (chain: Chain, personaId: string, status: ParticipantS
 })
 
 /** Обмены, в которых участвует текущий пользователь, — чужие в кабинет не попадают. */
-/**
- * Отметки получения, сделанные при подключённом бэкенде. Стадии передачи в контракте нет
- * (см. `shared/config/backend`), хранить их серверу негде — держим на фронте, иначе обмен
- * на реальных данных обрывается на полпути и кнопка «получил» выглядит сломанной.
- */
-const localReceipts = new Set<string>()
-
-const withLocalReceipt = (chain: Chain): Chain =>
-  localReceipts.has(chain.id)
-    ? {
-        ...chain,
-        participants: chain.participants.map((p) =>
-          p.isMe ? { ...p, receiptConfirmed: true } : p,
-        ),
-      }
-    : chain
-
 export async function getMyChains(): Promise<Chain[]> {
   if (isBackendConnected) {
     const meId = await currentUserId()
     const { chains: list } = unwrap<ChainList>(await listChains())
-    return list.map((chain) => withLocalReceipt(mapChain(chain, meId)))
+    return list.map((chain) => mapChain(chain, meId))
   }
 
   await delay(300)
@@ -260,7 +244,7 @@ export async function getMyChains(): Promise<Chain[]> {
 export async function getChain(id: string): Promise<Chain> {
   if (isBackendConnected) {
     const meId = await currentUserId()
-    return withLocalReceipt(mapChain(unwrap<ApiChain>(await getChainRequest(Number(id))), meId))
+    return mapChain(unwrap<ApiChain>(await getChainRequest(Number(id))), meId)
   }
 
   await delay(250)
@@ -372,7 +356,10 @@ export async function leaveChain(id: string): Promise<void> {
  */
 export async function confirmReceipt(id: string): Promise<void> {
   if (isBackendConnected) {
-    localReceipts.add(id)
+    // Какую именно вещь получает пользователь, бэкенд выбирает сам по сессии — подтвердить
+    // чужую передачу нельзя. Отметка принимается только после того, как сотрудник ПВЗ отправил
+    // вещь получателю (`IN_DELIVERY`), иначе 409: подтверждать нечего, пока она не выехала.
+    unwrap(await confirmChainReceipt(Number(id)))
     return
   }
 

@@ -1,4 +1,5 @@
 import { createBrowserRouter } from 'react-router-dom'
+import { AdminDeliveriesPage } from '@/pages/admin-deliveries'
 import { ChainPage } from '@/pages/chain'
 import { CreateOfferPage } from '@/pages/create-offer'
 import { EnableBarterPage } from '@/pages/enable-barter'
@@ -25,11 +26,16 @@ export const router = createBrowserRouter(
         { path: '/exchange', element: <ExchangePage /> },
         { path: '/messages', element: <MessagesPage /> },
         { path: '/notifications', element: <NotificationsPage /> },
+        // Админка ПВЗ живёт в том же кабинете: у сотрудника это рабочее место, а не
+        // отдельный продукт. Роут открыт всем, кто вошёл, — доступ решает бэкенд по роли.
+        { path: '/admin/deliveries', element: <AdminDeliveriesPage /> },
         // Вложенные экраны: сюда ведут из разделов, путь назад показывают крошки.
         { path: '/items/new', element: <CreateOfferPage /> },
         { path: '/items/:id/barter', element: <EnableBarterPage /> },
         { path: '/exchange/:id', element: <ChainPage /> },
-        { path: '/messages/:itemId', element: <ThreadPage /> },
+        // Переписка адресуется парой «цепочка + собеседник»: она привязана к ребру круга
+        // обмена, а не к вещи — с одним человеком в двух цепочках это два разных разговора.
+        { path: '/messages/:chainId/:counterpartId', element: <ThreadPage /> },
       ],
     },
   ],

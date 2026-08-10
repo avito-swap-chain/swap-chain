@@ -5,19 +5,21 @@ import type {
 import type { Chain, ChainParticipant, ChainStatus, ParticipantStatus } from '../model/types'
 
 /**
- * Статусы цепочки. Контракт (0.5.0) знает три состояния, наша машина — пять:
+ * Статусы цепочки. Контракт (0.6.0) знает четыре состояния, наша машина — пять:
  *
  * - `PENDING` → `formed` — предложение собрано, участники отвечают;
  * - `ACCEPTED` → `active` — согласны все, дальше передача вещей;
+ * - `COMPLETED` → `completed` — получение отметили все, обмен закрыт;
  * - `REJECTED` → `dissolved` — кто-то отказался.
  *
- * `completed` (все подтвердили получение) и `cancelled` (вещь ушла в другую цепочку)
- * с бэкенда прийти не могут: стадии передачи и параллельного подбора в контракте нет.
- * Пока их нет, эти состояния живут только в моках — см. `shared/config/backend`.
+ * `cancelled` (вещь ушла в другую цепочку) с бэкенда прийти по-прежнему не может:
+ * параллельного подбора в контракте нет, конкурирующие цепочки он отклоняет как
+ * `REJECTED` с причиной в событии. Пока так — состояние живёт только в моках.
  */
 const STATUS: Record<ApiChain['status'], ChainStatus> = {
   PENDING: 'formed',
   ACCEPTED: 'active',
+  COMPLETED: 'completed',
   REJECTED: 'dissolved',
 }
 
@@ -27,7 +29,11 @@ const PARTICIPANT_STATUS: Record<ApiParticipant['status'], ParticipantStatus> = 
   DECLINED: 'declined',
 }
 
-const mapParticipant = (participant: ApiParticipant, meId: number): ChainParticipant => ({
+const mapParticipant = (
+  participant: ApiParticipant,
+  meId: number,
+  receiptConfirmed: boolean,
+): ChainParticipant => ({
   userId: String(participant.user.id),
   name: participant.user.username,
   givesItem: {
@@ -36,9 +42,7 @@ const mapParticipant = (participant: ApiParticipant, meId: number): ChainPartici
     photoUrl: participant.giveItem.imageUrls?.[0],
   },
   status: PARTICIPANT_STATUS[participant.status],
-  // Отметки получения в контракте нет — до её появления стадия передачи не двигается
-  // на реальных данных, и признак всегда снят.
-  receiptConfirmed: false,
+  receiptConfirmed,
   isMe: participant.user.id === meId ? true : undefined,
 })
 
@@ -73,6 +77,9 @@ export const mapChain = (chain: ApiChain, meId: number): Chain => ({
   id: String(chain.id),
   status: STATUS[chain.status],
   participants: inCycleOrder(chain.participants).map((participant) =>
-    mapParticipant(participant, meId),
+    // Кто именно отметил получение, в цепочке не приходит: отметка возвращается ответом
+    // на `POST /chains/{id}/receipt`, а не полем участника. Но `COMPLETED` по контракту
+    // наступает ровно тогда, когда получение подтвердил последний, — значит все.
+    mapParticipant(participant, meId, chain.status === 'COMPLETED'),
   ),
 })

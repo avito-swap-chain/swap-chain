@@ -32,6 +32,7 @@ export function getBreadcrumbs(pathname: string): Crumb[] {
   if (pathname === '/items/new') return [AVITO, ITEMS, { label: 'Новое объявление' }]
   if (/^\/items\/[^/]+\/barter$/.test(pathname)) return [AVITO, ITEMS, { label: 'Готов обменять' }]
   if (/^\/exchange\/[^/]+$/.test(pathname)) return [AVITO, EXCHANGE, { label: 'Цепочка' }]
-  if (/^\/messages\/[^/]+$/.test(pathname)) return [AVITO, MESSAGES, { label: 'Переписка' }]
+  // Диалог адресуется двумя сегментами — цепочкой и собеседником.
+  if (/^\/messages\/[^/]+\/[^/]+$/.test(pathname)) return [AVITO, MESSAGES, { label: 'Переписка' }]
   return []
 }

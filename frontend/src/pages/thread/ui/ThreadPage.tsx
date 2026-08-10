@@ -1,7 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getThread, markThreadRead, MessageList, messageKeys } from '@/entities/message'
+import {
+  getThreads,
+  isServiceThread,
+  markThreadRead,
+  MessageList,
+  messageKeys,
+  sameThread,
+  useThreadMessages,
+} from '@/entities/message'
 import { MessageComposer } from '@/features/send-message'
 import { IconBox, Notice, Screen, ScreenHeader } from '@/shared/ui'
 import { asset } from '@/shared/lib'
@@ -9,24 +17,39 @@ import { asset } from '@/shared/lib'
 /**
  * Экран переписки. Шапка держит контекст разговора — с кем и о какой вещи, — как в
  * мессенджере Авито: без неё через день не вспомнить, к какому из предложений он относится.
+ *
+ * Адрес диалога — цепочка и собеседник: переписка привязана к ребру круга обмена, и с одним
+ * и тем же человеком в двух цепочках это два разных разговора.
  */
 export function ThreadPage() {
-  const { itemId = '' } = useParams()
+  const { chainId = '', counterpartId = '' } = useParams()
+  const key = { chainId, counterpartId }
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
-  const { data: thread, isPending } = useQuery({
-    queryKey: messageKeys.thread(itemId),
-    queryFn: () => getThread(itemId),
+  // Подписи берём из списка переписок: отдельной ручки одного треда в контракте нет,
+  // а список всё равно нужен шапке кабинета и обновляется сам.
+  const { data: thread, isPending: threadPending } = useQuery({
+    queryKey: messageKeys.list(),
+    queryFn: getThreads,
+    select: (list) => list.threads.find((item) => sameThread(item, key)),
   })
 
-  // Открытая переписка считается прочитанной — счётчик в шапке гаснет.
-  const queryClient = useQueryClient()
+  const { data: messages = [], isPending } = useThreadMessages(key)
+
+  const lastMessageId = messages.at(-1)?.id
+  const unread = thread?.unreadCount ?? 0
+
   useEffect(() => {
-    if (!thread?.unread) return
-    markThreadRead(itemId).then(() => {
-      queryClient.invalidateQueries({ queryKey: messageKeys.all })
+    if (!unread || !lastMessageId) return
+
+    // Открытая переписка считается прочитанной — счётчик в шапке гаснет. Водяной знак
+    // ставим по последней показанной реплике, а не «по всему треду»: отметить непоказанное
+    // мы не вправе, а список после этого надо перечитать — счётчик живёт в нём.
+    markThreadRead({ chainId, counterpartId }, lastMessageId).then(() => {
+      queryClient.invalidateQueries({ queryKey: messageKeys.list() })
     })
-  }, [itemId, thread?.unread, queryClient])
+  }, [chainId, counterpartId, lastMessageId, unread, queryClient])
 
   return (
     <Screen>
@@ -47,26 +70,19 @@ export function ThreadPage() {
       </ScreenHeader>
 
       <div className="flex flex-col gap-3 p-4">
-        {isPending && <Notice>Загрузка…</Notice>}
+        {isPending && threadPending && <Notice>Загрузка…</Notice>}
 
-        {!isPending && !thread && <Notice tone="error">Переписка не найдена</Notice>}
+        {!threadPending && !thread && <Notice tone="error">Переписка не найдена</Notice>}
 
         {thread && (
           <>
-            <p className="text-[13px] leading-4 text-ink-2">{thread.itemTitle}</p>
-            <MessageList messages={thread.messages} />
+            {thread.itemTitle && (
+              <p className="text-[13px] leading-4 text-ink-2">{thread.itemTitle}</p>
+            )}
+            <MessageList messages={messages} />
             {/* Служебный канал сервиса — не диалог: отвечать в него некому. */}
-            {thread.itemId !== 'service' && (
-              <MessageComposer
-                thread={{
-                  itemId: thread.itemId,
-                  itemTitle: thread.itemTitle,
-                  itemPhotoUrl: thread.itemPhotoUrl,
-                  peerName: thread.peerName,
-                  peerAvatarUrl: thread.peerAvatarUrl,
-                }}
-                empty={thread.messages.length === 0}
-              />
+            {!isServiceThread(thread) && (
+              <MessageComposer thread={thread} empty={messages.length === 0} />
             )}
           </>
         )}

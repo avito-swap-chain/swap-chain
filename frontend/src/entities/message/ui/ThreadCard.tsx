@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { asset, cx } from '@/shared/lib'
 import { IconBox } from '@/shared/ui'
+import { threadPath } from '../lib/thread'
 import type { Thread } from '../model/types'
 
 /** «14:03» для сегодняшних, «21 апр.» для остальных — как в списке диалогов Авито. */
@@ -19,11 +20,11 @@ const formatWhen = (iso: string): string => {
  * вещь здесь и есть тема разговора.
  */
 export function ThreadCard({ thread }: { thread: Thread }) {
-  const last = thread.messages.at(-1)
+  const last = thread.lastMessage
 
   return (
     <Link
-      to={`/messages/${thread.itemId}`}
+      to={threadPath(thread)}
       className="flex items-center gap-3 rounded-card px-2 py-2.5 outline-offset-2 hover:bg-line-2 focus-visible:outline-2 focus-visible:outline-brand"
     >
       <span className="relative shrink-0">
@@ -60,13 +61,15 @@ export function ThreadCard({ thread }: { thread: Thread }) {
             </span>
           )}
         </span>
-        <span className="truncate text-[13px] leading-4 text-ink-2">{thread.itemTitle}</span>
+        {thread.itemTitle && (
+          <span className="truncate text-[13px] leading-4 text-ink-2">{thread.itemTitle}</span>
+        )}
         {/* Непрочитанное набрано тёмным и жирным — как в любом мессенджере. */}
         {last && (
           <span
             className={cx(
               'truncate text-[15px] leading-5',
-              thread.unread ? 'font-bold text-ink' : 'text-ink-2',
+              thread.unreadCount > 0 ? 'font-bold text-ink' : 'text-ink-2',
             )}
           >
             {last.text}

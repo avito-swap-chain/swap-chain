@@ -3,16 +3,28 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.5.0
+ * OpenAPI spec version: 0.6.0
  */
 
+export * from './adminDelivery';
+export * from './adminDeliveryList';
+export * from './adminDeliveryStatus';
+export * from './adminDeliveryTransitionRequest';
+export * from './adminDeliveryTransitionStatus';
 export * from './badRequestResponse';
 export * from './chain';
 export * from './chainDecision';
 export * from './chainEdge';
 export * from './chainList';
 export * from './chainParticipant';
+export * from './chainReceipt';
 export * from './chainStatus';
+export * from './chatItemSummary';
+export * from './chatMessage';
+export * from './chatMessageList';
+export * from './chatReadState';
+export * from './chatThread';
+export * from './chatThreadList';
 export * from './conflictResponse';
 export * from './createChainRequest';
 export * from './createItemRequest';
@@ -29,12 +41,15 @@ export * from './internalErrorResponse';
 export * from './item';
 export * from './itemList';
 export * from './itemStatus';
+export * from './listAdminDeliveriesParams';
 export * from './listChainsParams';
+export * from './listChatMessagesParams';
 export * from './listItemsParams';
 export * from './listUserItemsParams';
 export * from './livenessResponse';
 export * from './livenessResponseStatus';
 export * from './loginRequest';
+export * from './markChatThreadReadRequest';
 export * from './matchingCycle';
 export * from './matchingEdge';
 export * from './matchingResponse';
@@ -45,11 +60,13 @@ export * from './notImplementedResponse';
 export * from './participantStatus';
 export * from './pipelineEvent';
 export * from './pipelineEventData';
+export * from './sendChatMessageRequest';
 export * from './serviceUnavailableResponse';
 export * from './session';
 export * from './submitChainDecisionRequest';
 export * from './unauthorizedResponse';
 export * from './uploadMediaBody';
 export * from './userProfile';
+export * from './userRole';
 export * from './userSummary';
 export * from './validationErrorResponse';

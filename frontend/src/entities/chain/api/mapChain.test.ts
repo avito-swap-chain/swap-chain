@@ -43,10 +43,17 @@ describe('mapChain — цепочка из контракта в нашу мод
     expect(chain.participants[1].isMe).toBeUndefined()
   })
 
-  it('три состояния контракта разворачиваются в наши', () => {
+  it('состояния контракта разворачиваются в наши', () => {
     expect(mapChain(apiChain('PENDING'), 1).status).toBe('formed')
     expect(mapChain(apiChain('ACCEPTED'), 1).status).toBe('active')
+    expect(mapChain(apiChain('COMPLETED'), 1).status).toBe('completed')
     expect(mapChain(apiChain('REJECTED'), 1).status).toBe('dissolved')
+  })
+
+  it('закрытая цепочка — получение отметили все: иначе COMPLETED не наступил бы', () => {
+    expect(mapChain(apiChain('COMPLETED'), 1).participants.every((p) => p.receiptConfirmed)).toBe(
+      true,
+    )
   })
 
   it('статусы участников переводятся в решения по варианту', () => {
@@ -55,7 +62,7 @@ describe('mapChain — цепочка из контракта в нашу мод
     expect(chain.participants.map((p) => p.status)).toEqual(['pending', 'confirmed'])
   })
 
-  it('отметки получения в контракте нет — признак снят у всех', () => {
+  it('идёт передача — отметки получения ещё нет ни у кого', () => {
     const chain = mapChain(apiChain('ACCEPTED'), 1)
 
     expect(chain.participants.every((p) => p.receiptConfirmed === false)).toBe(true)

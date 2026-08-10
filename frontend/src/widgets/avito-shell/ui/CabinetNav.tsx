@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
 import { cx } from '@/shared/lib'
+import { getCurrentUser, sessionKeys } from '@/shared/model/session'
 import type { Section } from '../lib/navigation'
 
 /** Разделы кабинета, которых нет в MVP: показываем неактивными — ради правдоподобия контекста. */
@@ -11,6 +12,7 @@ const ITEMS_URL = '/'
 const EXCHANGE_URL = '/exchange'
 const MESSAGES_URL = '/messages'
 const NOTIFICATIONS_URL = '/notifications'
+const ADMIN_URL = '/admin/deliveries'
 
 // Одна разметка на оба вида: на узких окнах — чипы в горизонтальной ленте,
 // от `lg` — строки вертикального меню слева, как в кабинете Авито.
@@ -31,11 +33,17 @@ export function CabinetNav({ section, className }: { section: Section; className
   const { data } = useQuery({ queryKey: chainKeys.my(), queryFn: getMyChains })
   const waiting = data?.filter(needsMyAction).length ?? 0
 
+  const { data: user } = useQuery({ queryKey: sessionKeys.current(), queryFn: getCurrentUser })
+
   const isExchange = section === 'exchange'
 
   // Подсветка держится на разделе целиком (новое объявление и включение обмена — часть
   // объявлений), а current достаётся только пункту, который ведёт ровно на открытую страницу.
   const { pathname } = useLocation()
+
+  // Админка — не раздел кабинета: её нет ни в `Section`, ни в нижней панели, поэтому
+  // оболочка считает её объявлениями. Разбираем по пути, чтобы жирным был открытый пункт.
+  const isAdmin = pathname === ADMIN_URL
 
   return (
     <nav
@@ -48,7 +56,7 @@ export function CabinetNav({ section, className }: { section: Section; className
       <Link
         to={ITEMS_URL}
         aria-current={pathname === ITEMS_URL ? 'page' : undefined}
-        className={cx(itemClass, isExchange ? restClass : currentClass)}
+        className={cx(itemClass, isExchange || isAdmin ? restClass : currentClass)}
       >
         Мои объявления
       </Link>
@@ -89,6 +97,18 @@ export function CabinetNav({ section, className }: { section: Section; className
       >
         Уведомления
       </Link>
+
+      {/* Рабочее место сотрудника ПВЗ. Обычному пользователю показывать его нечего:
+          в списке чужие вещи и чужие имена, а кнопки всё равно вернут 403. */}
+      {user?.isAdmin && (
+        <Link
+          to={ADMIN_URL}
+          aria-current={isAdmin ? 'page' : undefined}
+          className={cx(itemClass, isAdmin ? currentClass : restClass)}
+        >
+          Доставки ПВЗ
+        </Link>
+      )}
 
       {DECOR.map((label) => (
         <span
