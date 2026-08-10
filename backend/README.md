@@ -72,6 +72,12 @@ read-watermark не может сдвинуться назад. PostgreSQL —
 backend проверяет наличие моделей Ollama и рассчитывает только отсутствующие
 embeddings категорий в пределах `ANALYSIS_BOOTSTRAP_TIMEOUT`.
 
+Миграция `000011` добавляет `matching_jobs` и backfill существующих
+`MATCHING`-вещей. Успешный analyze атомарно ставит задание вместе с переходом
+в `MATCHING`. Фоновый worker находит ещё не сохранённые циклы и создаёт через
+chain service предложения `PENDING`; уникальный `cycle_key` делает повторную
+обработку и конкурентный запуск безопасными.
+
 HTTP API предоставляет liveness `GET /health`, readiness `GET /api/v1/health`
 и `GET /items/{itemID}/matching`, запускающий существующий matching engine через
 sqlc-запрос к PostgreSQL. Публичный контракт находится в `../api/openapi.yaml`.

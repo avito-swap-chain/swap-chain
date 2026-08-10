@@ -8,6 +8,7 @@ import (
 	"swap-chain/modules/matching/model"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type repoCall struct {
@@ -124,6 +125,34 @@ func TestMatchingAcceptsTwoItemChainLength(t *testing.T) {
 	}
 	if len(cycles) != 1 || len(cycles[0]) != 2 {
 		t.Fatalf("cycles = %+v, want one two-item cycle", cycles)
+	}
+}
+
+func TestMatchingDebugLogsCandidatesAndCycles(t *testing.T) {
+	core, logs := observer.New(zap.InfoLevel)
+	matching, err := NewMatching(zap.New(core), cycleRepo(map[int64]int64{1: 2, 2: 1}), scorerStub{score: 1}, MatchingConfig{
+		SimilarItemsAmount:              5,
+		CompatibilityThreshold:          0.5,
+		UndefinedCategoryID:             99,
+		UndefinedCompatibilityThreshold: 0.8,
+		ChainLen:                        2,
+		Debug:                           true,
+	})
+	if err != nil {
+		t.Fatalf("NewMatching() error = %v", err)
+	}
+
+	if _, err := matching.FindCycles(context.Background(), 1); err != nil {
+		t.Fatalf("FindCycles() error = %v", err)
+	}
+	for _, message := range []string{
+		"matching debug: candidate evaluated",
+		"matching debug: raw cycles found",
+		"matching debug: cycle search completed",
+	} {
+		if logs.FilterMessage(message).Len() == 0 {
+			t.Fatalf("debug log %q was not emitted", message)
+		}
 	}
 }
 

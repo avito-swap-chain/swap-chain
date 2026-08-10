@@ -35,6 +35,7 @@ type MatchingConfig struct {
 	ChainLen                        int     // длина цепочки (глубина графа)
 	PenaltyFactor                   float64 // штраф за несбалансированные цепи, например: edgesScore = [90, 90, 10]
 	ChainRatingThreshold            float64 // граница рейтинга для цепи, все что ниже, не попадает в выдачу
+	Debug                           bool    // включает подробный диагностический лог matching
 }
 
 func NewMatching(
@@ -85,6 +86,7 @@ func NewMatching(
 }
 
 func (m *Matching) FindCycles(ctx context.Context, itemID int64) ([][]model.Edge, error) {
+	m.debug("cycle search started", zap.Int64("root_item_id", itemID))
 	if err := m.repo.ValidateSourceItem(ctx, itemID); err != nil {
 		return nil, fmt.Errorf("validate source item %d: %w", itemID, err)
 	}
@@ -101,7 +103,11 @@ func (m *Matching) FindCycles(ctx context.Context, itemID int64) ([][]model.Edge
 		return nil, err
 	}
 
-	return m.filterChainsByScoreAndRoot(chains, itemID), nil
+	m.debug("raw cycles found", zap.Int("count", len(chains)), zap.Any("cycles", chains))
+	filtered := m.filterChainsByScoreAndRoot(chains, itemID)
+	m.debug("cycle search completed", zap.Int64("root_item_id", itemID), zap.Int("accepted_count", len(filtered)), zap.Any("accepted_cycles", filtered))
+
+	return filtered, nil
 }
 
 func (m *Matching) assembleGraph(ctx context.Context, rootID int64, graph model.Graph) error {
@@ -126,12 +132,27 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int64, graph model.
 			}
 
 			for _, match := range matches {
-				if !m.isCompatible(match) {
+				threshold := m.compatibilityThreshold(match)
+				compatible := match.Similarity >= threshold
+				m.debug("candidate evaluated",
+					zap.Int64("source_item_id", candidateID),
+					zap.Int64("target_item_id", match.TargetItem.ID),
+					zap.Float64("similarity", match.Similarity),
+					zap.Float64("threshold", threshold),
+					zap.Bool("uses_undefined_category", match.UsesUndefinedCategory),
+					zap.Bool("accepted", compatible),
+				)
+				if !compatible {
 					continue
 				}
 
 				graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID})
 				score := m.scorer.CalculateScore(match)
+				m.debug("edge accepted",
+					zap.Int64("source_item_id", candidateID),
+					zap.Int64("target_item_id", match.TargetItem.ID),
+					zap.Float64("edge_score", score),
+				)
 
 				if err := graph.AddEdge(model.Edge{
 					ID:       edgeCounter,
@@ -192,12 +213,14 @@ func (m *Matching) findSimilarItems(ctx context.Context, itemID int64) ([]model.
 }
 
 func (m *Matching) isCompatible(match model.ItemMatch) bool {
-	threshold := m.cfg.CompatibilityThreshold
-	if match.UsesUndefinedCategory {
-		threshold = m.cfg.UndefinedCompatibilityThreshold
-	}
+	return match.Similarity >= m.compatibilityThreshold(match)
+}
 
-	return match.Similarity >= threshold
+func (m *Matching) compatibilityThreshold(match model.ItemMatch) float64 {
+	if match.UsesUndefinedCategory {
+		return m.cfg.UndefinedCompatibilityThreshold
+	}
+	return m.cfg.CompatibilityThreshold
 }
 
 // filterChainsByScoreAndRoot - фильтрует цепочки по корневому узлу и рейтингу.
@@ -205,7 +228,7 @@ func (m *Matching) isCompatible(match model.ItemMatch) bool {
 func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int64) [][]model.Edge {
 	filteredChains := make([][]model.Edge, 0, len(chains))
 
-	for _, chain := range chains {
+	for index, chain := range chains {
 		hasRootItem := false
 		for _, edge := range chain {
 			if edge.SourceID == rootID {
@@ -215,15 +238,32 @@ func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int6
 		}
 
 		if !hasRootItem {
+			m.debug("cycle rejected", zap.Int("cycle_index", index), zap.String("reason", "root item is absent"), zap.Any("edges", chain))
 			continue
 		}
 
-		if m.CalculateChainScore(chain) >= m.cfg.ChainRatingThreshold {
+		score := m.CalculateChainScore(chain)
+		if score >= m.cfg.ChainRatingThreshold {
+			m.debug("cycle accepted", zap.Int("cycle_index", index), zap.Float64("score", score), zap.Any("edges", chain))
 			filteredChains = append(filteredChains, chain)
+			continue
 		}
+		m.debug("cycle rejected",
+			zap.Int("cycle_index", index),
+			zap.String("reason", "score is below threshold"),
+			zap.Float64("score", score),
+			zap.Float64("threshold", m.cfg.ChainRatingThreshold),
+			zap.Any("edges", chain),
+		)
 	}
 
 	return filteredChains
+}
+
+func (m *Matching) debug(message string, fields ...zap.Field) {
+	if m.cfg.Debug {
+		m.logger.Info("matching debug: "+message, fields...)
+	}
 }
 
 // CalculateChainScore - рассчитывает рейтинг целой цепочки при помощи среднего скоректированного на дисперсию.

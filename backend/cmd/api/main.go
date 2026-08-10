@@ -174,6 +174,7 @@ func run(logger *zap.Logger) error {
 			ChainLen:                        cfg.ChainLength,
 			PenaltyFactor:                   cfg.PenaltyFactor,
 			ChainRatingThreshold:            cfg.ChainThreshold,
+			Debug:                           cfg.MatchingDebug,
 		},
 	)
 	if err != nil {
@@ -183,6 +184,23 @@ func run(logger *zap.Logger) error {
 		eventHub.PublishToUsers(userIDs, eventType, entityID, data)
 	})
 	finder := applicationmatching.NewFindCycles(matcher, chainService)
+	matchingJobs, err := postgres.NewMatchingJobs(database)
+	if err != nil {
+		return fmt.Errorf("create matching jobs repository: %w", err)
+	}
+	materializer, err := applicationmatching.NewMaterializer(itemService, finder, chainService)
+	if err != nil {
+		return fmt.Errorf("create matching materializer: %w", err)
+	}
+	matchingWorker, err := applicationmatching.NewWorker(
+		matchingJobs,
+		materializer,
+		logger,
+		applicationmatching.DefaultWorkerConfig(),
+	)
+	if err != nil {
+		return fmt.Errorf("create matching worker: %w", err)
+	}
 	userService := users.NewPostgresService(database)
 	adminRepo, err := adminrepository.NewPostgreSQL(database)
 	if err != nil {
@@ -238,6 +256,7 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("create analysis recovery worker: %w", err)
 	}
 	go recoveryWorker.Start(shutdownSignal)
+	go matchingWorker.Start(shutdownSignal)
 	go runChainExpiry(shutdownSignal, chainService, logger)
 
 	serverErrors := make(chan error, 1)

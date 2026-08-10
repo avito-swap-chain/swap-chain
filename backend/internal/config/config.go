@@ -55,6 +55,7 @@ type Config struct {
 	CompatibilityThreshold          float64
 	UndefinedCategoryID             int32
 	UndefinedCompatibilityThreshold float64
+	MatchingDebug                   bool
 	CategorySimilarityThreshold     float64
 	CategoryConfidenceMargin        float64
 	AnalysisPollInterval            time.Duration
@@ -157,6 +158,9 @@ func Load() (Config, error) {
 	}
 	if cfg.UndefinedCompatibilityThreshold <= cfg.CompatibilityThreshold {
 		return Config{}, fmt.Errorf("MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD must be greater than MATCHING_COMPATIBILITY_THRESHOLD")
+	}
+	if cfg.MatchingDebug, err = boolFromEnv("MATCHING_DEBUG", false); err != nil {
+		return Config{}, err
 	}
 	if cfg.CategorySimilarityThreshold, err = boundedFloatFromEnv("ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD", defaultCategorySimilarity, 0, 1); err != nil {
 		return Config{}, err
