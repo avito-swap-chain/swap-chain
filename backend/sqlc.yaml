@@ -1,0 +1,30 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema:
+      - "migrations/000001_create_matching_schema.up.sql"
+      - "migrations/000002_add_mvp_lifecycle.up.sql"
+      - "migrations/000003_add_user_phone.up.sql"
+      - "migrations/000004_add_chain_cycle_key.up.sql"
+      - "migrations/000005_add_analysis_metadata.up.sql"
+      - "migrations/000006_add_admin_delivery_flow.up.sql"
+      - "migrations/000007_add_chain_chat.up.sql"
+      - "migrations/000008_add_delivery_completion.up.sql"
+      - "migrations/000009_add_matching_local_analysis_fields.up.sql"
+      - "migrations/000010_align_analysis_matching_schema.up.sql"
+      - "migrations/000011_add_matching_jobs.up.sql"
+      - "migrations/000012_manage_exchange_items.up.sql"
+    queries: "sql/queries"
+    gen:
+      go:
+        package: "db"
+        out: "shared/db"
+        sql_package: "database/sql"
+        emit_interface: true
+        emit_json_tags: true
+        overrides:
+          - db_type: "vector"
+            go_type:
+              import: "github.com/pgvector/pgvector-go"
+              type: "Vector"
+              pointer: true

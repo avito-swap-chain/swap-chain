@@ -1,194 +1,436 @@
 # swap-chain
 
-`swap-chain` — монорепозиторий MVP-сервиса многостороннего обмена вещами. Сервис
-ищет замкнутые цепочки из 3–4 участников, чтобы каждый отдал ненужную вещь и
-получил подходящую, даже когда прямого обмена между двумя людьми нет.
+`swap-chain` — монорепозиторий MVP-сервиса многостороннего обмена вещами.
+Backend ищет замкнутые цепочки обмена, в которых каждый участник отдаёт свою вещь
+и получает вещь, подходящую под его описание желаемого предмета.
 
-## Статус bootstrap
+## Что уже работает
 
-Сейчас репозиторий задаёт только общий каркас и правила совместной разработки.
-Реализации Go backend и React frontend ещё не добавлены. Docker Compose уже
-запускает PostgreSQL и Swagger UI; `/health` описан в API-контракте, но начнёт
-отвечать после добавления backend-приложения.
-
-Сознательно не добавлены `deploy/`, CI, миграции, seed-данные и глубокая
-структура приложений. Они появятся отдельными изменениями вместе с работающим
-кодом, а не как пустые абстракции.
+- регистрация/вход по телефону с opaque cookie-сессией;
+- создание карточек обмена с загрузкой фото;
+- автоматическое распознавание и векторизация через Ollama (bge-m3 + chat model);
+- matching engine: поиск замкнутых цепочек с дедупликацией по cycle key;
+- создание, согласование и завершение обменных цепочек
+  (`PENDING → ACCEPTED/REJECTED`, затем `ACCEPTED → COMPLETED`);
+- личные диалоги соседей подобранной цепочки через long-polling;
+- персональный SSE для real-time уведомлений;
+- хранение и выдача изображений через MinIO (только через backend);
+- PostgreSQL 17 с pgvector, версионируемые up/down миграции;
+- Swagger UI с актуальным OpenAPI-контрактом;
+- отдельный demo seed для воспроизводимых демонстраций;
+- Docker Compose для полного локального запуска.
 
 ## Структура
 
 ```text
 swap-chain/
-├── api/                 # OpenAPI-контракт и Swagger UI через Compose
-├── backend/             # зона Go backend
-├── frontend/            # зона React/TypeScript frontend
-├── .env.example         # безопасный пример локальных переменных
-├── .gitignore
-├── .golangci.yaml       # единые правила анализа Go-кода
-├── AGENTS.md            # правила работы людей и AI-агентов
-├── docker-compose.yml   # PostgreSQL и Swagger UI
-├── Makefile             # единая точка входа для команд
+├── api/                 # OpenAPI-контракт
+├── backend/             # Go backend, migrations and modules/{analyze,matching,chat,admin}
+├── frontend/            # React/TypeScript frontend
+├── .env.example         # пример локальной конфигурации без секретов
+├── .golangci.yaml       # правила анализа Go
+├── AGENTS.md            # общие правила работы с проектом
+├── docker-compose.yml   # PostgreSQL, MinIO, миграции, backend и Swagger UI
+├── Makefile             # команды разработки
 └── README.md
 ```
-
-Глубокая структура внутри `backend/` и `frontend/` будет создана владельцами
-этих частей при инициализации приложений. Это снижает вероятность конфликтов с
-параллельными наработками команды.
-
-## Архитектура и стек
-
-Планируется модульный монолит: один Go backend содержит доменные модули вещей,
-пожеланий, подбора и обменов, но разделяет бизнес-правила, сценарии приложения,
-хранилище и HTTP-транспорт. Frontend — React 18+, TypeScript и Vite. Контракт
-REST API хранится отдельно в OpenAPI и согласуется до реализации обработчиков.
-
-PostgreSQL выбран как основное хранилище, потому что критичные инварианты обмена
-требуют транзакций, ограничений, блокировок строк и индексов. Для MVP этого
-достаточно и отдельный Redis пока не нужен.
-
-Планируемый стек:
-
-- Go, REST API, PostgreSQL и SSE либо WebSocket;
-- React, TypeScript, Vite и React Query;
-- OpenAPI 3.1 и Swagger UI;
-- Docker Compose для локального окружения;
-- golangci-lint для статического анализа backend.
 
 ## Требования
 
 - Git;
 - Docker с поддержкой `docker compose`;
-- GNU Make — необязательно, все команды можно выполнить напрямую;
-- Go и golangci-lint понадобятся после появления `backend/go.mod`;
-- Node.js и npm понадобятся после появления `frontend/package.json`.
+- GNU Make для коротких команд (в Windows — установленный через Chocolatey `make`);
+- Go 1.26.5 и golangci-lint v2.12.2 для запуска backend вне контейнера.
 
-## Быстрый старт
+Если GoLand оставил ошибочный `GOROOT=D:\Goland` в текущем PowerShell-сеансе,
+удалите только эту переменную процесса перед запуском Go:
+
+```powershell
+Remove-Item Env:GOROOT -ErrorAction SilentlyContinue
+go version
+```
+
+## Быстрый старт через Docker Compose
 
 Создайте локальный файл окружения:
 
+```powershell
+Copy-Item .env.example .env
+```
+
+Затем из корня репозитория:
+
+```bash
+make config
+make up
+```
+
+Или явно через Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+Первая загрузка скачает образы и модели Ollama (`bge-m3` и `llama3.1`),
+что может занять 10–15 минут. Следить за процессом можно командой:
+
+```bash
+docker compose logs -f ollama-pull
+```
+
+`make up` собирает backend, поднимает PostgreSQL+pgvector, Ollama, MinIO,
+загружает модели, применяет миграции и только после bootstrap embeddings категорий
+запускает готовый API. Frontend ждёт успешный readiness backend.
+После старта доступны:
+
+- frontend: <http://localhost:18080>;
+- backend: <http://localhost:8080>;
+- liveness: <http://localhost:8080/health>;
+- readiness: <http://localhost:8080/api/v1/health>;
+- Swagger UI: <http://localhost:8081>;
+- MinIO console: <http://localhost:9001> (если опубликован порт).
+
+Остановить сервисы без удаления данных:
+
+```bash
+make down
+```
+
+Тома PostgreSQL и MinIO сохраняются. Разрушительная команда `docker compose down -v`
+намеренно не завернута в Makefile.
+
+## Demo seed
+
+Для создания воспроизводимых тестовых данных (3 пользователя: Алиса/Борис/Вера
+и 3 карточки с гарантированным 3-циклом):
+
+```bash
+cd backend && DATABASE_URL=postgres://swap_chain:swap_chain@127.0.0.1:5432/swap_chain?sslmode=disable go run ./cmd/demo-seed
+```
+
+После seed можно проверить matching для Алисы (телефон `+79001000001`):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/session \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"+79001000001"}' -c cookies.txt
+
+curl http://localhost:8080/api/v1/items/55/matching -b cookies.txt
+```
+
+Миграция `000006` всегда создаёт зарезервированного сотрудника ПВЗ для локального
+MVP-демо:
+
+- имя: `ПВЗ Администратор (demo)`;
+- телефон для входа без пароля: `+79009999999`;
+- роль: `ADMIN`.
+
+Для запуска и проверки admin API из корня проекта:
+
 ```bash
 cp .env.example .env
+docker compose up -d --build
+docker compose ps -a
+
+curl http://localhost:8080/api/v1/health
+
+curl -X POST http://localhost:8080/api/v1/session \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"+79009999999"}' \
+  -c admin-cookies.txt
+
+curl -b admin-cookies.txt \
+  'http://localhost:8080/api/v1/admin/deliveries?status=AWAITING_PVZ'
+
+curl -X POST http://localhost:8080/api/v1/admin/deliveries/41/transition \
+  -H "Content-Type: application/json" \
+  -d '{"status":"AT_PVZ"}' \
+  -b admin-cookies.txt
+
+curl -X POST http://localhost:8080/api/v1/admin/deliveries/41/transition \
+  -H "Content-Type: application/json" \
+  -d '{"status":"IN_DELIVERY"}' \
+  -b admin-cookies.txt
+
+# Выдачу конкретной вещи может подтвердить сотрудник ПВЗ:
+curl -X POST http://localhost:8080/api/v1/admin/deliveries/41/transition \
+  -H "Content-Type: application/json" \
+  -d '{"status":"RECEIVED"}' \
+  -b admin-cookies.txt
 ```
 
-В PowerShell используйте `Copy-Item .env.example .env`.
+Во всех командах перехода `41` нужно заменить на `id` из ответа списка.
+Передачи появляются только после того, как все участники приняли цепочку и она
+перешла в `ACCEPTED`.
 
-Проверьте и запустите окружение:
+Получатель может подтвердить собственную входящую вещь без передачи её ID —
+backend определяет её по участнику из session cookie и цепочке:
 
 ```bash
-docker compose config
-docker compose up -d
+curl -X POST http://localhost:8080/api/v1/chains/12/receipt \
+  -b recipient-cookies.txt
 ```
 
-После запуска доступны:
+Подтверждение доступно только из `IN_DELIVERY` и идемпотентно. Когда все две
+или три вещи получили статус `RECEIVED`, та же транзакция переводит цепочку в
+`COMPLETED`. Вещи намеренно остаются `LOCKED`: отдельного статуса `EXCHANGED`
+пока нет, а возврат в `MATCHING` создал бы повторные обмены уже переданных вещей.
 
-- Swagger UI: <http://localhost:8081> (порт задаёт `SWAGGER_PORT`);
-- PostgreSQL: `localhost:5432` (порт задаёт `POSTGRES_PORT`).
+## Chat API
 
-Остановить окружение:
+Для каждой подобранной цепочки пользователь видит отдельные диалоги только с
+соседями по обменному кольцу: с тем, чью вещь он получает, и с тем, кто получает
+его вещь. Диалоги доступны уже в статусе `PENDING`. Отправитель берётся из opaque
+session cookie, а собеседник явно задаётся в URL:
 
 ```bash
-docker compose down
+curl http://localhost:8080/api/v1/chat/threads \
+  -b cookies.txt
+
+curl -X POST http://localhost:8080/api/v1/chains/12/chat/9/messages \
+  -H "Content-Type: application/json" \
+  -d '{"clientMessageId":"web-550e8400-e29b-41d4-a716-446655440000","text":"Встречаемся в ПВЗ?"}' \
+  -b cookies.txt
+
+curl -b cookies.txt \
+  'http://localhost:8080/api/v1/chains/12/chat/9/messages?afterId=0&limit=50&waitSeconds=25'
+
+curl -X POST http://localhost:8080/api/v1/chains/12/chat/9/read \
+  -H "Content-Type: application/json" \
+  -d '{"lastReadMessageId":81}' \
+  -b cookies.txt
 ```
 
-Том с данными PostgreSQL сохраняется между запусками. Его удаление командой
-`docker compose down -v` намеренно не завернуто в Makefile, поскольку это
-разрушительная операция.
+`clientMessageId` обязателен: повтор того же ID и текста возвращает исходное
+сообщение с `200`, а новый ID создаёт сообщение с `201`. GET возвращает сообщения
+по `id ASC`; если новых сообщений нет, он ждёт не более 25 секунд и отвечает
+`200` с пустым `messages`. Список тредов содержит `counterpart`, `giveItem`,
+`receiveItem`, последнее сообщение, `hasUnread`, `unreadCount` и общий
+`totalUnreadCount`. У краткой вещи есть `id`, `title` и первое `imageUrl`; для
+трёхсторонней цепочки одно из направлений конкретного диалога может быть `null`.
+Отметка прочтения идемпотентна и не может сдвинуться назад. Для пользователя вне
+цепочки ответ — `403`, для участника, который не является соседом в этой
+цепочке, — `404`.
 
-## Команды Makefile
+## Локальный запуск Go backend
+
+Можно оставить в Docker только PostgreSQL и MinIO, а Go-процессы запускать на хосте:
+
+```bash
+docker compose up -d postgres minio
+make migrate-up
+make run-backend
+```
+
+Команды миграций используют `DATABASE_URL`, файлы берут из `MIGRATIONS_URL`.
+
+## Основные команды
 
 ```text
-make help       показать список команд
-make config     проверить итоговую конфигурацию Compose
-make up         запустить PostgreSQL и Swagger UI
-make down       остановить окружение
-make logs       читать логи окружения
-make lint       запустить доступные линтеры
-make lint-go    проверить Go-код через golangci-lint
-make test       запустить Go- и frontend-тесты, когда проекты инициализированы
+make help             показать все команды
+make config           проверить конфигурацию Compose
+make build            собрать все Go-команды
+make run-backend      запустить API на хосте
+make up               поднять полное локальное окружение
+make down             остановить окружение без удаления данных
+make logs             читать логи сервисов
+make migrate-up       применить все новые миграции
+make migrate-down     откатить одну миграцию
+make migrate-version  показать версию схемы
+make lint             запустить golangci-lint
+make test             запустить доступные тесты
+make test-go          запустить Go-тесты
+make test-integration запустить миграционные и сквозные PostgreSQL-тесты
 ```
 
-Пока файлов `backend/go.mod` и `frontend/package.json` нет, связанные проверки
-корректно сообщают о пропуске. После инициализации модулей эти же команды начнут
-запускать реальные инструменты.
+Все команды Makefile имеют прямой эквивалент, например `cd backend && go test
+./...` или `docker compose up -d --build`.
 
-## Go-линтер
+## API
 
-Конфигурация находится в `.golangci.yaml`. Она использует golangci-lint как
-единый запускатель нескольких взаимодополняющих проверок:
+Источник контракта — [api/openapi.yaml](api/openapi.yaml). Ключевые endpoint:
 
-- `govet`, `staticcheck`, `unused` и `ineffassign` находят ошибки типов,
-  подозрительные конструкции, мёртвый и неэффективный код;
-- `errcheck` не позволяет незаметно терять ошибки;
-- `bodyclose` помогает не оставлять HTTP response body открытым;
-- `errorlint` проверяет корректную работу с обёрнутыми ошибками;
-- `gocritic`, `revive` и `misspell` поддерживают читаемость кода;
-- `gofmt` и `goimports` обеспечивают единый формат и порядок импортов.
+| Маршрут | Назначение |
+|---|---|
+| `POST /api/v1/users` | Регистрация (имя + телефон), возвращает session cookie |
+| `POST /api/v1/session` | Вход по телефону |
+| `GET /api/v1/session` | Текущая сессия (user id, username, phone) |
+| `DELETE /api/v1/session` | Выход |
+| `POST /api/v1/items` | Создать карточку обмена |
+| `GET /api/v1/items`, `GET /api/v1/items/{id}` | Список/одна карточка (только свои) |
+| `GET /api/v1/items/{id}/matching` | Эфемерные цепочки для карточки (MATCHING-статус) |
+| `POST /api/v1/chains` | Создать цепочку из matching-кандидатов |
+| `GET /api/v1/chains`, `GET /api/v1/chains/{id}` | Список/детали цепочек |
+| `POST /api/v1/chains/{id}/decision` | `APPROVED` или `DECLINED` |
+| `POST /api/v1/chains/{id}/receipt` | Получатель подтверждает свою входящую вещь |
+| `GET /api/v1/chat/threads` | Все личные диалоги и счётчик непрочитанных сообщений |
+| `GET`, `POST /api/v1/chains/{id}/chat/{counterpartId}/messages` | История/long-poll и отправка личных сообщений |
+| `POST /api/v1/chains/{id}/chat/{counterpartId}/read` | Идемпотентная отметка сообщений прочитанными |
+| `GET /api/v1/admin/deliveries` | Очередь товаров принятых цепочек для сотрудника ПВЗ |
+| `POST /api/v1/admin/deliveries/{id}/transition` | Приём на ПВЗ, отправка или выдача получателю |
+| `POST /api/v1/media` | Загрузить изображение (multipart) |
+| `GET /api/v1/media/{objectKey}` | Получить изображение (публично) |
+| `GET /api/v1/events` | Персональный SSE-поток |
+| `GET /health` | Liveness HTTP-процесса без проверки внешних зависимостей |
+| `GET /api/v1/health` | Готовность PostgreSQL, Ollama и справочника категорий |
 
-Такой набор даёт полезные сигналы для конкурентной backend-логики, но остаётся
-достаточно компактным для хакатона. Конфигурация рассчитана на golangci-lint
-`v2.12.2`; инструмент устанавливается по [официальной инструкции][golangci].
-Версия должна быть одинаковой у команды и в будущем CI. Запуск из корня:
-`make lint-go`.
+Аутентификация — opaque HttpOnly cookie. Запросы из браузера с `credentials: "include"`.
 
-## API и Swagger
+## SSE события
 
-Черновик контракта находится в `api/openapi.yaml`. Изменения HTTP API начинаются
-с этого файла: сначала согласуются endpoint, схема запроса, ответа и ошибки,
-затем синхронно обновляются backend и frontend. Сейчас контракт содержит только
-будущий `GET /health`.
+- `item.status.updated` — карточка перешла ANALYZING → MATCHING → LOCKED
+- `chain.created`, `chain.updated`, `chain.accepted`, `chain.rejected`
 
-Swagger UI читает локальный файл через read-only volume. Поэтому после правки
-спецификации достаточно обновить страницу; при необходимости перезапустите
-сервис командой `docker compose restart swagger-ui`.
+События приходят только участникам. После переподключения клиент восстанавливает
+состояние через REST.
 
-## Переменные окружения
+## Конфигурация
 
-| Переменная | Назначение | Значение в примере |
+| Переменная | Назначение | По умолчанию |
 |---|---|---|
-| `POSTGRES_USER` | локальный пользователь БД | `swap_chain` |
-| `POSTGRES_PASSWORD` | локальный пароль БД | `swap_chain` |
-| `POSTGRES_DB` | имя базы | `swap_chain` |
-| `POSTGRES_PORT` | порт PostgreSQL на хосте | `5432` |
-| `SWAGGER_PORT` | порт Swagger UI | `8081` |
+| `DATABASE_URL` | PostgreSQL URL | `postgres://swap_chain:...@127.0.0.1:5432/swap_chain?sslmode=disable` |
+| `MIGRATIONS_URL` | Каталог миграций | `file://migrations` |
+| `BACKEND_PORT` | Опубликованный порт API | `8080` |
+| `HTTP_ADDR` | Адрес HTTP-сервера | `:8080` |
+| `CORS_ALLOWED_ORIGIN` | Разрешённый origin | `http://localhost:5173` |
+| `SESSION_TTL` | Время жизни сессии | `24h` |
+| `COOKIE_SECURE` | Secure-флаг cookie | `false` |
+| `OLLAMA_BASE_URL` | Адрес Ollama | `http://localhost:11434` |
+| `OLLAMA_CHAT_MODEL` | Модель для анализа | `llama3.1` |
+| `OLLAMA_EMBEDDINGS_MODEL` | Модель для эмбеддингов | `bge-m3` |
+| `OLLAMA_TIMEOUT` | Таймаут одного запроса к локальной модели | `4m` |
+| `GIGACHAT_AUTH_KEY` | Опциональный Authorization Key основного LLM; при ошибке используется Ollama | пусто |
+| `MINIO_ACCESS_KEY` | Ключ MinIO | `minioadmin` |
+| `MINIO_SECRET_KEY` | Секрет MinIO | `minioadmin` |
+| `MINIO_BUCKET` | Бакет для медиа | `swap-chain-media` |
+| `MINIO_PORT` | Порт MinIO API | `9000` |
+| `MEDIA_MAX_UPLOAD_BYTES` | Максимальный размер фото | `10485760` (10 MiB) |
+| `MATCHING_SIMILAR_ITEMS` | Кандидатов на узел | `20` |
+| `MATCHING_CHAIN_LENGTH` | Макс. длина цепочки | `3` |
+| `MATCHING_PENALTY_FACTOR` | Штраф за разброс score | `0.25` |
+| `MATCHING_CHAIN_THRESHOLD` | Мин. итоговый score | `0.30` |
+| `MATCHING_DEBUG` | Подробный лог кандидатов, рёбер и циклов matching | `false` |
+| `ANALYSIS_BOOTSTRAP_TIMEOUT` | Таймаут проверки моделей и bootstrap категорий | `5m` |
+| `ANALYSIS_TIMEOUT` | Общий таймаут полного анализа одной вещи | `5m` |
+| `ANALYSIS_STALE_AFTER` | Возраст зависшего анализа до запуска recovery | `6m` |
+| `SWAGGER_PORT` | Порт Swagger UI | `8081` |
 
-`.env` запрещён к коммиту. Значения из `.env.example` предназначены только для
-локальной разработки и не являются production-секретами.
+`.env` не коммитится. Значения примера — только для локальной разработки.
 
-## Тестирование
+## База данных и миграции
 
-Единая команда — `make test`. Она запускает `go test ./...` внутри backend и
-`npm test -- --run` внутри frontend после появления соответствующих манифестов.
-До этого этапа проверяются Compose и OpenAPI, как описано в разделе запуска.
+Миграции включают pgvector, создают `users`, `items`, `chains` и `chain_participants`,
+а также версионированный справочник категорий. Embeddings системных категорий
+вычисляются настроенной Ollama-моделью при старте backend и повторно не создаются.
+Внешние ключи и уникальные ограничения защищают связь вещи с владельцем, запрещают
+повтор вещи или пользователя внутри цепочки, гарантируют уникальность cycle key.
+Embedding — `vector(1024)`, HNSW-индекс для cosine distance.
 
-## Ограничения MVP
+Миграция `000006` добавляет роль `ADMIN`, статусы физической передачи товара и
+неизменяемый аудит действий сотрудника ПВЗ. Повтор одной и той же команды
+идемпотентен; приём и отправка проверяются и записываются в одной транзакции.
 
-- цепочки только из 3–4 участников и одной вещи от каждого;
-- один город и фиксированный набор категорий;
-- тестовые пользователи и подготовленные изображения;
-- без оплаты, доставки, полноценного чата и сложных споров;
-- без ML-подбора и отдельных микросервисов.
+Миграция `000007` добавляет личные сообщения, read-watermark и индексы тредов.
+Уникальный ключ `(chain, sender, counterpart, clientMessageId)` обеспечивает
+идемпотентную отправку внутри конкретного диалога.
 
-## Известные ограничения текущего каркаса
+Миграция `000008` добавляет конечные статусы доставки `RECEIVED` и цепочки
+`COMPLETED`. Подтверждение получателя, аудит и возможное завершение всей цепочки
+записываются атомарно.
 
-- backend и frontend ещё не инициализированы;
-- миграций и seed-данных нет;
-- endpoint `/health` пока является только частью контракта;
-- CI и production deployment отложены по решению команды.
+Миграция `000010` выравнивает схему анализа и matching: оставляет единые локальные
+embedding-поля, делает `image_amount` вычисляемым и добавляет системный справочник
+категорий для bootstrap при старте.
 
-## Совместная работа
+Миграция `000011` добавляет надёжную очередь `matching_jobs`. Завершение анализа
+атомарно переводит вещь в `MATCHING` и ставит задание, а фоновый worker находит
+циклы и сохраняет их как `PENDING`-цепочки. Миграция также ставит задания для
+всех вещей, которые уже находились в `MATCHING`; ошибки повторяются с backoff,
+зависшие leases подхватываются снова после перезапуска процесса.
 
-Правила границ модулей, веток, изменений API, проверок и безопасной работы
-описаны в [AGENTS.md](AGENTS.md). Перед началом задачи создайте отдельную ветку
-от актуального `main`; не коммитьте секреты и не меняйте чужие наработки без
-согласования.
+Backend не стартует без PostgreSQL, обеих моделей Ollama и заполненных embeddings
+категорий. `GET /health` проверяет только liveness процесса. Версионированный
+`GET /api/v1/health` проверяет PostgreSQL, модели Ollama и справочник категорий,
+возвращая 503, пока сервис не готов принимать пользовательские запросы.
 
-## Использование AI
+## Линтеры, тесты и сборка
 
-AI-агенты могут помогать с анализом, документацией, тестами и реализацией, но
-результат должен быть просмотрен участником команды. Сгенерированный код обязан
-проходить те же линтеры и тесты, что и написанный вручную; архитектурные и
-продуктовые решения фиксируются явно, а не принимаются только по совету AI.
+Backend проверяется из корня репозитория:
 
-Ссылка на опубликованное приложение будет добавлена после появления deployment.
+```bash
+make lint-go
+make test-go
+TEST_DATABASE_URL=postgres://swap_chain:swap_chain@127.0.0.1:5432/swap_chain?sslmode=disable make test-integration
+make build
+```
 
-[golangci]: https://golangci-lint.run/docs/welcome/install/
+Обычный `go test ./...` пропускает PostgreSQL integration-тесты, если
+`TEST_DATABASE_URL` не задан. `make test-integration` создаёт для прогона
+изолированные базы, но указанный сервер PostgreSQL должен разрешать создание и
+удаление баз. Не направляйте эту команду на общую или production-базу.
+
+Frontend проверяется отдельно, потому что корневые `make lint` и `make test`
+пока запускают только Go-линтер, Go-тесты и TypeScript typecheck:
+
+```bash
+pnpm --dir frontend run lint
+VITE_API_URL= pnpm --dir frontend run test
+pnpm --dir frontend run build
+```
+
+Эквивалент подготовки тестового режима в PowerShell:
+
+```powershell
+Remove-Item Env:VITE_API_URL -ErrorAction SilentlyContinue
+pnpm --dir frontend run test
+```
+
+Пустой `VITE_API_URL` включает предусмотренный unit-тестами детерминированный
+mock-режим. Production-сборка Compose передаёт `VITE_API_URL=/` и работает с API
+через nginx того же origin.
+
+### Почему включены эти правила линтера
+
+Backend использует `golangci-lint`; точный исполняемый набор является частью
+репозитория и находится в `.golangci.yaml`:
+
+| Проверка | Зачем она нужна |
+|---|---|
+| `bodyclose` | Находит незакрытые HTTP response bodies, которые мешают повторному использованию соединений и могут исчерпать ресурсы. |
+| `errcheck` | Не позволяет молча терять ошибки записи, закрытия ресурсов и других операций с побочными эффектами. |
+| `errorlint` | Сохраняет корректную работу `errors.Is`/`errors.As` и цепочек ошибок через `%w`. |
+| `gocritic` | Находит подозрительные и избыточные конструкции, которые легко расходятся по поведению при последующих изменениях. |
+| `govet` | Выполняет стандартные проверки Go с учётом типов, форматных строк и конкурентного доступа. |
+| `ineffassign` | Удаляет присваивания, результат которых никогда не используется и часто скрывает ошибку в ветвлении. |
+| `misspell` | Защищает имена, сообщения об ошибках и документацию от повторяющихся опечаток. |
+| `revive` | Проверяет базовую сопровождаемость Go-кода и опасные соглашения об именовании. |
+| `staticcheck` | Находит дефекты API, конкурентности и стандартной библиотеки, которые компилятор обычно допускает. |
+| `unused` | Не даёт оставлять мёртвые функции, константы и зависимости. |
+| `gofmt`, `goimports` | Обеспечивают единый формат и детерминированную организацию импортов. |
+
+Для `revive` исключены только сообщения `exported` и `package-comments`.
+Большая часть Go-пакетов является внутренней реализацией монорепозитория, а
+публичный HTTP-контракт документируется в `api/openapi.yaml`. Обязательные GoDoc-
+комментарии на каждую технически экспортируемую сущность создавали бы большой
+объём формального текста без дополнительной защиты корректности. Остальные
+проверки `revive` продолжают выполняться.
+
+Generated-файлы `internal/api/*.gen.go` и `shared/db/*.sql.go` не исправляются
+вручную: они воспроизводимо создаются из OpenAPI и SQL через `make generate`.
+Для них отключены только проверки, которые должен исправлять генератор; обычный
+код остаётся под полным набором правил.
+
+Frontend использует `oxlint`: он быстро проверяет JavaScript/TypeScript и React,
+включая правило совместимости компонентов с Fast Refresh. TypeScript-компилятор
+в `pnpm build` дополнительно отвечает за типы, поэтому lint, tests и build не
+заменяют друг друга и запускаются все три.
+
+## Известные ограничения
+
+- Ollama в Docker работает CPU-only; для GPU-ускорения установите Ollama на хосте и задайте `OLLAMA_BASE_URL=http://host.docker.internal:11434` в `.env`;
+- CI и production deployment пока не добавлены;
+- фото-распознавание (GigaChat/CV) не подключено к API, только analyze-пайплайн;
+- привязка администраторов и доставок к нескольким конкретным ПВЗ пока не реализована.
+
+Общие правила архитектуры, миграций, тестирования и работы с ветками описаны в
+[AGENTS.md](AGENTS.md).

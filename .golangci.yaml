@@ -19,6 +19,16 @@ linters:
     - unused
   exclusions:
     generated: lax
+    rules:
+      - path: "(?:internal/api/.*\\.gen\\.go|shared/db/.*\\.sql\\.go)"
+        linters:
+          - errcheck
+      # Most packages are internal implementation details. Requiring GoDoc for
+      # every exported symbol there produces boilerplate without protecting a
+      # public API; correctness-oriented revive checks remain enabled.
+      - text: "(?:exported|package-comments):"
+        linters:
+          - revive
 
 formatters:
   enable:
