@@ -13,8 +13,14 @@ import (
 	"swap-chain/internal/media"
 )
 
-// ErrNotFound indicates that an item ID is unknown to the current repository.
-var ErrNotFound = errors.New("item not found")
+var (
+	// ErrNotFound indicates that an item ID is unknown to the current repository.
+	ErrNotFound = errors.New("item not found")
+	// ErrForbidden indicates an attempt to modify another user's item.
+	ErrForbidden = errors.New("item forbidden")
+	// ErrConflict indicates that an item is immutable in its current lifecycle state.
+	ErrConflict = errors.New("item conflict")
+)
 
 // ValidationError contains field-level item validation errors.
 type ValidationError struct {
@@ -46,11 +52,52 @@ type CreateInput struct {
 	ImageURLs        []string
 }
 
+// UpdateInput contains a partial item change. Withdraw removes the wish and
+// makes the item unavailable for matching without deleting its history.
+type UpdateInput struct {
+	OfferDescription *string
+	WantDescription  *string
+	Withdraw         bool
+}
+
 // Service defines item operations required by the HTTP handler.
 type Service interface {
 	Create(ctx context.Context, userID int64, input CreateInput) (Item, error)
+	Update(ctx context.Context, userID, itemID int64, input UpdateInput) (Item, error)
 	Get(ctx context.Context, itemID int64) (Item, error)
 	ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error)
+}
+
+func normalizeUpdate(input UpdateInput) UpdateInput {
+	if input.OfferDescription != nil {
+		value := strings.TrimSpace(*input.OfferDescription)
+		input.OfferDescription = &value
+	}
+	if input.WantDescription != nil {
+		value := strings.TrimSpace(*input.WantDescription)
+		input.WantDescription = &value
+	}
+	return input
+}
+
+func validateUpdate(input UpdateInput) error {
+	fields := make(map[string]string)
+	if input.OfferDescription == nil && input.WantDescription == nil && !input.Withdraw {
+		fields["request"] = "must change a description or withdraw the item"
+	}
+	if input.Withdraw && input.WantDescription != nil {
+		fields["wantDescription"] = "cannot be changed while withdrawing the item"
+	}
+	if input.OfferDescription != nil {
+		validateText(fields, "offerDescription", *input.OfferDescription, 4000)
+	}
+	if input.WantDescription != nil {
+		validateText(fields, "wantDescription", *input.WantDescription, 4000)
+	}
+	if len(fields) > 0 {
+		return &ValidationError{Fields: fields}
+	}
+	return nil
 }
 
 // ParseCursor parses the public pagination cursor.

@@ -44,6 +44,7 @@ import type {
   Session,
   SubmitChainDecisionRequest,
   UnauthorizedResponse,
+  UpdateItemRequest,
   UploadMediaBody,
   UserProfile,
   ValidationErrorResponse
@@ -744,6 +745,75 @@ export const getItem = async (itemId: number, options?: Parameters<typeof apiFet
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export type updateItemResponse200 = {
+  data: Item
+  status: 200
+}
+
+export type updateItemResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type updateItemResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type updateItemResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type updateItemResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type updateItemResponse422 = {
+  data: ValidationErrorResponse
+  status: 422
+}
+
+export type updateItemResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type updateItemResponseSuccess = (updateItemResponse200) & {
+  headers: Headers;
+};
+export type updateItemResponseError = (updateItemResponse401 | updateItemResponse403 | updateItemResponse404 | updateItemResponse409 | updateItemResponse422 | updateItemResponse500) & {
+  headers: Headers;
+};
+
+export type updateItemResponse = (updateItemResponseSuccess | updateItemResponseError)
+
+export const getUpdateItemUrl = (itemId: number,) => {
+
+
+
+
+  return `/api/v1/items/${itemId}`
+}
+
+/**
+ * @summary Update an exchange item or withdraw it from matching
+ */
+export const updateItem = async (itemId: number,
+    updateItemRequest: UpdateItemRequest, options?: Parameters<typeof apiFetch>[1]): Promise<updateItemResponse> => {
+
+  return apiFetch<updateItemResponse>(getUpdateItemUrl(itemId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateItemRequest)
   }
 );}
 

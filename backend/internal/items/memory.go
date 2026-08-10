@@ -54,6 +54,50 @@ func (s *MemoryService) Create(_ context.Context, userID int64, input CreateInpu
 	return clone(item), nil
 }
 
+// Update changes a user's item. A change to matching inputs restarts analysis;
+// withdrawal keeps the item in history but removes it from matching.
+func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input UpdateInput) (Item, error) {
+	input = normalizeUpdate(input)
+	if err := validateUpdate(input); err != nil {
+		return Item{}, err
+	}
+
+	s.mu.Lock()
+	item, ok := s.items[itemID]
+	if !ok {
+		s.mu.Unlock()
+		return Item{}, ErrNotFound
+	}
+	if item.UserID != userID {
+		s.mu.Unlock()
+		return Item{}, ErrForbidden
+	}
+	if item.Status == "LOCKED" {
+		s.mu.Unlock()
+		return Item{}, ErrConflict
+	}
+	if input.OfferDescription != nil {
+		item.OfferDescription = *input.OfferDescription
+	}
+	if input.Withdraw {
+		item.WantDescription = ""
+		item.Status = "WITHDRAWN"
+	} else if input.WantDescription != nil {
+		item.WantDescription = *input.WantDescription
+		item.Status = "ANALYZING"
+	} else if input.OfferDescription != nil && item.Status != "WITHDRAWN" {
+		item.Status = "ANALYZING"
+	}
+	item.UpdatedAt = time.Now().UTC()
+	s.items[itemID] = item
+	s.mu.Unlock()
+
+	if s.publish != nil {
+		s.publish(item.UserID, "item.status.updated", FormatCursor(item.ID), map[string]any{"status": item.Status})
+	}
+	return clone(item), nil
+}
+
 // Get returns one in-memory item by ID.
 func (s *MemoryService) Get(_ context.Context, itemID int64) (Item, error) {
 	s.mu.RLock()

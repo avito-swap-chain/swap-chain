@@ -9,6 +9,7 @@ const STATUS_VIEW: Record<ItemStatus, { tone: 'neutral' | 'muted'; label: string
   // Разбор описания занимает секунды, но без подписи вещь выглядит зависшей: желание
   // указано, а в подборе её ещё нет и делать с ней нечего.
   analyzing: { tone: 'muted', label: 'Проверяем описание' },
+  withdrawn: { tone: 'muted', label: 'Снято с обмена' },
   idle: null,
 }
 

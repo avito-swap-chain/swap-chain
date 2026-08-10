@@ -150,6 +150,7 @@ func (r *Analysis) ClaimStaleAnalyzingItems(
 func mapAnalysisItem(row db.GetItemForAnalysisRow) model.AnalysisItem {
 	return model.AnalysisItem{
 		ID:               row.ID,
+		AnalysisVersion:  row.AnalysisVersion,
 		OfferTitle:       row.OfferTitle,
 		OfferDescription: nullableString(row.OfferDescription),
 		WantDescription:  nullableString(row.WantDescription),
@@ -170,6 +171,7 @@ func mapAnalysisResult(result model.AnalysisResult) db.CompleteItemAnalysisParam
 		IsCategoryManual:    result.IsCategoryManual,
 		OfferEmbeddingLocal: &offerEmbedding,
 		WantEmbeddingLocal:  &wantEmbedding,
+		AnalysisVersion:     result.AnalysisVersion,
 		ID:                  result.ItemID,
 	}
 }

@@ -12,6 +12,8 @@ sql:
       - "migrations/000008_add_delivery_completion.up.sql"
       - "migrations/000009_add_matching_local_analysis_fields.up.sql"
       - "migrations/000010_align_analysis_matching_schema.up.sql"
+      - "migrations/000011_add_matching_jobs.up.sql"
+      - "migrations/000012_manage_exchange_items.up.sql"
     queries: "sql/queries"
     gen:
       go:

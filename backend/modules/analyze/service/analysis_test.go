@@ -76,6 +76,7 @@ func TestAnalysisCompletesItem(t *testing.T) {
 	repo := &analysisRepoStub{
 		item: model.AnalysisItem{
 			ID:               7,
+			AnalysisVersion:  3,
 			OfferTitle:       "Велосипед",
 			OfferDescription: "Городской велосипед",
 			WantDescription:  "Сноуборд",
@@ -104,6 +105,9 @@ func TestAnalysisCompletesItem(t *testing.T) {
 	}
 	if repo.complete.ParamRichness != 0.75 {
 		t.Fatalf("ParamRichness = %v", repo.complete.ParamRichness)
+	}
+	if repo.complete.AnalysisVersion != 3 {
+		t.Fatalf("analysis version = %d, want 3", repo.complete.AnalysisVersion)
 	}
 	if len(repo.complete.OfferEmbedding) != 2 || len(repo.complete.WantEmbedding) != 2 {
 		t.Fatal("embeddings were not passed to repository")

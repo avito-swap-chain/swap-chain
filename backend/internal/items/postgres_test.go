@@ -67,6 +67,14 @@ func (r *fakeRepository) Create(_ context.Context, userID int64, input CreateInp
 	}, nil
 }
 
+func (r *fakeRepository) Update(_ context.Context, userID, itemID int64, input UpdateInput) (updateResult, error) {
+	item := Item{ID: itemID, UserID: userID, Status: "ANALYZING"}
+	if input.Withdraw {
+		item.Status = "WITHDRAWN"
+	}
+	return updateResult{Item: item}, nil
+}
+
 func (r *fakeRepository) Get(_ context.Context, itemID int64) (Item, error) {
 	return Item{ID: itemID, UserID: 7, Status: "MATCHING"}, nil
 }

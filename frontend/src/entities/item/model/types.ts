@@ -7,7 +7,7 @@ export type ItemCondition = 'new' | 'good' | 'used'
  * и в подбор её не пускает. Это не то же самое, что `idle` («обмен не включён»): предлагать
  * там включить обмен нечего, человек уже всё заполнил, и карточка выглядела замороженной.
  */
-export type ItemStatus = 'idle' | 'analyzing' | 'searching' | 'reserved'
+export type ItemStatus = 'idle' | 'analyzing' | 'searching' | 'reserved' | 'withdrawn'
 
 /** Один вариант желания — одно ребро графа, по которому ищется цепочка. */
 export interface Wish {

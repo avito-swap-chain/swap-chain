@@ -416,6 +416,59 @@ func (h *Handler) CreateItem(ctx context.Context, request api.CreateItemRequestO
 	return api.CreateItem201JSONResponse(itemModel(item)), nil
 }
 
+// UpdateItem changes an exchange item's descriptions or withdraws it from
+// matching while retaining the item in completed exchange history.
+func (h *Handler) UpdateItem(ctx context.Context, request api.UpdateItemRequestObject) (api.UpdateItemResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.UpdateItem401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.UpdateItem422JSONResponse{
+			ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "item update is required", map[string]any{"request": "JSON request body is required"})),
+		}, nil
+	}
+
+	withdraw := request.Body.Withdraw != nil && *request.Body.Withdraw
+	item, err := h.items.Update(ctx, current.UserID, request.ItemId, items.UpdateInput{
+		OfferDescription: request.Body.OfferDescription,
+		WantDescription:  request.Body.WantDescription,
+		Withdraw:         withdraw,
+	})
+	if err != nil {
+		var validationError *items.ValidationError
+		switch {
+		case errors.As(err, &validationError):
+			details := make(map[string]any, len(validationError.Fields))
+			for field, message := range validationError.Fields {
+				details[field] = message
+			}
+			return api.UpdateItem422JSONResponse{
+				ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "item validation failed", details)),
+			}, nil
+		case errors.Is(err, items.ErrNotFound):
+			return api.UpdateItem404JSONResponse{
+				NotFoundJSONResponse: api.NotFoundJSONResponse(errorModel(ctx, "ITEM_NOT_FOUND", "item not found", nil)),
+			}, nil
+		case errors.Is(err, items.ErrForbidden):
+			return api.UpdateItem403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(errorModel(ctx, "ITEM_FORBIDDEN", "item does not belong to the current user", nil)),
+			}, nil
+		case errors.Is(err, items.ErrConflict):
+			return api.UpdateItem409JSONResponse{
+				ConflictJSONResponse: api.ConflictJSONResponse(errorModel(ctx, "ITEM_LOCKED", "a locked item cannot be changed", nil)),
+			}, nil
+		default:
+			return api.UpdateItem500JSONResponse{
+				InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to update item", nil)),
+			}, nil
+		}
+	}
+	return api.UpdateItem200JSONResponse(itemModel(item)), nil
+}
+
 // GetItem returns one item.
 func (h *Handler) GetItem(ctx context.Context, request api.GetItemRequestObject) (api.GetItemResponseObject, error) {
 	item, err := h.items.Get(ctx, request.ItemId)

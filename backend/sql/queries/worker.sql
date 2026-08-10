@@ -19,19 +19,42 @@ SELECT item.id,
        item.offer_title,
        item.offer_description,
        item.want_description,
-       item.status
+       item.status,
+       item.analysis_version
 FROM items AS item
 WHERE item.id = $1;
 
 -- name: CompleteItemAnalysis :execrows
-UPDATE items
-SET offer_category_id = sqlc.arg(offer_category_id),
-    want_category_id = sqlc.arg(want_category_id),
-    param_richness = sqlc.arg(param_richness),
-    is_category_manual = sqlc.arg(is_category_manual),
-    offer_embedding_local = sqlc.arg(offer_embedding_local)::vector,
-    want_embedding_local = sqlc.arg(want_embedding_local)::vector,
-    status = 'MATCHING',
-    last_status_updated_at = NOW()
-WHERE id = sqlc.arg(id)
-  AND status = 'ANALYZING';
+WITH analyzed_item AS (
+    UPDATE items
+    SET offer_category_id = sqlc.arg(offer_category_id),
+        want_category_id = sqlc.arg(want_category_id),
+        param_richness = sqlc.arg(param_richness),
+        is_category_manual = sqlc.arg(is_category_manual),
+        offer_embedding_local = sqlc.arg(offer_embedding_local)::vector,
+        want_embedding_local = sqlc.arg(want_embedding_local)::vector,
+        status = 'MATCHING',
+        last_status_updated_at = NOW()
+    WHERE id = sqlc.arg(id)
+      AND status = 'ANALYZING'
+      AND analysis_version = sqlc.arg(analysis_version)
+    RETURNING id
+)
+INSERT INTO matching_jobs (
+    item_id,
+    status,
+    attempts,
+    available_at,
+    locked_at,
+    last_error,
+    updated_at
+)
+SELECT id, 'PENDING', 0, NOW(), NULL, NULL, NOW()
+FROM analyzed_item
+ON CONFLICT (item_id) DO UPDATE
+SET status = 'PENDING',
+    attempts = 0,
+    available_at = NOW(),
+    locked_at = NULL,
+    last_error = NULL,
+    updated_at = NOW();

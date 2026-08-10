@@ -105,6 +105,7 @@ const (
 	ItemStatusANALYZING ItemStatus = "ANALYZING"
 	ItemStatusMATCHING  ItemStatus = "MATCHING"
 	ItemStatusLOCKED    ItemStatus = "LOCKED"
+	ItemStatusWITHDRAWN ItemStatus = "WITHDRAWN"
 )
 
 func (e *ItemStatus) Scan(src interface{}) error {
@@ -304,6 +305,18 @@ type Item struct {
 	OfferEmbeddingLocal interface{}    `json:"offer_embedding_local"`
 	WantEmbeddingLocal  interface{}    `json:"want_embedding_local"`
 	ImageAmount         sql.NullInt32  `json:"image_amount"`
+	AnalysisVersion     int64          `json:"analysis_version"`
+}
+
+type MatchingJob struct {
+	ItemID      int64          `json:"item_id"`
+	Status      string         `json:"status"`
+	Attempts    int32          `json:"attempts"`
+	AvailableAt time.Time      `json:"available_at"`
+	LockedAt    sql.NullTime   `json:"locked_at"`
+	LastError   sql.NullString `json:"last_error"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
 type User struct {

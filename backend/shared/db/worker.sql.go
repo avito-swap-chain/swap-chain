@@ -59,17 +59,39 @@ func (q *Queries) ClaimStaleAnalyzingItems(ctx context.Context, arg ClaimStaleAn
 }
 
 const completeItemAnalysis = `-- name: CompleteItemAnalysis :execrows
-UPDATE items
-SET offer_category_id = $1,
-    want_category_id = $2,
-    param_richness = $3,
-    is_category_manual = $4,
-    offer_embedding_local = $5::vector,
-    want_embedding_local = $6::vector,
-    status = 'MATCHING',
-    last_status_updated_at = NOW()
-WHERE id = $7
-  AND status = 'ANALYZING'
+WITH analyzed_item AS (
+    UPDATE items
+    SET offer_category_id = $1,
+        want_category_id = $2,
+        param_richness = $3,
+        is_category_manual = $4,
+        offer_embedding_local = $5::vector,
+        want_embedding_local = $6::vector,
+        status = 'MATCHING',
+        last_status_updated_at = NOW()
+    WHERE id = $7
+      AND status = 'ANALYZING'
+      AND analysis_version = $8
+    RETURNING id
+)
+INSERT INTO matching_jobs (
+    item_id,
+    status,
+    attempts,
+    available_at,
+    locked_at,
+    last_error,
+    updated_at
+)
+SELECT id, 'PENDING', 0, NOW(), NULL, NULL, NOW()
+FROM analyzed_item
+ON CONFLICT (item_id) DO UPDATE
+SET status = 'PENDING',
+    attempts = 0,
+    available_at = NOW(),
+    locked_at = NULL,
+    last_error = NULL,
+    updated_at = NOW()
 `
 
 type CompleteItemAnalysisParams struct {
@@ -80,6 +102,7 @@ type CompleteItemAnalysisParams struct {
 	OfferEmbeddingLocal *pgvector_go.Vector `json:"offer_embedding_local"`
 	WantEmbeddingLocal  *pgvector_go.Vector `json:"want_embedding_local"`
 	ID                  int64               `json:"id"`
+	AnalysisVersion     int64               `json:"analysis_version"`
 }
 
 func (q *Queries) CompleteItemAnalysis(ctx context.Context, arg CompleteItemAnalysisParams) (int64, error) {
@@ -91,6 +114,7 @@ func (q *Queries) CompleteItemAnalysis(ctx context.Context, arg CompleteItemAnal
 		arg.OfferEmbeddingLocal,
 		arg.WantEmbeddingLocal,
 		arg.ID,
+		arg.AnalysisVersion,
 	)
 	if err != nil {
 		return 0, err
@@ -103,7 +127,8 @@ SELECT item.id,
        item.offer_title,
        item.offer_description,
        item.want_description,
-       item.status
+       item.status,
+       item.analysis_version
 FROM items AS item
 WHERE item.id = $1
 `
@@ -114,6 +139,7 @@ type GetItemForAnalysisRow struct {
 	OfferDescription sql.NullString `json:"offer_description"`
 	WantDescription  sql.NullString `json:"want_description"`
 	Status           ItemStatus     `json:"status"`
+	AnalysisVersion  int64          `json:"analysis_version"`
 }
 
 func (q *Queries) GetItemForAnalysis(ctx context.Context, id int64) (GetItemForAnalysisRow, error) {
@@ -125,6 +151,7 @@ func (q *Queries) GetItemForAnalysis(ctx context.Context, id int64) (GetItemForA
 		&i.OfferDescription,
 		&i.WantDescription,
 		&i.Status,
+		&i.AnalysisVersion,
 	)
 	return i, err
 }

@@ -13,4 +13,5 @@ export const ItemStatus = {
   ANALYZING: 'ANALYZING',
   MATCHING: 'MATCHING',
   LOCKED: 'LOCKED',
+  WITHDRAWN: 'WITHDRAWN',
 } as const;

@@ -20,6 +20,8 @@ import (
 
 	applicationmatching "swap-chain/internal/application/matching"
 	"swap-chain/internal/chains"
+	analyzemodel "swap-chain/modules/analyze/model"
+	analyzerepository "swap-chain/modules/analyze/repository"
 	matchingrepository "swap-chain/modules/matching/repository"
 	matchingservice "swap-chain/modules/matching/service"
 	"swap-chain/shared/db"
@@ -97,7 +99,7 @@ func TestSchemaAlignmentUpgradesAndRollsBackExistingSchema(t *testing.T) {
 	}
 
 	migrator = newMigrator(t, databaseURL)
-	if err := migrator.Steps(-1); err != nil {
+	if err := migrator.Migrate(migrationBeforeSchemaAlignment); err != nil {
 		t.Fatalf("roll back schema alignment: %v", err)
 	}
 	closeMigrator(t, migrator)
@@ -109,6 +111,101 @@ func TestSchemaAlignmentUpgradesAndRollsBackExistingSchema(t *testing.T) {
 	assertColumn(t, database, "categories", "embedding", true)
 	assertColumn(t, database, "categories", "embedding_local", true)
 	assertColumn(t, database, "categories", "is_system", false)
+}
+
+func TestMatchingJobsMigrationBackfillsExistingMatchingItems(t *testing.T) {
+	databaseURL, cleanup := newTestDatabase(t)
+	t.Cleanup(cleanup)
+
+	migrator := newMigrator(t, databaseURL)
+	if err := migrator.Steps(10); err != nil {
+		t.Fatalf("apply first ten migrations: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database := openDatabase(t, databaseURL)
+	var itemID int64
+	if err := database.QueryRow(`
+		WITH created_user AS (
+			INSERT INTO users (username, phone)
+			VALUES ('matching-job-backfill', '+79990008888')
+			RETURNING id
+		)
+		INSERT INTO items (user_id, offer_title, status)
+		SELECT id, 'Backfill matching item', 'MATCHING' FROM created_user
+		RETURNING id`).Scan(&itemID); err != nil {
+		t.Fatalf("create matching item before job migration: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close pre-job database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Up(); err != nil {
+		t.Fatalf("apply matching jobs migration: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	t.Cleanup(func() { _ = database.Close() })
+	var status string
+	if err := database.QueryRow(`SELECT status FROM matching_jobs WHERE item_id = $1`, itemID).Scan(&status); err != nil {
+		t.Fatalf("load backfilled matching job: %v", err)
+	}
+	if status != "PENDING" {
+		t.Fatalf("matching job status = %q, want PENDING", status)
+	}
+}
+
+func TestCompletingAnalysisAtomicallyEnqueuesMatchingJob(t *testing.T) {
+	database := newMigratedDatabase(t, 0)
+	ctx := context.Background()
+	categoryID := loadCategoryIDs(t, database, 1)[0]
+
+	var itemID int64
+	if err := database.QueryRowContext(ctx, `
+		WITH created_user AS (
+			INSERT INTO users (username, phone)
+			VALUES ('analysis-job-integration', '+79990007777')
+			RETURNING id
+		)
+		INSERT INTO items (user_id, offer_title, offer_description, want_description)
+		SELECT id, 'Телефон', 'Описание телефона', 'Хочу велосипед' FROM created_user
+		RETURNING id`).Scan(&itemID); err != nil {
+		t.Fatalf("create analyzing item: %v", err)
+	}
+
+	repository, err := analyzerepository.NewPostgreSQLAnalysis(db.New(database))
+	if err != nil {
+		t.Fatalf("create analysis repository: %v", err)
+	}
+	updated, err := repository.CompleteItemAnalysis(ctx, analyzemodel.AnalysisResult{
+		ItemID:          itemID,
+		AnalysisVersion: 1,
+		OfferCategoryID: categoryID,
+		WantCategoryID:  categoryID,
+		ParamRichness:   0.7,
+		OfferEmbedding:  unitVector(0),
+		WantEmbedding:   unitVector(1),
+	})
+	if err != nil {
+		t.Fatalf("complete item analysis: %v", err)
+	}
+	if !updated {
+		t.Fatal("complete item analysis did not update the item")
+	}
+
+	var itemStatus, jobStatus string
+	if err := database.QueryRowContext(ctx, `
+		SELECT item.status::text, job.status
+		FROM items AS item
+		JOIN matching_jobs AS job ON job.item_id = item.id
+		WHERE item.id = $1`, itemID).Scan(&itemStatus, &jobStatus); err != nil {
+		t.Fatalf("load analyzed item and matching job: %v", err)
+	}
+	if itemStatus != "MATCHING" || jobStatus != "PENDING" {
+		t.Fatalf("item status = %q, job status = %q; want MATCHING/PENDING", itemStatus, jobStatus)
+	}
 }
 
 func TestThreeItemsProduceExpectedExchangeChain(t *testing.T) {
@@ -291,6 +388,10 @@ func assertAnalyzeAndMatchingSchema(t *testing.T, database *sql.DB) {
 		{table: "items", name: "image_amount"},
 		{table: "categories", name: "embedding_local"},
 		{table: "categories", name: "is_system"},
+		{table: "matching_jobs", name: "status"},
+		{table: "matching_jobs", name: "attempts"},
+		{table: "matching_jobs", name: "available_at"},
+		{table: "matching_jobs", name: "locked_at"},
 	} {
 		assertColumn(t, database, column.table, column.name, true)
 	}

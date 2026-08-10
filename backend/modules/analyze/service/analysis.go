@@ -152,6 +152,7 @@ func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 
 	updated, err := s.repo.CompleteItemAnalysis(ctx, model.AnalysisResult{
 		ItemID:           item.ID,
+		AnalysisVersion:  item.AnalysisVersion,
 		OfferCategoryID:  offerCategory.CategoryID,
 		WantCategoryID:   wantCategory.CategoryID,
 		ParamRichness:    descriptionScore.ParamRichness,

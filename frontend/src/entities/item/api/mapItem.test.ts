@@ -46,6 +46,7 @@ describe('mapItem — вещь из контракта в нашу модель'
     expect(mapItem(apiItem({ status: 'ANALYZING' })).status).toBe('analyzing')
     expect(mapItem(apiItem({ status: 'MATCHING' })).status).toBe('searching')
     expect(mapItem(apiItem({ status: 'LOCKED' })).status).toBe('reserved')
+    expect(mapItem(apiItem({ status: 'WITHDRAWN' })).status).toBe('withdrawn')
   })
 
   it('первая картинка становится фото карточки, пустой список — отсутствием фото', () => {

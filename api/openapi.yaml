@@ -368,6 +368,35 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateItem
+      tags: [items]
+      summary: Update an exchange item or withdraw it from matching
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateItemRequest"
+      responses:
+        "200":
+          description: Updated exchange item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /api/v1/items/{itemId}/matching:
     parameters:
@@ -1090,6 +1119,22 @@ components:
             type: string
             format: uri-reference
 
+    UpdateItemRequest:
+      type: object
+      minProperties: 1
+      properties:
+        offerDescription:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        wantDescription:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        withdraw:
+          type: boolean
+          description: Remove the wish and stop matching this item. Cannot be combined with wantDescription.
+
     MediaUpload:
       type: object
       required: [url, contentType, size]
@@ -1158,7 +1203,7 @@ components:
 
     ItemStatus:
       type: string
-      enum: [ANALYZING, MATCHING, LOCKED]
+      enum: [ANALYZING, MATCHING, LOCKED, WITHDRAWN]
 
     ChainStatus:
       type: string

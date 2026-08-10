@@ -11,6 +11,7 @@ const STATUS: Record<ApiItem['status'], ItemStatus> = {
   ANALYZING: 'analyzing',
   MATCHING: 'searching',
   LOCKED: 'reserved',
+  WITHDRAWN: 'withdrawn',
 }
 
 /**
