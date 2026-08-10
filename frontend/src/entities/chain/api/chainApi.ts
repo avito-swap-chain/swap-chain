@@ -326,7 +326,7 @@ export async function respondToChain(id: string, decision: ChainDecision): Promi
     notify({
       kind: 'chain',
       title: 'Цепочка собралась',
-      text: 'Все участники согласны. Договоритесь о передаче и отметьте, когда получите вещь.',
+      text: 'Все участники согласны. Сдайте вещь в пункт выдачи и отметьте, когда получите свою.',
       to: `/exchange/${id}`,
     })
     cancelRivals(id)
