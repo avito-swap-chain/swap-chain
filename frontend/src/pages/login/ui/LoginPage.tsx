@@ -17,9 +17,15 @@ export function LoginPage() {
   const [isNewUser, setIsNewUser] = useState(false)
   const queryClient = useQueryClient()
 
+  /**
+   * Что делаем — решает вызывающий и передаёт вместе с данными. Читать `isNewUser` внутри
+   * `mutationFn` нельзя: состояние React обновляется асинхронно, и кнопка демо-пользователя,
+   * которая сбрасывает флаг прямо перед отправкой, уходила бы в регистрацию по старому
+   * значению. Имя есть — регистрируем, нет — входим.
+   */
   const enter = useMutation({
-    mutationFn: (values: { phone: string; name: string }) =>
-      isNewUser ? register(values.name, values.phone) : login(values.phone),
+    mutationFn: ({ phone, name }: { phone: string; name?: string }) =>
+      name === undefined ? login(phone) : register(name, phone),
     onSuccess: () => queryClient.resetQueries(),
     onError: (error) => {
       // 404 — такого телефона у бэкенда нет. Значит человек здесь впервые.
@@ -27,9 +33,15 @@ export function LoginPage() {
     },
   })
 
+  /** Другой номер — снова неизвестно, знаком ли он бэкенду: поле имени убираем до ответа. */
+  const editPhone = (value: string) => {
+    setPhone(value)
+    setIsNewUser(false)
+  }
+
   const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
-    enter.mutate({ phone: phone.trim(), name: name.trim() })
+    enter.mutate({ phone: phone.trim(), name: isNewUser ? name.trim() : undefined })
   }
 
   const message =
@@ -49,7 +61,7 @@ export function LoginPage() {
         <Field label="Телефон">
           <Input
             value={phone}
-            onChange={(event) => setPhone(event.target.value)}
+            onChange={(event) => editPhone(event.target.value)}
             placeholder="+79001000001"
             type="tel"
             autoComplete="tel"
@@ -89,9 +101,9 @@ export function LoginPage() {
                 key={user.phone}
                 type="button"
                 onClick={() => {
-                  setIsNewUser(false)
-                  setPhone(user.phone)
-                  enter.mutate({ phone: user.phone, name: '' })
+                  editPhone(user.phone)
+                  // Демо-пользователь у бэкенда уже есть — это всегда вход, не регистрация.
+                  enter.mutate({ phone: user.phone })
                 }}
                 className="cursor-pointer rounded-chip border border-line px-2.5 py-1 text-[12.5px] font-bold hover:border-focus"
               >

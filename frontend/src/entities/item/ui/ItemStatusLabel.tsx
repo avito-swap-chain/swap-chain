@@ -6,6 +6,9 @@ import type { ItemStatus } from '../model/types'
 const STATUS_VIEW: Record<ItemStatus, { tone: 'neutral' | 'muted'; label: string } | null> = {
   reserved: { tone: 'neutral', label: 'В цепочке' },
   searching: { tone: 'muted', label: 'Поиск обмена' },
+  // Разбор описания занимает секунды, но без подписи вещь выглядит зависшей: желание
+  // указано, а в подборе её ещё нет и делать с ней нечего.
+  analyzing: { tone: 'muted', label: 'Проверяем описание' },
   idle: null,
 }
 
