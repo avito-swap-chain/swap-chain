@@ -306,8 +306,8 @@ func assertAnalyzeAndMatchingSchema(t *testing.T, database *sql.DB) {
 	if err := database.QueryRow(`SELECT count(*) FROM categories WHERE is_system = TRUE`).Scan(&systemCategories); err != nil {
 		t.Fatalf("count system categories: %v", err)
 	}
-	if systemCategories != 11 {
-		t.Fatalf("system category count = %d, want 11", systemCategories)
+	if systemCategories != 10 {
+		t.Fatalf("system category count = %d, want 10", systemCategories)
 	}
 }
 
