@@ -15,7 +15,6 @@ import (
 
 const (
 	analysisQueueSize = 64
-	analysisTimeout   = 60 * time.Second
 )
 
 type analyzer interface {
@@ -37,6 +36,7 @@ type PostgresService struct {
 	analyzer analyzer
 	publish  PublishEvent
 	logger   *zap.Logger
+	timeout  time.Duration
 	jobs     chan int64
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -44,17 +44,18 @@ type PostgresService struct {
 }
 
 // NewPostgresService creates a PostgreSQL-backed item service and starts analysis.
-func NewPostgresService(database *sql.DB, analyzer analyzer, publish PublishEvent, logger *zap.Logger) *PostgresService {
-	return newPostgresService(&postgresRepository{database: database}, analyzer, publish, logger)
+func NewPostgresService(database *sql.DB, analyzer analyzer, publish PublishEvent, logger *zap.Logger, analysisTimeout time.Duration) *PostgresService {
+	return newPostgresService(&postgresRepository{database: database}, analyzer, publish, logger, analysisTimeout)
 }
 
-func newPostgresService(repo repository, analyzer analyzer, publish PublishEvent, logger *zap.Logger) *PostgresService {
+func newPostgresService(repo repository, analyzer analyzer, publish PublishEvent, logger *zap.Logger, analysisTimeout time.Duration) *PostgresService {
 	ctx, cancel := context.WithCancel(context.Background())
 	service := &PostgresService{
 		repo:     repo,
 		analyzer: analyzer,
 		publish:  publish,
 		logger:   logger,
+		timeout:  analysisTimeout,
 		jobs:     make(chan int64, analysisQueueSize),
 		ctx:      ctx,
 		cancel:   cancel,
@@ -114,7 +115,7 @@ func (s *PostgresService) runWorker() {
 }
 
 func (s *PostgresService) analyze(itemID int64) {
-	ctx, cancel := context.WithTimeout(s.ctx, analysisTimeout)
+	ctx, cancel := context.WithTimeout(s.ctx, s.timeout)
 	defer cancel()
 
 	if err := s.analyzer.AnalyzeItem(ctx, itemID); err != nil {

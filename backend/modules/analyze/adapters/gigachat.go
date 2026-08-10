@@ -59,11 +59,12 @@ type FileUploadResponse struct {
 }
 
 type GigaChat struct {
-	cfg         GigaChatConfig
-	mu          sync.RWMutex
-	accessToken string
-	expiresAt   time.Time
-	client      *http.Client
+	cfg            GigaChatConfig
+	mu             sync.RWMutex
+	accessToken    string
+	expiresAt      time.Time
+	client         *http.Client
+	generationSlot chan struct{}
 }
 
 func NewGigaChat(cfg GigaChatConfig) (*GigaChat, error) {
@@ -105,8 +106,9 @@ func NewGigaChat(cfg GigaChatConfig) (*GigaChat, error) {
 	}
 
 	return &GigaChat{
-		cfg:    cfg,
-		client: client,
+		cfg:            cfg,
+		client:         client,
+		generationSlot: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -184,6 +186,12 @@ func (g *GigaChat) refreshToken(ctx context.Context) (string, error) {
 }
 
 func (g *GigaChat) GenerateJSON(ctx context.Context, prompt string) (string, error) {
+	release, err := g.acquireGenerationSlot(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+
 	token, err := g.GetToken(ctx)
 	if err != nil {
 		return "", err
@@ -216,6 +224,12 @@ func (g *GigaChat) GenerateJSON(ctx context.Context, prompt string) (string, err
 }
 
 func (g *GigaChat) AnalyzePhoto(ctx context.Context, photoBytes []byte, prompt string) (string, error) {
+	release, err := g.acquireGenerationSlot(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+
 	token, err := g.GetToken(ctx)
 	if err != nil {
 		return "", err
@@ -254,6 +268,15 @@ func (g *GigaChat) AnalyzePhoto(ctx context.Context, photoBytes []byte, prompt s
 	}
 
 	return chatResp.Choices[0].Message.Content, nil
+}
+
+func (g *GigaChat) acquireGenerationSlot(ctx context.Context) (func(), error) {
+	select {
+	case g.generationSlot <- struct{}{}:
+		return func() { <-g.generationSlot }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (g *GigaChat) uploadPhoto(ctx context.Context, token string, photoBytes []byte) (string, error) {

@@ -24,7 +24,8 @@ const (
 	defaultCategorySimilarity     = 0.65
 	defaultCategoryMargin         = 0.05
 	defaultAnalysisPoll           = 30 * time.Second
-	defaultAnalysisStale          = 5 * time.Minute
+	defaultAnalysisTimeout        = 5 * time.Minute
+	defaultAnalysisStale          = 6 * time.Minute
 	defaultAnalysisBatch          = 100
 	defaultAnalysisBootstrap      = 5 * time.Minute
 	defaultCORSAllowedOrigin      = "http://localhost:5173"
@@ -32,6 +33,7 @@ const (
 	defaultOllamaBaseURL          = "http://localhost:11434"
 	defaultOllamaChatModel        = "llama3.1"
 	defaultOllamaEmbedModel       = "bge-m3"
+	defaultOllamaTimeout          = 4 * time.Minute
 	defaultMinIOEndpoint          = "localhost:9000"
 	defaultMinIOAccessKey         = "minioadmin"
 	defaultMinIOSecretKey         = "minioadmin"
@@ -56,6 +58,7 @@ type Config struct {
 	CategorySimilarityThreshold     float64
 	CategoryConfidenceMargin        float64
 	AnalysisPollInterval            time.Duration
+	AnalysisTimeout                 time.Duration
 	AnalysisStaleAfter              time.Duration
 	AnalysisBatchSize               int
 	AnalysisBootstrapTimeout        time.Duration
@@ -65,6 +68,8 @@ type Config struct {
 	OllamaBaseURL                   string
 	OllamaChatModel                 string
 	OllamaEmbeddingsModel           string
+	OllamaTimeout                   time.Duration
+	GigaChatAuthKey                 string
 	MinIOEndpoint                   string
 	MinIOAccessKey                  string
 	MinIOSecretKey                  string
@@ -97,6 +102,7 @@ func Load() (Config, error) {
 		OllamaBaseURL:         envOrDefault("OLLAMA_BASE_URL", defaultOllamaBaseURL),
 		OllamaChatModel:       envOrDefault("OLLAMA_CHAT_MODEL", defaultOllamaChatModel),
 		OllamaEmbeddingsModel: envOrDefault("OLLAMA_EMBEDDINGS_MODEL", defaultOllamaEmbedModel),
+		GigaChatAuthKey:       os.Getenv("GIGACHAT_AUTH_KEY"),
 		MinIOEndpoint:         envOrDefault("MINIO_ENDPOINT", defaultMinIOEndpoint),
 		MinIOAccessKey:        envOrDefault("MINIO_ACCESS_KEY", defaultMinIOAccessKey),
 		MinIOSecretKey:        envOrDefault("MINIO_SECRET_KEY", defaultMinIOSecretKey),
@@ -111,6 +117,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.SessionTTL, err = durationFromEnv("SESSION_TTL", defaultSessionTTL); err != nil {
+		return Config{}, err
+	}
+	if cfg.OllamaTimeout, err = durationFromEnv("OLLAMA_TIMEOUT", defaultOllamaTimeout); err != nil {
 		return Config{}, err
 	}
 	if cfg.CookieSecure, err = boolFromEnv("COOKIE_SECURE", false); err != nil {
@@ -158,8 +167,14 @@ func Load() (Config, error) {
 	if cfg.AnalysisPollInterval, err = durationFromEnv("ANALYSIS_RECOVERY_POLL_INTERVAL", defaultAnalysisPoll); err != nil {
 		return Config{}, err
 	}
+	if cfg.AnalysisTimeout, err = durationFromEnv("ANALYSIS_TIMEOUT", defaultAnalysisTimeout); err != nil {
+		return Config{}, err
+	}
 	if cfg.AnalysisStaleAfter, err = durationFromEnv("ANALYSIS_STALE_AFTER", defaultAnalysisStale); err != nil {
 		return Config{}, err
+	}
+	if cfg.AnalysisStaleAfter <= cfg.AnalysisTimeout {
+		return Config{}, fmt.Errorf("ANALYSIS_STALE_AFTER must be greater than ANALYSIS_TIMEOUT")
 	}
 	if cfg.AnalysisBatchSize, err = positiveIntFromEnv("ANALYSIS_RECOVERY_BATCH_SIZE", defaultAnalysisBatch); err != nil {
 		return Config{}, err

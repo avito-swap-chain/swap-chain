@@ -98,11 +98,25 @@ func run(logger *zap.Logger) error {
 	ollamaConfig.BaseURL = cfg.OllamaBaseURL
 	ollamaConfig.ChatModel = cfg.OllamaChatModel
 	ollamaConfig.EmbeddingsModel = cfg.OllamaEmbeddingsModel
-	llmClient, err := adapters.NewOllama(ollamaConfig)
+	ollamaConfig.Timeout = cfg.OllamaTimeout
+	ollamaClient, err := adapters.NewOllama(ollamaConfig)
 	if err != nil {
 		return fmt.Errorf("create ollama client: %w", err)
 	}
-	vectorizer, err := analyzeservice.NewVectorizer(llmClient, llmClient)
+	var enricher adapters.Enricher = ollamaClient
+	if cfg.GigaChatAuthKey != "" {
+		gigaChatClient, err := adapters.NewGigaChat(adapters.DefaultGigaChatConfig(cfg.GigaChatAuthKey))
+		if err != nil {
+			return fmt.Errorf("create gigachat client: %w", err)
+		}
+		enricher, err = adapters.NewFallbackClient(gigaChatClient, ollamaClient, func(fallbackErr error) {
+			logger.Warn("primary LLM failed, using Ollama fallback", zap.Error(fallbackErr))
+		})
+		if err != nil {
+			return fmt.Errorf("create LLM fallback client: %w", err)
+		}
+	}
+	vectorizer, err := analyzeservice.NewVectorizer(enricher, ollamaClient)
 	if err != nil {
 		return fmt.Errorf("create vectorizer: %w", err)
 	}
@@ -110,12 +124,12 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create analysis repo: %w", err)
 	}
-	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(analysisRepo, llmClient)
+	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(analysisRepo, ollamaClient)
 	if err != nil {
 		return fmt.Errorf("create category bootstrap: %w", err)
 	}
 	bootstrapCtx, cancelBootstrap := context.WithTimeout(context.Background(), cfg.AnalysisBootstrapTimeout)
-	if err := llmClient.Ready(bootstrapCtx); err != nil {
+	if err := ollamaClient.Ready(bootstrapCtx); err != nil {
 		cancelBootstrap()
 		return fmt.Errorf("wait for ollama models: %w", err)
 	}
@@ -132,7 +146,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create tagging: %w", err)
 	}
-	scoring, err := analyzeservice.NewScoring(llmClient)
+	scoring, err := analyzeservice.NewScoring(enricher)
 	if err != nil {
 		return fmt.Errorf("create scoring: %w", err)
 	}
@@ -142,7 +156,7 @@ func run(logger *zap.Logger) error {
 	}
 	itemService := items.NewPostgresService(database, analysis, func(userID int64, eventType, entityID string, data map[string]any) {
 		eventHub.PublishToUser(userID, eventType, entityID, data)
-	}, logger)
+	}, logger, cfg.AnalysisTimeout)
 	defer itemService.Close()
 	matchingRepo, err := matchingrepository.NewPostgreSQLMatching(queries)
 	if err != nil {
@@ -198,7 +212,7 @@ func run(logger *zap.Logger) error {
 		userService,
 		adminModule,
 		chatModule,
-		llmClient,
+		ollamaClient,
 		categoryBootstrap,
 	)
 	router, err := httpserver.New(logger, handler, sessions, cfg.CORSAllowedOrigin, cfg.MediaMaxUploadBytes)

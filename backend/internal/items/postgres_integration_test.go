@@ -49,7 +49,7 @@ func TestPostgresServiceLifecycleIntegration(t *testing.T) {
 		if eventType == "item.status.updated" {
 			updated <- struct{}{}
 		}
-	}, zap.NewNop())
+	}, zap.NewNop(), time.Minute)
 	t.Cleanup(service.Close)
 
 	created, err := service.Create(context.Background(), userID, CreateInput{

@@ -298,6 +298,8 @@ make test-integration запустить миграционные и сквоз�
 | `OLLAMA_BASE_URL` | Адрес Ollama | `http://localhost:11434` |
 | `OLLAMA_CHAT_MODEL` | Модель для анализа | `llama3.1` |
 | `OLLAMA_EMBEDDINGS_MODEL` | Модель для эмбеддингов | `bge-m3` |
+| `OLLAMA_TIMEOUT` | Таймаут одного запроса к локальной модели | `4m` |
+| `GIGACHAT_AUTH_KEY` | Опциональный Authorization Key основного LLM; при ошибке используется Ollama | пусто |
 | `MINIO_ACCESS_KEY` | Ключ MinIO | `minioadmin` |
 | `MINIO_SECRET_KEY` | Секрет MinIO | `minioadmin` |
 | `MINIO_BUCKET` | Бакет для медиа | `swap-chain-media` |
@@ -308,6 +310,8 @@ make test-integration запустить миграционные и сквоз�
 | `MATCHING_PENALTY_FACTOR` | Штраф за разброс score | `0.25` |
 | `MATCHING_CHAIN_THRESHOLD` | Мин. итоговый score | `0.30` |
 | `ANALYSIS_BOOTSTRAP_TIMEOUT` | Таймаут проверки моделей и bootstrap категорий | `5m` |
+| `ANALYSIS_TIMEOUT` | Общий таймаут полного анализа одной вещи | `5m` |
+| `ANALYSIS_STALE_AFTER` | Возраст зависшего анализа до запуска recovery | `6m` |
 | `SWAGGER_PORT` | Порт Swagger UI | `8081` |
 
 `.env` не коммитится. Значения примера — только для локальной разработки.

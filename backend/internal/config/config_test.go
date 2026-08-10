@@ -23,6 +23,7 @@ func TestLoadDefaults(t *testing.T) {
 		"ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD",
 		"ANALYSIS_CATEGORY_CONFIDENCE_MARGIN",
 		"ANALYSIS_RECOVERY_POLL_INTERVAL",
+		"ANALYSIS_TIMEOUT",
 		"ANALYSIS_STALE_AFTER",
 		"ANALYSIS_RECOVERY_BATCH_SIZE",
 		"ANALYSIS_BOOTSTRAP_TIMEOUT",
@@ -32,6 +33,8 @@ func TestLoadDefaults(t *testing.T) {
 		"OLLAMA_BASE_URL",
 		"OLLAMA_CHAT_MODEL",
 		"OLLAMA_EMBEDDINGS_MODEL",
+		"OLLAMA_TIMEOUT",
+		"GIGACHAT_AUTH_KEY",
 		"MINIO_ENDPOINT",
 		"MINIO_ACCESS_KEY",
 		"MINIO_SECRET_KEY",
@@ -53,7 +56,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ChainLength != defaultChainLength {
 		t.Fatalf("ChainLength = %d, want %d", cfg.ChainLength, defaultChainLength)
 	}
-	if cfg.OllamaBaseURL != defaultOllamaBaseURL || cfg.OllamaChatModel != defaultOllamaChatModel || cfg.OllamaEmbeddingsModel != defaultOllamaEmbedModel {
+	if cfg.OllamaBaseURL != defaultOllamaBaseURL || cfg.OllamaChatModel != defaultOllamaChatModel ||
+		cfg.OllamaEmbeddingsModel != defaultOllamaEmbedModel || cfg.OllamaTimeout != defaultOllamaTimeout {
 		t.Fatalf("unexpected Ollama defaults: %+v", cfg)
 	}
 	if cfg.MinIOEndpoint != defaultMinIOEndpoint || cfg.MinIOBucket != defaultMinIOBucket || cfg.MediaMaxUploadBytes != defaultMediaMaxBytes {
@@ -61,16 +65,30 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadReadsOllamaSettings(t *testing.T) {
-	t.Setenv("OLLAMA_BASE_URL", "http://ollama:11434")
-	t.Setenv("OLLAMA_CHAT_MODEL", "chat-model")
-	t.Setenv("OLLAMA_EMBEDDINGS_MODEL", "embedding-model")
+func TestLoadReadsGigaChatAuthKey(t *testing.T) {
+	t.Setenv("GIGACHAT_AUTH_KEY", "auth-key")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.OllamaBaseURL != "http://ollama:11434" || cfg.OllamaChatModel != "chat-model" || cfg.OllamaEmbeddingsModel != "embedding-model" {
+	if cfg.GigaChatAuthKey != "auth-key" {
+		t.Fatalf("GigaChatAuthKey = %q, want auth-key", cfg.GigaChatAuthKey)
+	}
+}
+
+func TestLoadReadsOllamaSettings(t *testing.T) {
+	t.Setenv("OLLAMA_BASE_URL", "http://ollama:11434")
+	t.Setenv("OLLAMA_CHAT_MODEL", "chat-model")
+	t.Setenv("OLLAMA_EMBEDDINGS_MODEL", "embedding-model")
+	t.Setenv("OLLAMA_TIMEOUT", "4m")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OllamaBaseURL != "http://ollama:11434" || cfg.OllamaChatModel != "chat-model" ||
+		cfg.OllamaEmbeddingsModel != "embedding-model" || cfg.OllamaTimeout != 4*time.Minute {
 		t.Fatalf("unexpected Ollama config: %+v", cfg)
 	}
 }
@@ -143,6 +161,7 @@ func TestLoadReadsAnalysisSettings(t *testing.T) {
 	t.Setenv("ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD", "0.7")
 	t.Setenv("ANALYSIS_CATEGORY_CONFIDENCE_MARGIN", "0.1")
 	t.Setenv("ANALYSIS_RECOVERY_POLL_INTERVAL", "15s")
+	t.Setenv("ANALYSIS_TIMEOUT", "90s")
 	t.Setenv("ANALYSIS_STALE_AFTER", "2m")
 	t.Setenv("ANALYSIS_RECOVERY_BATCH_SIZE", "25")
 	t.Setenv("ANALYSIS_BOOTSTRAP_TIMEOUT", "90s")
@@ -152,9 +171,20 @@ func TestLoadReadsAnalysisSettings(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if cfg.CategorySimilarityThreshold != 0.7 || cfg.CategoryConfidenceMargin != 0.1 ||
-		cfg.AnalysisPollInterval != 15*time.Second || cfg.AnalysisStaleAfter != 2*time.Minute || cfg.AnalysisBatchSize != 25 ||
+		cfg.AnalysisPollInterval != 15*time.Second || cfg.AnalysisTimeout != 90*time.Second ||
+		cfg.AnalysisStaleAfter != 2*time.Minute || cfg.AnalysisBatchSize != 25 ||
 		cfg.AnalysisBootstrapTimeout != 90*time.Second {
 		t.Fatalf("unexpected analysis config: %+v", cfg)
+	}
+}
+
+func TestLoadRejectsStaleAnalysisWindowNotGreaterThanTimeout(t *testing.T) {
+	t.Setenv("ANALYSIS_TIMEOUT", "5m")
+	t.Setenv("ANALYSIS_STALE_AFTER", "5m")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "ANALYSIS_STALE_AFTER must be greater than ANALYSIS_TIMEOUT") {
+		t.Fatalf("Load() error = %v, want analysis timeout ordering error", err)
 	}
 }
 

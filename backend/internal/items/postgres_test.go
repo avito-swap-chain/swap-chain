@@ -17,7 +17,7 @@ func TestPostgresServiceTransitionsItemToMatching(t *testing.T) {
 	events := make(chan string, 2)
 	service := newPostgresService(repo, analyzer, func(_ int64, eventType, _ string, _ map[string]any) {
 		events <- eventType
-	}, zap.NewNop())
+	}, zap.NewNop(), time.Minute)
 	t.Cleanup(service.Close)
 
 	created, err := service.Create(context.Background(), 7, CreateInput{

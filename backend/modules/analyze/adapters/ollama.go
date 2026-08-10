@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const defaultOllamaTimeout = 30 * time.Second
+const defaultOllamaTimeout = 4 * time.Minute
 
 type OllamaConfig struct {
 	BaseURL         string

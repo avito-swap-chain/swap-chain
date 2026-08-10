@@ -7,7 +7,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestDefaultOllamaConfigUsesLongRunningTimeout(t *testing.T) {
+	if timeout := DefaultOllamaConfig().Timeout; timeout != 4*time.Minute {
+		t.Fatalf("Timeout = %s, want 4m", timeout)
+	}
+}
 
 func TestOllamaVectorize(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
