@@ -1,6 +1,14 @@
 export { ItemCard } from './ui/ItemCard'
+export { ItemStatusLabel } from './ui/ItemStatusLabel'
 export { WishCard } from './ui/WishCard'
-export { itemKeys, getMyItems, createItem, setItemWish, type ItemDraft } from './api/itemsApi'
+export {
+  itemKeys,
+  getMyItems,
+  createItem,
+  setItemWish,
+  withdrawItem,
+  type ItemDraft,
+} from './api/itemsApi'
 export { suggestWish, type GivenItem } from './api/suggestWish'
 export { recognizeItem, type RecognizedItem } from './api/recognizeItem'
 export { descriptionQuality, type DescriptionQuality } from './lib/descriptionQuality'

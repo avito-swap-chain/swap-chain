@@ -5,9 +5,6 @@ import { cx } from '@/shared/lib'
 import { getCurrentUser, sessionKeys } from '@/shared/model/session'
 import type { Section } from '../lib/navigation'
 
-/** Разделы кабинета, которых нет в MVP: показываем неактивными — ради правдоподобия контекста. */
-const DECOR = ['Кошелёк']
-
 const ITEMS_URL = '/'
 const EXCHANGE_URL = '/exchange'
 const MESSAGES_URL = '/messages'
@@ -109,16 +106,6 @@ export function CabinetNav({ section, className }: { section: Section; className
           Доставки ПВЗ
         </Link>
       )}
-
-      {DECOR.map((label) => (
-        <span
-          key={label}
-          title="В демо раздел не открывается"
-          className={cx(itemClass, 'cursor-not-allowed text-ink-3')}
-        >
-          {label}
-        </span>
-      ))}
     </nav>
   )
 }

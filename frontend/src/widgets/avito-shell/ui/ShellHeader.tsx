@@ -60,7 +60,9 @@ export function ShellHeader() {
     queryKey: messageKeys.list(),
     queryFn: getThreads,
     select: (list) => list.totalUnread,
-    refetchInterval: 10_000,
+    // Ошибка гасит опрос: если ручки нет или бэкенд лёг, счётчик в шапке не должен
+    // долбить её раз в десять секунд до конца сессии.
+    refetchInterval: (query) => (query.state.error ? false : 10_000),
   })
   const { data: news = 0 } = useQuery({
     queryKey: notificationKeys.unread(),

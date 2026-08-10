@@ -2,6 +2,7 @@ import { unwrap } from '@/shared/api/fetcher'
 import {
   createItem as createItemRequest,
   listItems,
+  updateItem,
   uploadMedia,
 } from '@/shared/api/generated/endpoints'
 import type { Item as ApiItem, ItemList, MediaUpload } from '@/shared/api/generated/model'
@@ -236,11 +237,50 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
 }
 
 /**
+ * Снять вещь с обмена. Не удаление: желание убирается, вещь уходит из подбора и снова
+ * становится обычным объявлением. Удалять физически нельзя — вещь лежит в завершённых
+ * цепочках как то, что человек отдал или получил, и история обменов рассыпалась бы.
+ *
+ * Предложения с этой вещью бэкенд отменяет сам, поэтому список обменов после снятия устарел.
+ * Вещь в собравшейся цепочке снять нельзя: она уже едет через ПВЗ, бэкенд отвечает 409.
+ */
+export async function withdrawItem(id: string): Promise<Item> {
+  if (isBackendConnected) {
+    return mapItem(unwrap<ApiItem>(await updateItem(Number(id), { withdraw: true })))
+  }
+
+  await delay(400)
+
+  const ownerId = currentPersonaId()
+  const items = itemsByOwner[ownerId] ?? []
+  const item = items.find((i) => i.id === id)
+  if (!item) throw new Error(`Объявление ${id} не найдено`)
+
+  const updated: Item = { ...item, wish: [], status: 'withdrawn' }
+  itemsByOwner = { ...itemsByOwner, [ownerId]: items.map((i) => (i.id === id ? updated : i)) }
+  return updated
+}
+
+/**
  * Включить обмен у уже размещённого объявления — главный вход в сервис: человек не заводит
  * вещь заново, а указывает, что готов её обменять. Без желания включать нечего: каждый
  * вариант желания — отдельное ребро графа, по которому ищется цепочка.
  */
 export async function setItemWish(id: string, wish: Wish[]): Promise<Item> {
+  if (isBackendConnected) {
+    // Контракт принимает одну строку желания — склеиваем варианты так же, как при создании.
+    const usable = usableWishes(wish)
+    if (usable.length === 0) throw new Error('Не указано, что хочется взамен')
+
+    return mapItem(
+      unwrap<ApiItem>(
+        await updateItem(Number(id), {
+          wantDescription: usable.map((variant) => variant.description).join(' или '),
+        }),
+      ),
+    )
+  }
+
   await delay(400)
 
   const usable = usableWishes(wish)
@@ -255,7 +295,8 @@ export async function setItemWish(id: string, wish: Wish[]): Promise<Item> {
   const updated: Item = {
     ...item,
     wish: usable,
-    status: item.status === 'idle' ? 'searching' : item.status,
+    // Снятая вещь возвращается в подбор так же, как никогда не включённая.
+    status: item.status === 'idle' || item.status === 'withdrawn' ? 'searching' : item.status,
   }
   itemsByOwner = { ...itemsByOwner, [ownerId]: items.map((i) => (i.id === id ? updated : i)) }
   return updated

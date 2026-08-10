@@ -6,6 +6,7 @@ export {
   respondToChain,
   leaveChain,
   confirmReceipt,
+  dissolveChainsWithItem,
   type ChainDecision,
 } from './api/chainApi'
 export {
