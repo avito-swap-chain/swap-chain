@@ -22,9 +22,13 @@ import (
 	"swap-chain/internal/media"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
+	adminrepository "swap-chain/modules/admin/repository"
+	adminservice "swap-chain/modules/admin/service"
 	"swap-chain/modules/analyze/adapters"
 	analyzerepository "swap-chain/modules/analyze/repository"
 	analyzeservice "swap-chain/modules/analyze/service"
+	chatrepository "swap-chain/modules/chat/repository"
+	chatservice "swap-chain/modules/chat/service"
 	matchingrepository "swap-chain/modules/matching/repository"
 	"swap-chain/modules/matching/service"
 	"swap-chain/shared/db"
@@ -106,6 +110,20 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create analysis repo: %w", err)
 	}
+	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(analysisRepo, llmClient)
+	if err != nil {
+		return fmt.Errorf("create category bootstrap: %w", err)
+	}
+	bootstrapCtx, cancelBootstrap := context.WithTimeout(context.Background(), cfg.AnalysisBootstrapTimeout)
+	if err := llmClient.Ready(bootstrapCtx); err != nil {
+		cancelBootstrap()
+		return fmt.Errorf("wait for ollama models: %w", err)
+	}
+	if err := categoryBootstrap.Bootstrap(bootstrapCtx); err != nil {
+		cancelBootstrap()
+		return fmt.Errorf("bootstrap category embeddings: %w", err)
+	}
+	cancelBootstrap()
 	tagging, err := analyzeservice.NewTagging(analysisRepo, analyzeservice.TaggingConfig{
 		SimilarityThreshold: cfg.CategorySimilarityThreshold,
 		ConfidenceMargin:    cfg.CategoryConfidenceMargin,
@@ -152,7 +170,37 @@ func run(logger *zap.Logger) error {
 	})
 	finder := applicationmatching.NewFindCycles(matcher, chainService)
 	userService := users.NewPostgresService(database)
-	handler := httpapi.NewHandler(database, finder, logger, itemService, mediaService, chainService, eventHub, sessions, userService)
+	adminRepo, err := adminrepository.NewPostgreSQL(database)
+	if err != nil {
+		return fmt.Errorf("create admin repository: %w", err)
+	}
+	adminModule, err := adminservice.New(adminRepo)
+	if err != nil {
+		return fmt.Errorf("create admin service: %w", err)
+	}
+	chatRepo, err := chatrepository.NewPostgreSQL(database)
+	if err != nil {
+		return fmt.Errorf("create chat repository: %w", err)
+	}
+	chatModule, err := chatservice.New(chatRepo)
+	if err != nil {
+		return fmt.Errorf("create chat service: %w", err)
+	}
+	handler := httpapi.NewHandler(
+		database,
+		finder,
+		logger,
+		itemService,
+		mediaService,
+		chainService,
+		eventHub,
+		sessions,
+		userService,
+		adminModule,
+		chatModule,
+		llmClient,
+		categoryBootstrap,
+	)
 	router, err := httpserver.New(logger, handler, sessions, cfg.CORSAllowedOrigin, cfg.MediaMaxUploadBytes)
 	if err != nil {
 		return fmt.Errorf("create HTTP router: %w", err)

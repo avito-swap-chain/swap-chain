@@ -20,11 +20,19 @@ import (
 	"swap-chain/internal/media"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
+	adminmodel "swap-chain/modules/admin/model"
+	adminservice "swap-chain/modules/admin/service"
+	chatmodel "swap-chain/modules/chat/model"
+	chatservice "swap-chain/modules/chat/service"
 	"swap-chain/modules/matching/model"
 )
 
 type databasePinger interface {
 	PingContext(ctx context.Context) error
+}
+
+type readinessChecker interface {
+	Ready(ctx context.Context) error
 }
 
 type cycleFinder interface {
@@ -38,15 +46,18 @@ type mediaService interface {
 
 // Handler connects generated HTTP operations to application services.
 type Handler struct {
-	database databasePinger
-	finder   cycleFinder
-	logger   *zap.Logger
-	items    items.Service
-	media    mediaService
-	chains   chains.Service
-	events   *events.Hub
-	sessions *session.Manager
-	users    users.Service
+	database  databasePinger
+	finder    cycleFinder
+	logger    *zap.Logger
+	items     items.Service
+	media     mediaService
+	chains    chains.Service
+	events    *events.Hub
+	sessions  *session.Manager
+	users     users.Service
+	admin     adminservice.Service
+	chat      chatservice.Service
+	readiness []readinessChecker
 }
 
 // NewHandler creates the integrated API handler.
@@ -60,17 +71,23 @@ func NewHandler(
 	eventHub *events.Hub,
 	sessions *session.Manager,
 	userService users.Service,
+	adminService adminservice.Service,
+	chatService chatservice.Service,
+	readiness ...readinessChecker,
 ) *Handler {
 	return &Handler{
-		database: database,
-		finder:   finder,
-		logger:   logger,
-		items:    itemService,
-		media:    mediaService,
-		chains:   chainService,
-		events:   eventHub,
-		sessions: sessions,
-		users:    userService,
+		database:  database,
+		finder:    finder,
+		logger:    logger,
+		items:     itemService,
+		media:     mediaService,
+		chains:    chainService,
+		events:    eventHub,
+		sessions:  sessions,
+		users:     userService,
+		admin:     adminService,
+		chat:      chatService,
+		readiness: readiness,
 	}
 }
 
@@ -167,7 +184,7 @@ func uploadMediaBadRequest(ctx context.Context, message string) api.UploadMedia4
 	}
 }
 
-// GetHealth reports API and database readiness.
+// GetHealth reports readiness of the database and analysis dependencies.
 func (h *Handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (api.GetHealthResponseObject, error) {
 	response, healthErr := h.health(ctx)
 	if healthErr != nil {
@@ -178,15 +195,12 @@ func (h *Handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 	return api.GetHealth200JSONResponse(response), nil
 }
 
-// GetLegacyHealth preserves the original unversioned health route.
-func (h *Handler) GetLegacyHealth(ctx context.Context, _ api.GetLegacyHealthRequestObject) (api.GetLegacyHealthResponseObject, error) {
-	response, healthErr := h.health(ctx)
-	if healthErr != nil {
-		return api.GetLegacyHealth503JSONResponse{
-			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(*healthErr),
-		}, nil
-	}
-	return api.GetLegacyHealth200JSONResponse(response), nil
+// GetLegacyHealth reports process liveness without probing external dependencies.
+func (h *Handler) GetLegacyHealth(_ context.Context, _ api.GetLegacyHealthRequestObject) (api.GetLegacyHealthResponseObject, error) {
+	return api.GetLegacyHealth200JSONResponse(api.LivenessResponse{
+		Status:    api.Alive,
+		Timestamp: time.Now().UTC(),
+	}), nil
 }
 
 func (h *Handler) health(ctx context.Context) (api.HealthResponse, *api.Error) {
@@ -195,10 +209,18 @@ func (h *Handler) health(ctx context.Context) (api.HealthResponse, *api.Error) {
 		response := errorModel(ctx, "DATABASE_UNAVAILABLE", "database is unavailable", nil)
 		return api.HealthResponse{}, &response
 	}
+	for _, checker := range h.readiness {
+		if err := checker.Ready(ctx); err != nil {
+			h.logger.Error("analysis readiness check failed", zap.Error(err))
+			response := errorModel(ctx, "ANALYSIS_UNAVAILABLE", "analysis dependencies are unavailable", nil)
+			return api.HealthResponse{}, &response
+		}
+	}
 
 	return api.HealthResponse{
 		Status:    api.Ok,
 		Database:  api.Up,
+		Analysis:  api.Ready,
 		Timestamp: time.Now().UTC(),
 	}, nil
 }
@@ -620,6 +642,280 @@ func (h *Handler) SubmitChainDecision(ctx context.Context, request api.SubmitCha
 	return api.SubmitChainDecision200JSONResponse(chainModel(chain)), nil
 }
 
+// ConfirmChainReceipt confirms only the incoming item selected from the
+// authenticated participant and may atomically complete the whole chain.
+func (h *Handler) ConfirmChainReceipt(ctx context.Context, request api.ConfirmChainReceiptRequestObject) (api.ConfirmChainReceiptResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ConfirmChainReceipt401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	receipt, err := h.admin.ConfirmReceipt(ctx, current.UserID, request.ChainId)
+	if err != nil {
+		mapped := adminErrorModel(ctx, err)
+		switch {
+		case isAdminValidationError(err):
+			return api.ConfirmChainReceipt400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrReceiptForbidden):
+			return api.ConfirmChainReceipt403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrChainNotFound):
+			return api.ConfirmChainReceipt404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrTransitionConflict):
+			return api.ConfirmChainReceipt409JSONResponse{ConflictJSONResponse: api.ConflictJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("confirm chain receipt", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Error(err))
+			return api.ConfirmChainReceipt500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	return api.ConfirmChainReceipt200JSONResponse{
+		Delivery:    adminDeliveryModel(receipt.Delivery),
+		ChainStatus: api.ChainStatus(receipt.ChainStatus),
+	}, nil
+}
+
+// ListChatMessages возвращает историю диалога или ожидает новое сообщение.
+func (h *Handler) ListChatMessages(ctx context.Context, request api.ListChatMessagesRequestObject) (api.ListChatMessagesResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ListChatMessages401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	afterID := int64(0)
+	if request.Params.AfterId != nil {
+		afterID = *request.Params.AfterId
+	}
+	limit := 50
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	waitSeconds := 0
+	if request.Params.WaitSeconds != nil {
+		waitSeconds = *request.Params.WaitSeconds
+	}
+
+	messages, err := h.chat.List(ctx, request.ChainId, current.UserID, request.CounterpartId, afterID, limit, time.Duration(waitSeconds)*time.Second)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		mapped := chatErrorModel(ctx, err)
+		switch {
+		case isChatValidationError(err):
+			return api.ListChatMessages400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, chatmodel.ErrForbidden):
+			return api.ListChatMessages403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, chatmodel.ErrChainNotFound), errors.Is(err, chatmodel.ErrThreadNotFound):
+			return api.ListChatMessages404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("list chat messages", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
+			return api.ListChatMessages500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+
+	response := api.ChatMessageList{Messages: make([]api.ChatMessage, 0, len(messages))}
+	for _, message := range messages {
+		response.Messages = append(response.Messages, chatMessageModel(message))
+	}
+	if len(messages) > 0 {
+		next := messages[len(messages)-1].ID
+		response.NextAfterId = &next
+	}
+	return api.ListChatMessages200JSONResponse(response), nil
+}
+
+// SendChatMessage создаёт сообщение от имени пользователя текущей сессии.
+func (h *Handler) SendChatMessage(ctx context.Context, request api.SendChatMessageRequestObject) (api.SendChatMessageResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.SendChatMessage401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.SendChatMessage400JSONResponse{
+			ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	message, created, err := h.chat.Send(ctx, request.ChainId, current.UserID, request.CounterpartId, request.Body.ClientMessageId, request.Body.Text)
+	if err != nil {
+		mapped := chatErrorModel(ctx, err)
+		switch {
+		case isChatValidationError(err):
+			return api.SendChatMessage400JSONResponse{ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(mapped)}, nil
+		case errors.Is(err, chatmodel.ErrForbidden):
+			return api.SendChatMessage403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, chatmodel.ErrChainNotFound), errors.Is(err, chatmodel.ErrThreadNotFound):
+			return api.SendChatMessage404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		case errors.Is(err, chatmodel.ErrIdempotencyConflict):
+			return api.SendChatMessage409JSONResponse{ConflictJSONResponse: api.ConflictJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("send chat message", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
+			return api.SendChatMessage500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+
+	response := chatMessageModel(message)
+	if !created {
+		return api.SendChatMessage200JSONResponse(response), nil
+	}
+	return api.SendChatMessage201JSONResponse(response), nil
+}
+
+// ListChatThreads возвращает все диалоги пользователя и общий счётчик непрочитанных сообщений.
+func (h *Handler) ListChatThreads(ctx context.Context, _ api.ListChatThreadsRequestObject) (api.ListChatThreadsResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ListChatThreads401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	threads, err := h.chat.ListThreads(ctx, current.UserID)
+	if err != nil {
+		h.logger.Error("list chat threads", zap.Int64("actor_id", current.UserID), zap.Error(err))
+		return api.ListChatThreads500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(chatErrorModel(ctx, err)),
+		}, nil
+	}
+
+	response := api.ChatThreadList{Threads: make([]api.ChatThread, 0, len(threads))}
+	for _, thread := range threads {
+		response.Threads = append(response.Threads, chatThreadModel(thread))
+		response.TotalUnreadCount += thread.UnreadCount
+	}
+	return api.ListChatThreads200JSONResponse(response), nil
+}
+
+// MarkChatThreadRead продвигает отметку прочтения, не позволяя ей откатиться назад.
+func (h *Handler) MarkChatThreadRead(ctx context.Context, request api.MarkChatThreadReadRequestObject) (api.MarkChatThreadReadResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.MarkChatThreadRead401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.MarkChatThreadRead400JSONResponse{
+			ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	readState, err := h.chat.MarkRead(ctx, request.ChainId, current.UserID, request.CounterpartId, request.Body.LastReadMessageId)
+	if err != nil {
+		mapped := chatErrorModel(ctx, err)
+		switch {
+		case isChatValidationError(err):
+			return api.MarkChatThreadRead400JSONResponse{ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(mapped)}, nil
+		case errors.Is(err, chatmodel.ErrForbidden):
+			return api.MarkChatThreadRead403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, chatmodel.ErrChainNotFound), errors.Is(err, chatmodel.ErrThreadNotFound), errors.Is(err, chatmodel.ErrMessageNotFound):
+			return api.MarkChatThreadRead404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("mark chat thread read", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
+			return api.MarkChatThreadRead500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+
+	return api.MarkChatThreadRead200JSONResponse(chatReadStateModel(readState)), nil
+}
+
+// ListAdminDeliveries returns assembled-chain item hand-offs to an authenticated pickup-point administrator.
+func (h *Handler) ListAdminDeliveries(ctx context.Context, request api.ListAdminDeliveriesRequestObject) (api.ListAdminDeliveriesResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ListAdminDeliveries401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	limit := 20
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	status := ""
+	if request.Params.Status != nil {
+		status = string(*request.Params.Status)
+	}
+	afterID := int64(0)
+	if request.Params.Cursor != nil {
+		parsed, err := strconv.ParseInt(*request.Params.Cursor, 10, 64)
+		if err != nil || parsed < 0 {
+			return api.ListAdminDeliveries400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_CURSOR", "cursor must be a non-negative integer", nil)),
+			}, nil
+		}
+		afterID = parsed
+	}
+
+	deliveries, next, err := h.admin.ListDeliveries(ctx, current.UserID, status, afterID, limit)
+	if err != nil {
+		switch {
+		case isAdminValidationError(err):
+			return api.ListAdminDeliveries400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(adminErrorModel(ctx, err)),
+			}, nil
+		case errors.Is(err, adminmodel.ErrForbidden):
+			return api.ListAdminDeliveries403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(adminErrorModel(ctx, err)),
+			}, nil
+		default:
+			h.logger.Error("list admin deliveries", zap.Int64("actor_id", current.UserID), zap.Error(err))
+			return api.ListAdminDeliveries500JSONResponse{
+				InternalErrorJSONResponse: api.InternalErrorJSONResponse(adminErrorModel(ctx, err)),
+			}, nil
+		}
+	}
+
+	response := api.AdminDeliveryList{Deliveries: make([]api.AdminDelivery, 0, len(deliveries))}
+	for _, delivery := range deliveries {
+		response.Deliveries = append(response.Deliveries, adminDeliveryModel(delivery))
+	}
+	if next != nil {
+		cursor := strconv.FormatInt(*next, 10)
+		response.NextCursor = &cursor
+	}
+	return api.ListAdminDeliveries200JSONResponse(response), nil
+}
+
+// TransitionAdminDelivery confirms pickup-point receipt, dispatch, or recipient hand-off.
+func (h *Handler) TransitionAdminDelivery(ctx context.Context, request api.TransitionAdminDeliveryRequestObject) (api.TransitionAdminDeliveryResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.TransitionAdminDelivery401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.TransitionAdminDelivery400JSONResponse{
+			ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	delivery, err := h.admin.TransitionDelivery(ctx, current.UserID, request.DeliveryId, string(request.Body.Status))
+	if err != nil {
+		mapped := adminErrorModel(ctx, err)
+		switch {
+		case isAdminValidationError(err):
+			return api.TransitionAdminDelivery400JSONResponse{ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrForbidden):
+			return api.TransitionAdminDelivery403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrDeliveryNotFound):
+			return api.TransitionAdminDelivery404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrTransitionConflict):
+			return api.TransitionAdminDelivery409JSONResponse{ConflictJSONResponse: api.ConflictJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("transition admin delivery", zap.Int64("actor_id", current.UserID), zap.Int64("delivery_id", request.DeliveryId), zap.Error(err))
+			return api.TransitionAdminDelivery500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	return api.TransitionAdminDelivery200JSONResponse(adminDeliveryModel(delivery)), nil
+}
+
 // SubscribeEvents streams only events addressed to the current demo user.
 func (h *Handler) SubscribeEvents(ctx context.Context, _ api.SubscribeEventsRequestObject) (api.SubscribeEventsResponseObject, error) {
 	current, ok := session.Current(ctx)
@@ -676,6 +972,85 @@ func chainModel(chain chains.Chain) api.Chain {
 	}
 }
 
+func adminDeliveryModel(delivery adminmodel.Delivery) api.AdminDelivery {
+	return api.AdminDelivery{
+		Id:        delivery.ID,
+		ChainId:   delivery.ChainID,
+		ItemId:    delivery.ItemID,
+		ItemTitle: delivery.ItemTitle,
+		Sender: api.UserSummary{
+			Id:       delivery.SenderID,
+			Username: delivery.SenderUsername,
+		},
+		Recipient: api.UserSummary{
+			Id:       delivery.RecipientID,
+			Username: delivery.RecipientUsername,
+		},
+		Status:    api.AdminDeliveryStatus(delivery.Status),
+		UpdatedAt: delivery.UpdatedAt,
+	}
+}
+
+func chatMessageModel(message chatmodel.Message) api.ChatMessage {
+	return api.ChatMessage{
+		Id:      message.ID,
+		ChainId: message.ChainID,
+		Sender: api.UserSummary{
+			Id:       message.Sender.ID,
+			Username: message.Sender.Username,
+		},
+		Recipient: api.UserSummary{
+			Id:       message.Recipient.ID,
+			Username: message.Recipient.Username,
+		},
+		ClientMessageId: message.ClientMessageID,
+		Text:            message.Text,
+		CreatedAt:       message.CreatedAt,
+	}
+}
+
+func chatThreadModel(thread chatmodel.Thread) api.ChatThread {
+	result := api.ChatThread{
+		ChainId: thread.ChainID,
+		Counterpart: api.UserSummary{
+			Id:       thread.Counterpart.ID,
+			Username: thread.Counterpart.Username,
+		},
+		HasUnread:   thread.UnreadCount > 0,
+		UnreadCount: thread.UnreadCount,
+	}
+	if thread.GiveItem != nil {
+		item := chatItemSummaryModel(*thread.GiveItem)
+		result.GiveItem = &item
+	}
+	if thread.ReceiveItem != nil {
+		item := chatItemSummaryModel(*thread.ReceiveItem)
+		result.ReceiveItem = &item
+	}
+	if thread.LastMessage != nil {
+		message := chatMessageModel(*thread.LastMessage)
+		result.LastMessage = &message
+	}
+	return result
+}
+
+func chatItemSummaryModel(item chatmodel.ItemSummary) api.ChatItemSummary {
+	result := api.ChatItemSummary{Id: item.ID, Title: item.Title}
+	if item.ImageURL != "" {
+		result.ImageUrl = &item.ImageURL
+	}
+	return result
+}
+
+func chatReadStateModel(readState chatmodel.ReadState) api.ChatReadState {
+	return api.ChatReadState{
+		ChainId:           readState.ChainID,
+		CounterpartId:     readState.CounterpartID,
+		LastReadMessageId: readState.LastReadMessageID,
+		UnreadCount:       readState.UnreadCount,
+	}
+}
+
 func sessionModel(current session.Session, user users.User) api.Session {
 	return api.Session{
 		ExpiresAt: current.ExpiresAt,
@@ -683,6 +1058,7 @@ func sessionModel(current session.Session, user users.User) api.Session {
 			Id:        user.ID,
 			Username:  user.Username,
 			Phone:     user.Phone,
+			Role:      api.UserRole(user.Role),
 			CreatedAt: user.CreatedAt,
 		},
 	}
@@ -751,6 +1127,54 @@ func userValidationError(ctx context.Context, err *users.ValidationError) api.Er
 func isChainValidationError(err error) bool {
 	var validationError *chains.ValidationError
 	return errors.As(err, &validationError)
+}
+
+func isAdminValidationError(err error) bool {
+	var validationError *adminmodel.ValidationError
+	return errors.As(err, &validationError)
+}
+
+func isChatValidationError(err error) bool {
+	var validationError *chatmodel.ValidationError
+	return errors.As(err, &validationError)
+}
+
+func chatErrorModel(ctx context.Context, err error) api.Error {
+	switch {
+	case isChatValidationError(err):
+		return errorModel(ctx, "VALIDATION_ERROR", err.Error(), nil)
+	case errors.Is(err, chatmodel.ErrForbidden):
+		return errorModel(ctx, "CHAT_FORBIDDEN", "chat is not available to the current user", nil)
+	case errors.Is(err, chatmodel.ErrChainNotFound):
+		return errorModel(ctx, "CHAIN_NOT_FOUND", "chain not found", nil)
+	case errors.Is(err, chatmodel.ErrThreadNotFound):
+		return errorModel(ctx, "CHAT_THREAD_NOT_FOUND", "chat thread not found", nil)
+	case errors.Is(err, chatmodel.ErrMessageNotFound):
+		return errorModel(ctx, "CHAT_MESSAGE_NOT_FOUND", "chat message not found in this thread", nil)
+	case errors.Is(err, chatmodel.ErrIdempotencyConflict):
+		return errorModel(ctx, "CLIENT_MESSAGE_ID_CONFLICT", "clientMessageId was already used with different text", nil)
+	default:
+		return errorModel(ctx, "INTERNAL_ERROR", "chat operation failed", nil)
+	}
+}
+
+func adminErrorModel(ctx context.Context, err error) api.Error {
+	switch {
+	case isAdminValidationError(err):
+		return errorModel(ctx, "VALIDATION_ERROR", err.Error(), nil)
+	case errors.Is(err, adminmodel.ErrForbidden):
+		return errorModel(ctx, "ADMIN_ACCESS_REQUIRED", "pickup-point administrator access is required", nil)
+	case errors.Is(err, adminmodel.ErrReceiptForbidden):
+		return errorModel(ctx, "RECEIPT_FORBIDDEN", "only the recipient can confirm this delivery", nil)
+	case errors.Is(err, adminmodel.ErrChainNotFound):
+		return errorModel(ctx, "CHAIN_NOT_FOUND", "chain not found", nil)
+	case errors.Is(err, adminmodel.ErrDeliveryNotFound):
+		return errorModel(ctx, "DELIVERY_NOT_FOUND", "delivery not found", nil)
+	case errors.Is(err, adminmodel.ErrTransitionConflict):
+		return errorModel(ctx, "DELIVERY_STATE_CONFLICT", "delivery cannot enter the requested status from its current state", nil)
+	default:
+		return errorModel(ctx, "INTERNAL_ERROR", "admin operation failed", nil)
+	}
 }
 
 func chainErrorModel(ctx context.Context, err error) api.Error {

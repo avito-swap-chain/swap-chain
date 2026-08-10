@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -24,8 +25,61 @@ func DefaultOllamaConfig() OllamaConfig {
 		BaseURL:         "http://localhost:11434",
 		ChatModel:       "llama3.1",
 		EmbeddingsModel: "bge-m3",
-		Timeout:         30 * time.Second,
+		Timeout:         defaultOllamaTimeout,
 	}
+}
+
+// Ready проверяет, что Ollama видит обе настроенные модели.
+func (o *Ollama) Ready(ctx context.Context) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, o.cfg.BaseURL+"/api/tags", nil)
+	if err != nil {
+		return fmt.Errorf("ollama readiness - create request: %w", err)
+	}
+	response, err := o.client.Do(request)
+	if err != nil {
+		return fmt.Errorf("ollama readiness - execute request: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("ollama readiness: bad status: %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Models []struct {
+			Name  string `json:"name"`
+			Model string `json:"model"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return fmt.Errorf("ollama readiness - decode response: %w", err)
+	}
+
+	available := make(map[string]struct{}, len(payload.Models)*2)
+	for _, model := range payload.Models {
+		available[canonicalModelName(model.Name)] = struct{}{}
+		available[canonicalModelName(model.Model)] = struct{}{}
+	}
+	required := []string{o.cfg.ChatModel, o.cfg.EmbeddingsModel}
+	missing := make([]string, 0, len(required))
+	for _, model := range required {
+		if _, ok := available[canonicalModelName(model)]; !ok {
+			missing = append(missing, model)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("ollama readiness: required models are missing: %s", strings.Join(missing, ", "))
+	}
+
+	return nil
+}
+
+func canonicalModelName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.Contains(name, ":") {
+		return name
+	}
+	return name + ":latest"
 }
 
 type Ollama struct {
