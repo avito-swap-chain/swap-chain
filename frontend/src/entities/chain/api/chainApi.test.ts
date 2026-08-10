@@ -84,14 +84,8 @@ describe('ответ на предложение', () => {
     return promise
   }
 
-  it('дизлайк снимает с варианта только меня — цепочка продолжает собираться', async () => {
-    await run(respondToChain('c5', 'dislike'), 400)
-    const chain = await run(getChain('c5'), 250)
-
-    expect(findMe(chain)?.status).toBe('declined')
-    expect(chain.status).toBe('formed')
-  })
-
+  // Цепочки живут в модуле и между тестами не сбрасываются, поэтому порядок значим:
+  // дизлайк распускает `c5`, а её же проверяет тест про отмену конкурентов.
   it('лайк последнего участника запускает обмен и отменяет конкурентов за ту же вещь', async () => {
     await run(respondToChain('c4', 'like'), 400)
     await vi.advanceTimersByTimeAsync(2500)
@@ -109,5 +103,15 @@ describe('ответ на предложение', () => {
 
     // Предложение с другой вещью отмена не задевает.
     expect(untouched.status).toBe('formed')
+  })
+
+  // Замену вышедшему сервис не ищет: вариант распадается целиком, а новый собирается заново —
+  // при трёх участниках это дешевле, и часть тех же людей в него попадает снова.
+  it('дизлайк распускает вариант целиком', async () => {
+    await run(respondToChain('c5', 'dislike'), 400)
+    const chain = await run(getChain('c5'), 250)
+
+    expect(findMe(chain)?.status).toBe('declined')
+    expect(chain.status).toBe('dissolved')
   })
 })

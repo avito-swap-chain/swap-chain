@@ -58,11 +58,14 @@ export function OfferCard({ chain, variants }: OfferCardProps) {
       {!cancelled && (
         <AskAboutItem
           thread={{
-            itemId: neighbours.giver.givesItem.id,
-            itemTitle: neighbours.giver.givesItem.title,
-            itemPhotoUrl: neighbours.giver.givesItem.photoUrl,
+            chainId: chain.id,
+            // Собеседник — тот, кто отдаёт вещь мне: переписка привязана к ребру круга обмена,
+            // и спрашивают о состоянии именно того, что получаешь.
+            counterpartId: neighbours.giver.userId,
             peerName: neighbours.giver.name,
             peerAvatarUrl: neighbours.giver.avatarUrl,
+            itemTitle: neighbours.giver.givesItem.title,
+            itemPhotoUrl: neighbours.giver.givesItem.photoUrl,
           }}
         />
       )}

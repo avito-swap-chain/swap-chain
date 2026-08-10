@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { countUnread, messageKeys } from '@/entities/message'
+import { getThreads, messageKeys } from '@/entities/message'
 import { getUnreadCount, notificationKeys } from '@/entities/notification'
 import { SwitchPersona } from '@/features/switch-persona'
 import { BrandMark, IconBell, IconChat, IconHeart, IconPlus } from '@/shared/ui'
@@ -54,7 +54,14 @@ function IconAction({
 }
 
 export function ShellHeader() {
-  const { data: unread = 0 } = useQuery({ queryKey: messageKeys.unread(), queryFn: countUnread })
+  // Отдельной ручки счётчика в контракте нет: непрочитанное приходит вместе со списком
+  // переписок, и обновляет его тот же периодический запрос — так задумано на бэкенде.
+  const { data: unread = 0 } = useQuery({
+    queryKey: messageKeys.list(),
+    queryFn: getThreads,
+    select: (list) => list.totalUnread,
+    refetchInterval: 10_000,
+  })
   const { data: news = 0 } = useQuery({
     queryKey: notificationKeys.unread(),
     queryFn: getUnreadCount,

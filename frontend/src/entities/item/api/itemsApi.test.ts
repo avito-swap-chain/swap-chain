@@ -120,6 +120,14 @@ describe('createItem — публикация вещи сразу с желан�
     expect((await itemOf(created.id))?.wish).toHaveLength(2)
   })
 
+  it('файл фотографии в вещь не попадает: он нужен только загрузке на бэкенд', async () => {
+    const file = new File(['photo'], 'bike.jpg', { type: 'image/jpeg' })
+    const created = await createItem({ ...draft, photoUrl: 'blob:preview', photoFile: file })
+
+    expect(created).not.toHaveProperty('photoFile')
+    expect(created.photoUrl).toBe('blob:preview')
+  })
+
   it('вещь без единого непустого варианта не публикуется', async () => {
     await expect(
       createItem({ ...draft, wish: [{ category: 'Аудио', description: ' ' }] }),

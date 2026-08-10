@@ -21,7 +21,7 @@ describe('getSection', () => {
 
   it('список переписок и открытый диалог — раздел «Сообщения»', () => {
     expect(getSection('/messages')).toBe('messages')
-    expect(getSection('/messages/3')).toBe('messages')
+    expect(getSection('/messages/c1/u2')).toBe('messages')
   })
 
   it('уведомления — свой раздел, а не «Мои объявления»', () => {
@@ -45,7 +45,7 @@ describe('getBreadcrumbs', () => {
   })
 
   it('переписка лежит под разделом «Сообщения»', () => {
-    expect(getBreadcrumbs('/messages/3')).toEqual([
+    expect(getBreadcrumbs('/messages/c1/u2')).toEqual([
       { label: 'Авито' },
       { label: 'Сообщения', to: '/messages' },
       { label: 'Переписка' },

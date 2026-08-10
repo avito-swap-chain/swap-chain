@@ -1,17 +1,33 @@
+import { unwrap } from '@/shared/api/fetcher'
+import {
+  listChatMessages,
+  listChatThreads,
+  markChatThreadRead,
+  sendChatMessage,
+} from '@/shared/api/generated/endpoints'
+import type {
+  ChatMessage as ApiChatMessage,
+  ChatMessageList,
+  ChatThreadList,
+} from '@/shared/api/generated/model'
+import { isBackendConnected } from '@/shared/config/backend'
 import { notify } from '@/shared/model/notifications'
 import { currentPersonaId } from '@/shared/model/persona'
-import type { Message, Thread, ThreadRef } from '../model/types'
+import { currentUserId } from '@/shared/model/session'
+import { isServiceThread, sameThread, threadPath } from '../lib/thread'
+import type { Message, Thread, ThreadKey, ThreadList, ThreadRef } from '../model/types'
+import { mapMessage, mapThread } from './mapChat'
 
 /**
- * Ключи кэша TanStack Query. `list` — префикс `thread`, поэтому инвалидация списка
- * обновляет и открытый диалог.
+ * Ключи кэша TanStack Query. Список и лента реплик — соседи, а не вложены друг в друга:
+ * лента висит на long-poll, и инвалидация списка после отправки обрывала бы ожидание
+ * ради данных, которые тем же ожиданием и придут.
  */
 export const messageKeys = {
   all: ['messages'] as const,
-  list: () => messageKeys.all,
-  thread: (itemId: string) => [...messageKeys.all, itemId] as const,
-  /** Счётчик в шапке: отдельный ключ, но под общим префиксом — инвалидируется вместе со списком. */
-  unread: () => [...messageKeys.all, 'unread'] as const,
+  list: () => [...messageKeys.all, 'threads'] as const,
+  thread: ({ chainId, counterpartId }: ThreadKey) =>
+    [...messageKeys.all, chainId, counterpartId] as const,
 }
 
 /**
@@ -25,6 +41,46 @@ export const QUICK_QUESTIONS = [
   'Комплект полный?',
   'Давно пользуетесь?',
 ] as const
+
+/** Что передаётся в отправку: текст и ключ идемпотентности, выданный на само действие. */
+export interface MessageDraft {
+  text: string
+  clientMessageId: string
+}
+
+/** Параметры чтения ленты: курсор и сколько секунд бэкенду держать запрос, ожидая нового. */
+export interface ReadOptions {
+  afterId?: string
+  waitSeconds?: number
+  signal?: AbortSignal
+}
+
+/**
+ * Служебный канал сервиса — он же первый в списке. У Авито мессенджер никогда не бывает
+ * совсем пустым: сверху всегда стоит канал самого Авито. Здесь он объясняет правило,
+ * которое иначе пришлось бы объяснять в интерфейсе цепочки.
+ *
+ * Канал целиком фронтовый и согласован с бэкендом именно так: это пояснение интерфейса,
+ * а не переписка между участниками, — в контракте отправитель всегда пользователь.
+ * Отметка о прочтении живёт в памяти вкладки: хранить её негде и незачем.
+ */
+const SERVICE_MESSAGE: Message = {
+  id: 'service',
+  author: 'system',
+  text: 'В обмене нет цен и доплат: вы получаете ровно то, что указали в желании. Прежде чем согласиться, уточните у владельца состояние вещи — по фото и описанию видно не всё.',
+  createdAt: new Date(Date.now() - 36e5).toISOString(),
+}
+
+let serviceRead = false
+
+const serviceThread = (): Thread => ({
+  chainId: 'service',
+  counterpartId: 'service',
+  peerName: 'Авито Обмен',
+  itemTitle: 'Обмен без доплат',
+  lastMessage: SERVICE_MESSAGE,
+  unreadCount: serviceRead ? 0 : 1,
+})
 
 /**
  * Ответы владельца подобраны по смыслу вопроса — так виден сам сценарий «уточнить состояние»,
@@ -53,126 +109,186 @@ const REPLIES: [RegExp, (title: string) => string][] = [
 
 const FALLBACK = 'Отвечу в течение дня. Если что-то важно уточнить до обмена — спрашивайте.'
 
-const replyTo = (text: string, itemTitle: string): string => {
+const replyTo = (text: string, itemTitle = 'вещь'): string => {
   const matched = REPLIES.find(([pattern]) => pattern.test(text))
   return matched ? matched[1](itemTitle) : FALLBACK
 }
 
-let counter = 0
-const nextId = (): string => `m${++counter}`
+/**
+ * Мок вместо бэкенда. Переписки раскладываются по персонам: переключение персоны в демо
+ * меняет и точку зрения на разговор. Идентификаторы реплик — растущие числа, как у бэкенда:
+ * на этом держатся и курсор чтения, и водяной знак прочитанного.
+ */
+interface MockThread {
+  ref: ThreadRef
+  messages: Message[]
+  /** Ключ идемпотентности → отправленная по нему реплика. */
+  sent: Map<string, Message>
+  /** Водяной знак: id последней прочитанной реплики. */
+  lastReadId: number
+}
 
-const message = (author: Message['author'], text: string, createdAt = new Date()): Message => ({
-  id: nextId(),
+let mockThreads: Record<string, MockThread[]> = {}
+
+let counter = 0
+
+const message = (author: Message['author'], text: string): Message => ({
+  id: String(++counter),
   author,
   text,
-  createdAt: createdAt.toISOString(),
+  createdAt: new Date().toISOString(),
 })
 
-/**
- * Служебный тред сервиса — он же первый в списке. У Авито мессенджер никогда не бывает
- * совсем пустым: сверху всегда стоит канал самого Авито. Здесь он объясняет правило,
- * которое иначе пришлось бы объяснять в интерфейсе цепочки.
- */
-const serviceThread = (): Thread => ({
-  itemId: 'service',
-  itemTitle: 'Обмен без доплат',
-  peerName: 'Авито Обмен',
-  unread: true,
-  messages: [
-    message(
-      'system',
-      'В обмене нет цен и доплат: вы получаете ровно то, что указали в желании. Прежде чем согласиться, уточните у владельца состояние вещи — по фото и описанию видно не всё.',
-      new Date(Date.now() - 36e5),
-    ),
-  ],
+const threadsOf = (personaId: string): MockThread[] => (mockThreads[personaId] ??= [])
+
+const findMock = (key: ThreadKey): MockThread | undefined =>
+  threadsOf(currentPersonaId()).find((thread) => sameThread(thread.ref, key))
+
+const openMock = (ref: ThreadRef): MockThread => {
+  const existing = findMock(ref)
+  if (existing) return existing
+
+  const created: MockThread = { ref, messages: [], sent: new Map(), lastReadId: 0 }
+  threadsOf(currentPersonaId()).push(created)
+  return created
+}
+
+const toThread = (thread: MockThread): Thread => ({
+  ...thread.ref,
+  lastMessage: thread.messages.at(-1),
+  unreadCount: thread.messages.filter(
+    (msg) => msg.author === 'them' && Number(msg.id) > thread.lastReadId,
+  ).length,
 })
-
-// Мок вместо бэкенда. Треды раскладываются по персонам: переключение персоны в демо
-// меняет и точку зрения на переписку.
-let threadsByPersona: Record<string, Thread[]> = {}
-
-const threadsOf = (personaId: string): Thread[] => threadsByPersona[personaId] ?? [serviceThread()]
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Время последней реплики — по нему список сортируется, как в мессенджере. */
-const lastAt = (thread: Thread): number => {
-  const last = thread.messages.at(-1)
-  return last ? Date.parse(last.createdAt) : 0
-}
+/** Все переписки текущего пользователя, свежие сверху, вместе со счётчиком для шапки. */
+export async function getThreads(): Promise<ThreadList> {
+  let threads: Thread[]
+  let totalUnread: number
 
-/** Все переписки текущей персоны, свежие сверху. */
-export async function getThreads(): Promise<Thread[]> {
-  await delay(250)
-  return [...threadsOf(currentPersonaId())].sort((a, b) => lastAt(b) - lastAt(a))
-}
+  if (isBackendConnected) {
+    const meId = await currentUserId()
+    const list = unwrap<ChatThreadList>(await listChatThreads())
+    // Бэкенд уже отдал список в порядке последней реплики — пересортировывать нечего.
+    threads = list.threads.map((thread) => mapThread(thread, meId))
+    totalUnread = list.totalUnreadCount
+  } else {
+    await delay(250)
+    threads = threadsOf(currentPersonaId())
+      .map(toThread)
+      // По id последней реплики, а не по времени: в моках две отправки попадают в одну
+      // миллисекунду, и сортировка по дате разошлась бы случайно.
+      .sort((a, b) => Number(b.lastMessage?.id) - Number(a.lastMessage?.id))
+    totalUnread = threads.reduce((sum, thread) => sum + thread.unreadCount, 0)
+  }
 
-/** Одна переписка. `undefined` — разговор ещё не начинали. */
-export async function getThread(itemId: string): Promise<Thread | undefined> {
-  await delay(200)
-  return threadsOf(currentPersonaId()).find((thread) => thread.itemId === itemId)
+  // Служебный канал стоит первым и считается наравне с остальными: для человека это такая же
+  // непрочитанная переписка, хотя на бэкенде её нет.
+  return {
+    threads: [serviceThread(), ...threads],
+    totalUnread: totalUnread + (serviceRead ? 0 : 1),
+  }
 }
 
 /**
- * Отправка сообщения. Ответ владельца приходит сразу же: в демо важно показать сценарий
- * целиком, а не ожидание — задержка ответа ничего не объясняет, но ломает показ.
- * Первое сообщение заводит тред, поэтому подпись собеседника передаётся вместе с текстом.
+ * Реплики переписки. `afterId` — курсор: приходит только то, чего мы ещё не видели.
+ * `waitSeconds` больше нуля превращает запрос в long-poll — бэкенд держит его, пока не
+ * появится новое сообщение, и это весь наш real-time: отдельного канала для чата нет.
  */
-export async function sendMessage({ text, ...ref }: ThreadRef & { text: string }): Promise<Thread> {
+export async function getMessages(key: ThreadKey, options: ReadOptions = {}): Promise<Message[]> {
+  if (isServiceThread(key)) return [SERVICE_MESSAGE]
+
+  if (isBackendConnected) {
+    const meId = await currentUserId()
+    const { messages } = unwrap<ChatMessageList>(
+      await listChatMessages(
+        Number(key.chainId),
+        Number(key.counterpartId),
+        {
+          afterId: options.afterId ? Number(options.afterId) : undefined,
+          waitSeconds: options.waitSeconds,
+        },
+        { signal: options.signal },
+      ),
+    )
+    return messages.map((msg) => mapMessage(msg, meId))
+  }
+
+  await delay(200)
+  const after = Number(options.afterId ?? 0)
+  return (findMock(key)?.messages ?? []).filter((msg) => Number(msg.id) > after)
+}
+
+/**
+ * Отправка сообщения. Ключ идемпотентности выдаётся на действие человека, а не на запрос:
+ * повтор после обрыва вернёт исходную реплику, а не заведёт вторую.
+ *
+ * Подписи переписки передаются вместе с текстом ради моков — там первое сообщение и заводит
+ * тред. Бэкенду они не нужны: у него разговор существует с момента, как цепочка подобралась.
+ */
+export async function sendMessage(ref: ThreadRef, draft: MessageDraft): Promise<Message> {
+  if (isBackendConnected) {
+    const meId = await currentUserId()
+    const sent = unwrap<ApiChatMessage>(
+      await sendChatMessage(Number(ref.chainId), Number(ref.counterpartId), {
+        clientMessageId: draft.clientMessageId,
+        text: draft.text,
+      }),
+    )
+    return mapMessage(sent, meId)
+  }
+
   await delay(300)
+  const thread = openMock(ref)
 
-  const personaId = currentPersonaId()
-  const threads = threadsOf(personaId)
-  const existing = threads.find((thread) => thread.itemId === ref.itemId)
+  const already = thread.sent.get(draft.clientMessageId)
+  if (already) return already
 
-  const updated: Thread = {
-    ...ref,
-    // Ответ собеседника приходит сразу же, поэтому переписка становится непрочитанной —
-    // и гаснет, как только человек её откроет.
-    unread: true,
-    messages: [
-      ...(existing?.messages ?? []),
-      message('me', text),
-      message('them', replyTo(text, ref.itemTitle)),
-    ],
-  }
-
-  threadsByPersona = {
-    ...threadsByPersona,
-    [personaId]: [...threads.filter((thread) => thread.itemId !== ref.itemId), updated],
-  }
+  const mine = message('me', draft.text)
+  thread.sent.set(draft.clientMessageId, mine)
+  // Ответ владельца приходит сразу же: в демо важно показать сценарий целиком, а не ожидание.
+  // В ленту он попадёт следующим опросом — так же, как пришёл бы с бэкенда.
+  thread.messages.push(mine, message('them', replyTo(draft.text, ref.itemTitle)))
 
   notify({
     kind: 'message',
     title: `Новое сообщение от ${ref.peerName}`,
-    text: updated.messages.at(-1)?.text ?? '',
-    to: `/messages/${ref.itemId}`,
+    text: thread.messages.at(-1)?.text ?? '',
+    to: threadPath(ref),
   })
 
-  return updated
+  return mine
 }
 
-/** Сколько переписок ждут прочтения — счётчик на иконке сообщений в шапке. */
-export async function countUnread(): Promise<number> {
-  await delay(150)
-  return threadsOf(currentPersonaId()).filter((thread) => thread.unread).length
-}
-
-/** Переписку открыли — непрочитанное снимается. */
-export async function markThreadRead(itemId: string): Promise<void> {
-  const personaId = currentPersonaId()
-  const threads = threadsOf(personaId)
-  if (!threads.some((thread) => thread.itemId === itemId && thread.unread)) return
-
-  threadsByPersona = {
-    ...threadsByPersona,
-    [personaId]: threads.map((thread) =>
-      thread.itemId === itemId ? { ...thread, unread: false } : thread,
-    ),
+/**
+ * Переписку прочитали до указанной реплики. Водяной знак назад не двигается: иначе возврат
+ * к старому сообщению «разучитывал» бы то, что человек уже видел.
+ */
+export async function markThreadRead(key: ThreadKey, lastMessageId: string): Promise<void> {
+  if (isServiceThread(key)) {
+    serviceRead = true
+    return
   }
+
+  if (isBackendConnected) {
+    unwrap(
+      await markChatThreadRead(Number(key.chainId), Number(key.counterpartId), {
+        lastReadMessageId: Number(lastMessageId),
+      }),
+    )
+    return
+  }
+
+  const thread = findMock(key)
+  if (!thread) return
+  thread.lastReadId = Math.max(thread.lastReadId, Number(lastMessageId))
 }
 
 /** Сброс переписок — для тестов. */
 export const resetThreads = (): void => {
-  threadsByPersona = {}
+  mockThreads = {}
+  counter = 0
+  serviceRead = false
 }

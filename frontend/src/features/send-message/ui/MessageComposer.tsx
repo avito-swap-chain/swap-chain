@@ -1,6 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { messageKeys, QUICK_QUESTIONS, sendMessage, type ThreadRef } from '@/entities/message'
+import {
+  mergeMessages,
+  messageKeys,
+  QUICK_QUESTIONS,
+  sendMessage,
+  type Message,
+  type MessageDraft,
+  type ThreadRef,
+} from '@/entities/message'
 import { Button, Input } from '@/shared/ui'
 
 /**
@@ -15,9 +23,17 @@ export function MessageComposer({ thread, empty }: { thread: ThreadRef; empty: b
   const queryClient = useQueryClient()
 
   const { mutate, isPending } = useMutation({
-    mutationFn: (text: string) => sendMessage({ ...thread, text }),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(messageKeys.thread(thread.itemId), updated)
+    mutationFn: (message: MessageDraft) => sendMessage(thread, message),
+    // Повтор идёт с тем же ключом идемпотентности — он в переменных мутации, а не внутри
+    // запроса. Ради этого повтор и включён: обрыв на ответе сервера иначе оставляет человека
+    // гадать, дошло ли, а вторая попытка вернёт исходную реплику вместо дубля.
+    retry: 1,
+    onSuccess: (sent) => {
+      // Своё сообщение показываем сразу, не дожидаясь опроса, — и тем же слиянием,
+      // чтобы пришедшее следом из long-poll не задвоило его.
+      queryClient.setQueryData<Message[]>(messageKeys.thread(thread), (known = []) =>
+        mergeMessages(known, [sent]),
+      )
       queryClient.invalidateQueries({ queryKey: messageKeys.list() })
     },
   })
@@ -25,7 +41,7 @@ export function MessageComposer({ thread, empty }: { thread: ThreadRef; empty: b
   const send = (text: string) => {
     const trimmed = text.trim()
     if (!trimmed || isPending) return
-    mutate(trimmed)
+    mutate({ text: trimmed, clientMessageId: crypto.randomUUID() })
     setDraft('')
   }
 

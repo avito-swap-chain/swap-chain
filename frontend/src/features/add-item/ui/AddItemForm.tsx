@@ -4,12 +4,33 @@ import {
   CATEGORIES,
   CONDITIONS,
   CONDITION_LABEL,
+  descriptionQuality,
   recognizeItem,
+  type DescriptionQuality,
   type ItemCondition,
   type ItemDraft,
 } from '@/entities/item'
-import { Button, Field, IconImage, Input, Select, Status } from '@/shared/ui'
+import {
+  Button,
+  Field,
+  IconImage,
+  Input,
+  Select,
+  Status,
+  Textarea,
+  type StatusTone,
+} from '@/shared/ui'
 import { recognitionPatch, type RecognizedField } from '../lib/recognitionPatch'
+
+/**
+ * Что человек видит вместо порогов длины. Формулировки про подбор, а не про символы:
+ * считать буквы — не его работа, ему важно, найдётся ли обмен.
+ */
+const QUALITY: Record<DescriptionQuality, { tone: StatusTone; label: string }> = {
+  short: { tone: 'stop', label: 'Слишком коротко для подбора' },
+  fair: { tone: 'attention', label: 'Добавьте деталей — найдётся точнее' },
+  good: { tone: 'ok', label: 'Хорошее описание' },
+}
 
 /** Первый шаг публикации: сама вещь, без желания. */
 export type ItemFormValues = Omit<ItemDraft, 'wish'>
@@ -47,14 +68,19 @@ export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
 
     // Ссылку на прежнее фото освобождаем, иначе замена фото копит их в памяти.
     if (values.photoUrl) URL.revokeObjectURL(values.photoUrl)
-    patch({ photoUrl: URL.createObjectURL(file) })
+    // Сам файл несём дальше: предпросмотр рисуется по `blob:`-ссылке, а бэкенду нужен файл.
+    patch({ photoUrl: URL.createObjectURL(file), photoFile: file })
     recognition.mutate(file)
   }
 
   const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
-    onSubmit({ ...values, title: values.title.trim() })
+    onSubmit({ ...values, title: values.title.trim(), description: values.description?.trim() })
   }
+
+  const quality = values.description?.trim()
+    ? QUALITY[descriptionQuality(values.description)]
+    : undefined
 
   return (
     <form onSubmit={submit} className="flex flex-1 flex-col gap-3.5">
@@ -85,6 +111,22 @@ export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
           disabled={recognition.isPending}
           required
         />
+      </Field>
+
+      {/* Описание не обязательно, но по нему подбор и ищет: бэкенд векторизует
+          название вместе с описанием, и без него у вещи остаётся одно название. */}
+      <Field label="Описание">
+        <Textarea
+          value={values.description ?? ''}
+          onChange={(event) => patch({ description: event.target.value })}
+          placeholder="Что за вещь, как долго у вас, что в комплекте"
+          rows={3}
+          maxLength={4000}
+          disabled={recognition.isPending}
+        />
+        {/* Подсказка появляется только когда есть что оценивать: у пустого поля она читалась бы
+            как упрёк за то, что человек ещё не начал. */}
+        {quality && <Status tone={quality.tone}>{quality.label}</Status>}
       </Field>
 
       <Field label="Категория">

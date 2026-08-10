@@ -4,13 +4,15 @@ import { cx } from '../lib'
 /**
  * Статус — это текст, а не плашка: так набраны статусы заказов у Авито.
  * Смысл несёт цвет: `attention` — ход за пользователем, `stop` — проблема,
- * `neutral` — обычное состояние, `muted` — то, что уже никуда не движется.
+ * `ok` — сделано как надо, `neutral` — обычное состояние, `muted` — то,
+ * что уже никуда не движется.
  */
-export type StatusTone = 'neutral' | 'attention' | 'stop' | 'muted'
+export type StatusTone = 'neutral' | 'attention' | 'ok' | 'stop' | 'muted'
 
 const tones: Record<StatusTone, string> = {
   neutral: 'text-ink',
   attention: 'text-attention',
+  ok: 'text-ok',
   stop: 'text-stop',
   muted: 'text-ink-3',
 }

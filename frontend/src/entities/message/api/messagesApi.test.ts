@@ -1,21 +1,37 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
-import {
-  countUnread,
-  getThread,
-  getThreads,
-  markThreadRead,
-  resetThreads,
-  sendMessage,
-} from './messagesApi'
+import { isServiceThread, SERVICE_THREAD } from '../lib/thread'
+import type { ThreadRef } from '../model/types'
+import { getMessages, getThreads, markThreadRead, resetThreads, sendMessage } from './messagesApi'
 
 const [DASHA, MARK] = PERSONAS
 
-const BIKE = { itemId: '1', itemTitle: 'Горный велосипед', peerName: 'Лена' }
-const MONITOR = { itemId: '3', itemTitle: 'Монитор LG 27" IPS', peerName: 'Марк' }
+/** Даша спрашивает Лену о велосипеде в цепочке c1, Марка о мониторе — в c5. */
+const BIKE: ThreadRef = {
+  chainId: 'c1',
+  counterpartId: 'u3',
+  peerName: 'Лена',
+  itemTitle: 'Горный велосипед',
+}
+const MONITOR: ThreadRef = {
+  chainId: 'c5',
+  counterpartId: 'u2',
+  peerName: 'Марк',
+  itemTitle: 'Монитор LG 27" IPS',
+}
 
-/** Реплики без служебного канала: он есть всегда и к разговорам отношения не имеет. */
-const dialogues = async () => (await getThreads()).filter((thread) => thread.itemId !== 'service')
+let keys = 0
+const ask = (ref: ThreadRef, text: string) =>
+  sendMessage(ref, { text, clientMessageId: `k${++keys}` })
+
+/** Разговоры без служебного канала: он есть всегда и к переписке участников отношения не имеет. */
+const dialogues = async () => (await getThreads()).threads.filter((t) => !isServiceThread(t))
+
+/** Прочитать всё, что сейчас показано, — ровно это делает открытый экран переписки. */
+const readAll = async (ref: ThreadRef) => {
+  const messages = await getMessages(ref)
+  await markThreadRead(ref, messages.at(-1)?.id ?? '0')
+}
 
 describe('messagesApi — переписка о состоянии вещи', () => {
   beforeEach(() => {
@@ -23,115 +39,153 @@ describe('messagesApi — переписка о состоянии вещи', ()
     usePersonaStore.setState({ personaId: DASHA.id })
   })
 
-  it('до первого вопроса переписки по вещи нет', async () => {
-    expect(await getThread(BIKE.itemId)).toBeUndefined()
+  it('до первого вопроса переписки нет', async () => {
+    expect(await getMessages(BIKE)).toEqual([])
     expect(await dialogues()).toEqual([])
   })
 
-  it('мессенджер не бывает пустым: канал сервиса стоит в списке всегда', async () => {
-    const threads = await getThreads()
+  it('мессенджер не бывает пустым: канал сервиса стоит первым всегда', async () => {
+    const { threads } = await getThreads()
 
     expect(threads).toHaveLength(1)
-    expect(threads[0]).toMatchObject({ itemId: 'service', peerName: 'Авито Обмен' })
-    expect(threads[0].messages[0].author).toBe('system')
+    expect(threads[0]).toMatchObject({ peerName: 'Авито Обмен', ...SERVICE_THREAD })
+    expect(threads[0].lastMessage?.author).toBe('system')
   })
 
   it('на отправленный вопрос владелец отвечает — в ленте обе реплики подряд', async () => {
-    const thread = await sendMessage({ ...BIKE, text: 'В каком состоянии вещь?' })
+    await ask(BIKE, 'В каком состоянии вещь?')
 
-    expect(thread.messages).toHaveLength(2)
-    expect(thread.messages[0]).toMatchObject({ author: 'me', text: 'В каком состоянии вещь?' })
-    expect(thread.messages[1].author).toBe('them')
+    const messages = await getMessages(BIKE)
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({ author: 'me', text: 'В каком состоянии вещь?' })
+    expect(messages[1].author).toBe('them')
   })
 
   it('ответ разбирает смысл вопроса, а не повторяет его', async () => {
-    const aboutKit = await sendMessage({ ...BIKE, text: 'Комплект полный?' })
-    expect(aboutKit.messages[1].text).toMatch(/комплект/i)
+    await ask(BIKE, 'Комплект полный?')
+    expect((await getMessages(BIKE))[1].text).toMatch(/комплект/i)
 
     resetThreads()
-    const aboutWear = await sendMessage({ ...BIKE, text: 'Есть царапины?' })
-    expect(aboutWear.messages[1].text).toMatch(/царапина|следов/i)
+    await ask(BIKE, 'Есть царапины?')
+    expect((await getMessages(BIKE))[1].text).toMatch(/царапина|следов/i)
   })
 
   it('на вопрос не о вещи отвечает нейтрально, а не выдумывает подробности', async () => {
-    const thread = await sendMessage({ ...BIKE, text: 'Добрый день!' })
+    await ask(BIKE, 'Добрый день!')
 
-    expect(thread.messages[1].text).toMatch(/отвечу в течение дня/i)
+    expect((await getMessages(BIKE))[1].text).toMatch(/отвечу в течение дня/i)
   })
 
-  it('переписка сохраняется и продолжается следующим вопросом', async () => {
-    await sendMessage({ ...BIKE, text: 'В каком состоянии вещь?' })
-    const thread = await sendMessage({ ...BIKE, text: 'Комплект полный?' })
-
-    expect(thread.messages).toHaveLength(4)
-    expect((await getThread(BIKE.itemId))?.messages).toHaveLength(4)
-  })
-
-  it('первое сообщение заводит тред с подписью собеседника и вещи', async () => {
-    await sendMessage({ ...BIKE, itemPhotoUrl: '/mock/items/bike.jpg', text: 'Комплект полный?' })
+  it('первое сообщение заводит переписку с подписями собеседника и вещи', async () => {
+    await ask({ ...BIKE, itemPhotoUrl: '/mock/items/bike.jpg' }, 'Комплект полный?')
 
     const [thread] = await dialogues()
     expect(thread).toMatchObject({
-      itemId: BIKE.itemId,
-      itemTitle: BIKE.itemTitle,
-      peerName: BIKE.peerName,
+      chainId: BIKE.chainId,
+      counterpartId: BIKE.counterpartId,
+      peerName: 'Лена',
+      itemTitle: 'Горный велосипед',
       itemPhotoUrl: '/mock/items/bike.jpg',
     })
+    expect(thread.lastMessage?.author).toBe('them')
+  })
+
+  it('курсор отдаёт только то, чего мы ещё не видели', async () => {
+    await ask(BIKE, 'Комплект полный?')
+    const [mine, reply] = await getMessages(BIKE)
+
+    expect(await getMessages(BIKE, { afterId: mine.id })).toEqual([reply])
+    expect(await getMessages(BIKE, { afterId: reply.id })).toEqual([])
+  })
+
+  it('повтор с тем же ключом идемпотентности не заводит вторую реплику', async () => {
+    const first = await sendMessage(BIKE, { text: 'Комплект полный?', clientMessageId: 'once' })
+    const repeat = await sendMessage(BIKE, { text: 'Комплект полный?', clientMessageId: 'once' })
+
+    expect(repeat).toEqual(first)
+    expect(await getMessages(BIKE)).toHaveLength(2)
+  })
+
+  it('переписка продолжается следующим вопросом', async () => {
+    await ask(BIKE, 'В каком состоянии вещь?')
+    await ask(BIKE, 'Комплект полный?')
+
+    expect(await getMessages(BIKE)).toHaveLength(4)
   })
 
   it('в списке свежий разговор идёт выше давнего', async () => {
-    await sendMessage({ ...BIKE, text: 'Комплект полный?' })
-    await sendMessage({ ...MONITOR, text: 'Есть битые пиксели?' })
+    await ask(BIKE, 'Комплект полный?')
+    await ask(MONITOR, 'Есть битые пиксели?')
 
-    expect((await dialogues()).map((thread) => thread.itemId)).toEqual([
-      MONITOR.itemId,
-      BIKE.itemId,
-    ])
+    expect((await dialogues()).map((t) => t.chainId)).toEqual([MONITOR.chainId, BIKE.chainId])
   })
 
-  it('разговоры о разных вещах не смешиваются', async () => {
-    await sendMessage({ ...BIKE, text: 'Комплект полный?' })
-    await sendMessage({ ...MONITOR, text: 'Есть битые пиксели?' })
+  it('разговоры в разных цепочках не смешиваются', async () => {
+    await ask(BIKE, 'Комплект полный?')
+    await ask(MONITOR, 'Есть битые пиксели?')
 
-    expect((await getThread(BIKE.itemId))?.messages).toHaveLength(2)
-    expect((await getThread(MONITOR.itemId))?.messages).toHaveLength(2)
+    expect(await getMessages(BIKE)).toHaveLength(2)
+    expect(await getMessages(MONITOR)).toHaveLength(2)
   })
 
-  it('ответ собеседника делает переписку непрочитанной, а открытие — гасит счётчик', async () => {
-    expect(await countUnread()).toBe(1) // канал сервиса ждёт прочтения
+  it('один и тот же собеседник в другой цепочке — другой разговор', async () => {
+    const other = { ...BIKE, chainId: 'c9', itemTitle: 'Кофеварка' }
+    await ask(BIKE, 'Комплект полный?')
+    await ask(other, 'А кофеварка на ходу?')
 
-    await sendMessage({ ...BIKE, text: 'Комплект полный?' })
-    expect(await countUnread()).toBe(2)
+    expect(await getMessages(BIKE)).toHaveLength(2)
+    expect(await getMessages(other)).toHaveLength(2)
+    expect(await dialogues()).toHaveLength(2)
+  })
+})
 
-    await markThreadRead(BIKE.itemId)
-    expect(await countUnread()).toBe(1)
-    expect((await getThread(BIKE.itemId))?.unread).toBe(false)
+describe('messagesApi — непрочитанное', () => {
+  beforeEach(() => {
+    resetThreads()
+    usePersonaStore.setState({ personaId: DASHA.id })
   })
 
-  it('прочитанная переписка снова становится непрочитанной после нового ответа', async () => {
-    await sendMessage({ ...BIKE, text: 'Комплект полный?' })
-    await markThreadRead(BIKE.itemId)
+  it('канал сервиса ждёт прочтения, пока его не открыли', async () => {
+    expect((await getThreads()).totalUnread).toBe(1)
 
-    const thread = await sendMessage({ ...BIKE, text: 'А царапины есть?' })
-    expect(thread.unread).toBe(true)
+    await markThreadRead(SERVICE_THREAD, 'service')
+    expect((await getThreads()).totalUnread).toBe(0)
+  })
+
+  it('ответ собеседника поднимает счётчик, открытие переписки — гасит', async () => {
+    await ask(BIKE, 'Комплект полный?')
+    expect((await getThreads()).totalUnread).toBe(2) // ответ Лены и канал сервиса
+
+    await readAll(BIKE)
+    expect((await getThreads()).totalUnread).toBe(1)
+    expect((await dialogues())[0].unreadCount).toBe(0)
+  })
+
+  it('после нового ответа переписка снова непрочитана', async () => {
+    await ask(BIKE, 'Комплект полный?')
+    await readAll(BIKE)
+    await ask(BIKE, 'А царапины есть?')
+
+    expect((await dialogues())[0].unreadCount).toBe(1)
+  })
+
+  it('водяной знак не двигается назад: возврат к старой реплике ничего не разучивает', async () => {
+    await ask(BIKE, 'Комплект полный?')
+    const [mine] = await getMessages(BIKE)
+
+    await readAll(BIKE)
+    await markThreadRead(BIKE, mine.id)
+
+    expect((await dialogues())[0].unreadCount).toBe(0)
   })
 
   it('счётчик считает персонально: чужие непрочитанные не видны', async () => {
-    await sendMessage({ ...BIKE, text: 'Комплект полный?' })
-    expect(await countUnread()).toBe(2)
+    await ask(BIKE, 'Комплект полный?')
+    expect((await getThreads()).totalUnread).toBe(2)
 
     usePersonaStore.setState({ personaId: MARK.id })
-    expect(await countUnread()).toBe(1) // только собственный канал сервиса
-  })
-
-  it('переписка принадлежит персоне: у другого участника её нет', async () => {
-    await sendMessage({ ...BIKE, text: 'В каком состоянии вещь?' })
-
-    usePersonaStore.setState({ personaId: MARK.id })
-    expect(await getThread(BIKE.itemId)).toBeUndefined()
+    expect((await getThreads()).totalUnread).toBe(1) // только собственный канал сервиса
     expect(await dialogues()).toEqual([])
-
-    usePersonaStore.setState({ personaId: DASHA.id })
-    expect((await getThread(BIKE.itemId))?.messages).toHaveLength(2)
+    expect(await getMessages(BIKE)).toEqual([])
   })
 })

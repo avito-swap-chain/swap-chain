@@ -27,11 +27,15 @@ export class ApiError extends Error {
  * (см. `unwrap`), иначе тип ответа перестанет совпадать со схемой.
  */
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  // Загрузка фото идёт как multipart, и границу частей проставляет браузер — свой
+  // `Content-Type` затёр бы её, и бэкенд не разобрал бы тело.
+  const isMultipart = init?.body instanceof FormData
+
   const response = await fetch(`${BASE_URL}${url}`, {
     ...init,
     // Сессия демо-бэкенда живёт в куке, поэтому запросы идут с ней.
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: isMultipart ? init?.headers : { 'Content-Type': 'application/json', ...init?.headers },
   })
 
   // 204 у контракта есть (logout), и тела там нет — json() на нём падает.
