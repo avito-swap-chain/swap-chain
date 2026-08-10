@@ -14,9 +14,10 @@ import (
 
 // Chain, participant and decision statuses used by the MVP lifecycle.
 const (
-	StatusPending  = "PENDING"
-	StatusAccepted = "ACCEPTED"
-	StatusRejected = "REJECTED"
+	StatusPending   = "PENDING"
+	StatusAccepted  = "ACCEPTED"
+	StatusRejected  = "REJECTED"
+	StatusCompleted = "COMPLETED"
 
 	ParticipantWaiting  = "WAITING"
 	ParticipantApproved = "APPROVED"

@@ -122,7 +122,7 @@ func (s *PostgresService) List(ctx context.Context, userID int64, status string,
 	if limit < 1 || limit > 100 {
 		return nil, nil, &ValidationError{Message: "limit must be between 1 and 100"}
 	}
-	if status != "" && status != StatusPending && status != StatusAccepted && status != StatusRejected {
+	if status != "" && status != StatusPending && status != StatusAccepted && status != StatusRejected && status != StatusCompleted {
 		return nil, nil, &ValidationError{Message: "unsupported chain status"}
 	}
 
