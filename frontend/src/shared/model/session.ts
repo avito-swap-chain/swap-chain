@@ -20,6 +20,12 @@ import { currentPersonaId, PERSONAS } from './persona'
 export interface CurrentUser {
   id: string
   name: string
+  /**
+   * Телефон — единственный устойчивый ключ пользователя, который есть и в сессии, и в списке
+   * демо-персон. Имена сравнивать нельзя: они повторяются и меняются, а переключатель на них
+   * промахивался. На моках телефона нет — там персону опознаёт `id`.
+   */
+  phone?: string
   avatarUrl?: string
   rating?: number
   reviews?: number
@@ -63,7 +69,12 @@ const fromSession = (session: Session): CurrentUser => {
   // чтобы не ждать его вливания: до тех пор поле просто не приходит.
   const { role } = session.user as typeof session.user & { role?: string }
 
-  return { id: String(session.user.id), name: session.user.username, isAdmin: role === 'ADMIN' }
+  return {
+    id: String(session.user.id),
+    name: session.user.username,
+    phone: session.user.phone,
+    isAdmin: role === 'ADMIN',
+  }
 }
 
 const fromPersona = (): CurrentUser => {

@@ -88,11 +88,12 @@ export function SwitchPersona() {
 
   // Список для выбора: с бэкендом это засеянные демо-пользователи, и в нём может не быть
   // текущего — тот, кто зарегистрировался сам, всё равно должен видеть себя в поле.
+  // Сравниваем по телефону: имена не уникальны, и на них выбор промахивался.
   const options: SwitchOption[] = isBackendConnected
     ? [
-        ...(DEMO_USERS.some((demo) => demo.name === user.name)
+        ...(DEMO_USERS.some((demo) => demo.phone === user.phone)
           ? []
-          : [{ name: user.name, phone: '', isAdmin: user.isAdmin }]),
+          : [{ name: user.name, phone: user.phone ?? '', isAdmin: user.isAdmin }]),
         ...DEMO_USERS,
       ]
     : PERSONAS.map((persona) => ({ name: persona.name, phone: persona.id }))
@@ -103,9 +104,11 @@ export function SwitchPersona() {
         {/* На узких окнах подпись прячется: в одну строку шапки лезут лок-ап, поиск и аккаунт,
             а смысл переключателя и так виден по имени в поле. Экранным читалкам она остаётся. */}
         <span className="text-[11px] leading-tight text-ink-3 max-sm:sr-only">Смотрю как</span>
+        {/* Значение пункта — телефон (на моках его роль играет id персоны), а не имя:
+            имена не уникальны и меняются, и выбор по ним промахивался. */}
         <select
           title="Смотрю как"
-          value={isBackendConnected ? user.name : personaId}
+          value={isBackendConnected ? (user.phone ?? '') : personaId}
           disabled={switchUser.isPending}
           onChange={(event) => {
             if (!isBackendConnected) {
@@ -114,16 +117,12 @@ export function SwitchPersona() {
               return
             }
 
-            const chosen = options.find((option) => option.name === event.target.value)
-            if (chosen?.phone) switchUser.mutate(chosen.phone)
+            switchUser.mutate(event.target.value)
           }}
           className={SELECT_CLASS}
         >
           {options.map((option) => (
-            <option
-              key={option.phone || option.name}
-              value={isBackendConnected ? option.name : option.phone}
-            >
+            <option key={option.phone || option.name} value={option.phone}>
               {/* Корона и в списке — иначе на демо не видно, под кем открывать админку ПВЗ. */}
               {option.isAdmin ? `${option.name} 👑` : option.name}
             </option>

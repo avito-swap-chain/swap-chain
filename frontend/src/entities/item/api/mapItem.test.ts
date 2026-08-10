@@ -42,7 +42,8 @@ describe('mapItem — вещь из контракта в нашу модель'
   })
 
   it('стадия обработки переводится в участие в обмене', () => {
-    expect(mapItem(apiItem({ status: 'ANALYZING' })).status).toBe('idle')
+    // Не `idle`: обмен у вещи включён, просто бэкенд ещё разбирает описание.
+    expect(mapItem(apiItem({ status: 'ANALYZING' })).status).toBe('analyzing')
     expect(mapItem(apiItem({ status: 'MATCHING' })).status).toBe('searching')
     expect(mapItem(apiItem({ status: 'LOCKED' })).status).toBe('reserved')
   })
