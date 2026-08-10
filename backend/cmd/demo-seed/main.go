@@ -43,18 +43,18 @@ func run(arguments []string) error {
 	defer db.Close()
 
 	users := []userSeed{
-		{username: "Алиса", phone: "+79001000001"},
-		{username: "Борис", phone: "+79001000002"},
-		{username: "Вера", phone: "+79001000003"},
+		{username: "Алиса", phone: "+79001000001", role: "USER"},
+		{username: "Борис", phone: "+79001000002", role: "USER"},
+		{username: "Вера", phone: "+79001000003", role: "USER"},
 	}
 
 	var userIDs []int64
 	for _, u := range users {
 		var id int64
 		err := db.QueryRowContext(ctx,
-			`INSERT INTO users (username, phone) VALUES ($1, $2)
-			 ON CONFLICT (phone) DO UPDATE SET username = EXCLUDED.username
-			 RETURNING id`, u.username, u.phone).Scan(&id)
+			`INSERT INTO users (username, phone, role) VALUES ($1, $2, $3::user_role)
+			 ON CONFLICT (phone) DO UPDATE SET username = EXCLUDED.username, role = EXCLUDED.role
+			 RETURNING id`, u.username, u.phone, u.role).Scan(&id)
 		if err != nil {
 			return fmt.Errorf("insert user %s: %w", u.username, err)
 		}
@@ -112,6 +112,7 @@ func run(arguments []string) error {
 	}
 
 	fmt.Printf("\ndemo seed complete: %d users, %d items\n", len(userIDs), len(itemIDs))
+	fmt.Println("pickup-point admin from migration: ПВЗ Администратор (demo), +79009999999")
 	fmt.Printf("cycle: item %d → item %d → item %d → back to %d\n",
 		itemIDs[0], itemIDs[1], itemIDs[2], itemIDs[0])
 	fmt.Println("\nrun matching:")
@@ -125,7 +126,7 @@ func run(arguments []string) error {
 }
 
 type userSeed struct {
-	username, phone string
+	username, phone, role string
 }
 
 type itemSeed struct {
@@ -138,7 +139,7 @@ type itemSeed struct {
 }
 
 func loadCategoryIDs(ctx context.Context, database *sql.DB, limit int) ([]int32, error) {
-	rows, err := database.QueryContext(ctx, `SELECT id FROM categories ORDER BY id LIMIT $1`, limit)
+	rows, err := database.QueryContext(ctx, `SELECT id FROM categories WHERE name <> 'Не определено' ORDER BY id LIMIT $1`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("load demo categories: %w", err)
 	}
@@ -158,6 +159,7 @@ func loadCategoryIDs(ctx context.Context, database *sql.DB, limit int) ([]int32,
 	if len(ids) != limit {
 		return nil, fmt.Errorf("load demo categories: got %d, want %d; apply migrations first", len(ids), limit)
 	}
+
 	return ids, nil
 }
 

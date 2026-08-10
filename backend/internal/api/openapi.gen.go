@@ -25,6 +25,51 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AdminDeliveryStatus.
+const (
+	AdminDeliveryStatusATPVZ       AdminDeliveryStatus = "AT_PVZ"
+	AdminDeliveryStatusAWAITINGPVZ AdminDeliveryStatus = "AWAITING_PVZ"
+	AdminDeliveryStatusINDELIVERY  AdminDeliveryStatus = "IN_DELIVERY"
+	AdminDeliveryStatusRECEIVED    AdminDeliveryStatus = "RECEIVED"
+)
+
+// Valid indicates whether the value is a known member of the AdminDeliveryStatus enum.
+func (e AdminDeliveryStatus) Valid() bool {
+	switch e {
+	case AdminDeliveryStatusATPVZ:
+		return true
+	case AdminDeliveryStatusAWAITINGPVZ:
+		return true
+	case AdminDeliveryStatusINDELIVERY:
+		return true
+	case AdminDeliveryStatusRECEIVED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdminDeliveryTransitionStatus.
+const (
+	AdminDeliveryTransitionStatusATPVZ      AdminDeliveryTransitionStatus = "AT_PVZ"
+	AdminDeliveryTransitionStatusINDELIVERY AdminDeliveryTransitionStatus = "IN_DELIVERY"
+	AdminDeliveryTransitionStatusRECEIVED   AdminDeliveryTransitionStatus = "RECEIVED"
+)
+
+// Valid indicates whether the value is a known member of the AdminDeliveryTransitionStatus enum.
+func (e AdminDeliveryTransitionStatus) Valid() bool {
+	switch e {
+	case AdminDeliveryTransitionStatusATPVZ:
+		return true
+	case AdminDeliveryTransitionStatusINDELIVERY:
+		return true
+	case AdminDeliveryTransitionStatusRECEIVED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChainDecision.
 const (
 	ChainDecisionAPPROVED ChainDecision = "APPROVED"
@@ -45,15 +90,18 @@ func (e ChainDecision) Valid() bool {
 
 // Defines values for ChainStatus.
 const (
-	ACCEPTED ChainStatus = "ACCEPTED"
-	PENDING  ChainStatus = "PENDING"
-	REJECTED ChainStatus = "REJECTED"
+	ACCEPTED  ChainStatus = "ACCEPTED"
+	COMPLETED ChainStatus = "COMPLETED"
+	PENDING   ChainStatus = "PENDING"
+	REJECTED  ChainStatus = "REJECTED"
 )
 
 // Valid indicates whether the value is a known member of the ChainStatus enum.
 func (e ChainStatus) Valid() bool {
 	switch e {
 	case ACCEPTED:
+		return true
+	case COMPLETED:
 		return true
 	case PENDING:
 		return true
@@ -187,6 +235,55 @@ func (e ParticipantStatus) Valid() bool {
 	}
 }
 
+// Defines values for UserRole.
+const (
+	ADMIN UserRole = "ADMIN"
+	USER  UserRole = "USER"
+)
+
+// Valid indicates whether the value is a known member of the UserRole enum.
+func (e UserRole) Valid() bool {
+	switch e {
+	case ADMIN:
+		return true
+	case USER:
+		return true
+	default:
+		return false
+	}
+}
+
+// AdminDelivery defines model for AdminDelivery.
+type AdminDelivery struct {
+	ChainId   int64       `json:"chainId"`
+	Id        int64       `json:"id"`
+	ItemId    int64       `json:"itemId"`
+	ItemTitle string      `json:"itemTitle"`
+	Recipient UserSummary `json:"recipient"`
+	Sender    UserSummary `json:"sender"`
+
+	// Status Physical hand-off state of one item in an assembled chain.
+	Status    AdminDeliveryStatus `json:"status"`
+	UpdatedAt time.Time           `json:"updatedAt"`
+}
+
+// AdminDeliveryList defines model for AdminDeliveryList.
+type AdminDeliveryList struct {
+	Deliveries []AdminDelivery `json:"deliveries"`
+	NextCursor *string         `json:"nextCursor,omitempty"`
+}
+
+// AdminDeliveryStatus Physical hand-off state of one item in an assembled chain.
+type AdminDeliveryStatus string
+
+// AdminDeliveryTransitionRequest defines model for AdminDeliveryTransitionRequest.
+type AdminDeliveryTransitionRequest struct {
+	Status AdminDeliveryTransitionStatus `json:"status"`
+}
+
+// AdminDeliveryTransitionStatus defines model for AdminDeliveryTransitionStatus.
+type AdminDeliveryTransitionStatus string
+
 // Chain defines model for Chain.
 type Chain struct {
 	CreatedAt    time.Time          `json:"createdAt"`
@@ -219,8 +316,67 @@ type ChainParticipant struct {
 	User        UserSummary       `json:"user"`
 }
 
+// ChainReceipt defines model for ChainReceipt.
+type ChainReceipt struct {
+	ChainStatus ChainStatus   `json:"chainStatus"`
+	Delivery    AdminDelivery `json:"delivery"`
+}
+
 // ChainStatus defines model for ChainStatus.
 type ChainStatus string
+
+// ChatItemSummary defines model for ChatItemSummary.
+type ChatItemSummary struct {
+	Id       int64   `json:"id"`
+	ImageUrl *string `json:"imageUrl"`
+	Title    string  `json:"title"`
+}
+
+// ChatMessage defines model for ChatMessage.
+type ChatMessage struct {
+	ChainId         int64       `json:"chainId"`
+	ClientMessageId string      `json:"clientMessageId"`
+	CreatedAt       time.Time   `json:"createdAt"`
+	Id              int64       `json:"id"`
+	Recipient       UserSummary `json:"recipient"`
+	Sender          UserSummary `json:"sender"`
+	Text            string      `json:"text"`
+}
+
+// ChatMessageList defines model for ChatMessageList.
+type ChatMessageList struct {
+	Messages    []ChatMessage `json:"messages"`
+	NextAfterId *int64        `json:"nextAfterId,omitempty"`
+}
+
+// ChatReadState defines model for ChatReadState.
+type ChatReadState struct {
+	ChainId           int64 `json:"chainId"`
+	CounterpartId     int64 `json:"counterpartId"`
+	LastReadMessageId int64 `json:"lastReadMessageId"`
+	UnreadCount       int64 `json:"unreadCount"`
+}
+
+// ChatThread defines model for ChatThread.
+type ChatThread struct {
+	ChainId     int64       `json:"chainId"`
+	Counterpart UserSummary `json:"counterpart"`
+
+	// GiveItem Item transferred from the authenticated user to this counterpart, when this thread covers that edge.
+	GiveItem    *ChatItemSummary `json:"giveItem"`
+	HasUnread   bool             `json:"hasUnread"`
+	LastMessage *ChatMessage     `json:"lastMessage,omitempty"`
+
+	// ReceiveItem Item transferred from this counterpart to the authenticated user, when this thread covers that edge.
+	ReceiveItem *ChatItemSummary `json:"receiveItem"`
+	UnreadCount int64            `json:"unreadCount"`
+}
+
+// ChatThreadList defines model for ChatThreadList.
+type ChatThreadList struct {
+	Threads          []ChatThread `json:"threads"`
+	TotalUnreadCount int64        `json:"totalUnreadCount"`
+}
 
 // CreateChainRequest defines model for CreateChainRequest.
 type CreateChainRequest struct {
@@ -247,8 +403,9 @@ type CurrentUser struct {
 	Id        int64     `json:"id"`
 
 	// Phone Canonical E.164-like phone used for demo login
-	Phone    string `json:"phone"`
-	Username string `json:"username"`
+	Phone    string   `json:"phone"`
+	Role     UserRole `json:"role"`
+	Username string   `json:"username"`
 }
 
 // Error defines model for Error.
@@ -313,6 +470,11 @@ type LoginRequest struct {
 	Phone string `json:"phone"`
 }
 
+// MarkChatThreadReadRequest defines model for MarkChatThreadReadRequest.
+type MarkChatThreadReadRequest struct {
+	LastReadMessageId int64 `json:"lastReadMessageId"`
+}
+
 // MatchingCycle defines model for MatchingCycle.
 type MatchingCycle struct {
 	Edges []MatchingEdge `json:"edges"`
@@ -344,6 +506,13 @@ type MediaUploadContentType string
 // ParticipantStatus defines model for ParticipantStatus.
 type ParticipantStatus string
 
+// SendChatMessageRequest defines model for SendChatMessageRequest.
+type SendChatMessageRequest struct {
+	// ClientMessageId Client-generated idempotency key scoped to chain, sender and counterpart.
+	ClientMessageId string `json:"clientMessageId"`
+	Text            string `json:"text"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	ExpiresAt time.Time   `json:"expiresAt"`
@@ -361,6 +530,9 @@ type UserProfile struct {
 	Id        int64     `json:"id"`
 	Username  string    `json:"username"`
 }
+
+// UserRole defines model for UserRole.
+type UserRole string
 
 // UserSummary defines model for UserSummary.
 type UserSummary struct {
@@ -395,11 +567,30 @@ type Unauthorized = Error
 // ValidationError defines model for ValidationError.
 type ValidationError = Error
 
+// ListAdminDeliveriesParams defines parameters for ListAdminDeliveries.
+type ListAdminDeliveriesParams struct {
+	Status *AdminDeliveryStatus `form:"status,omitempty" json:"status,omitempty"`
+	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Delivery ID returned as nextCursor by the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListChainsParams defines parameters for ListChains.
 type ListChainsParams struct {
 	Status *ChainStatus `form:"status,omitempty" json:"status,omitempty"`
 	Limit  *int         `form:"limit,omitempty" json:"limit,omitempty"`
 	Cursor *string      `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListChatMessagesParams defines parameters for ListChatMessages.
+type ListChatMessagesParams struct {
+	// AfterId Return messages whose ID is greater than this cursor.
+	AfterId *int64 `form:"afterId,omitempty" json:"afterId,omitempty"`
+	Limit   *int   `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// WaitSeconds Bounded long-poll wait; zero performs an immediate read.
+	WaitSeconds *int `form:"waitSeconds,omitempty" json:"waitSeconds,omitempty"`
 }
 
 // ListItemsParams defines parameters for ListItems.
@@ -419,8 +610,17 @@ type ListUserItemsParams struct {
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// TransitionAdminDeliveryJSONRequestBody defines body for TransitionAdminDelivery for application/json ContentType.
+type TransitionAdminDeliveryJSONRequestBody = AdminDeliveryTransitionRequest
+
 // CreateChainJSONRequestBody defines body for CreateChain for application/json ContentType.
 type CreateChainJSONRequestBody = CreateChainRequest
+
+// SendChatMessageJSONRequestBody defines body for SendChatMessage for application/json ContentType.
+type SendChatMessageJSONRequestBody = SendChatMessageRequest
+
+// MarkChatThreadReadJSONRequestBody defines body for MarkChatThreadRead for application/json ContentType.
+type MarkChatThreadReadJSONRequestBody = MarkChatThreadReadRequest
 
 // SubmitChainDecisionJSONRequestBody defines body for SubmitChainDecision for application/json ContentType.
 type SubmitChainDecisionJSONRequestBody = SubmitChainDecisionRequest
@@ -439,6 +639,12 @@ type CreateUserJSONRequestBody = CreateUserRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListAdminDeliveries List assembled-chain item deliveries for pickup-point staff
+	// (GET /api/v1/admin/deliveries)
+	ListAdminDeliveries(w http.ResponseWriter, r *http.Request, params ListAdminDeliveriesParams)
+	// TransitionAdminDelivery Confirm pickup-point receipt, dispatch, or recipient hand-off
+	// (POST /api/v1/admin/deliveries/{deliveryId}/transition)
+	TransitionAdminDelivery(w http.ResponseWriter, r *http.Request, deliveryId int64)
 	// ListChains List chains involving the current user
 	// (GET /api/v1/chains)
 	ListChains(w http.ResponseWriter, r *http.Request, params ListChainsParams)
@@ -448,9 +654,24 @@ type ServerInterface interface {
 	// GetChain Get a chain involving the current user
 	// (GET /api/v1/chains/{chainId})
 	GetChain(w http.ResponseWriter, r *http.Request, chainId int64)
+	// ListChatMessages Read or wait for direct-thread messages
+	// (GET /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
+	ListChatMessages(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64, params ListChatMessagesParams)
+	// SendChatMessage Send a direct message to a neighboring participant
+	// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
+	SendChatMessage(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64)
+	// MarkChatThreadRead Mark direct-thread messages as read
+	// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/read)
+	MarkChatThreadRead(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64)
 	// SubmitChainDecision Approve or decline participation in a chain
 	// (POST /api/v1/chains/{chainId}/decision)
 	SubmitChainDecision(w http.ResponseWriter, r *http.Request, chainId int64)
+	// ConfirmChainReceipt Confirm receipt of the current participant's incoming item
+	// (POST /api/v1/chains/{chainId}/receipt)
+	ConfirmChainReceipt(w http.ResponseWriter, r *http.Request, chainId int64)
+	// ListChatThreads List all direct exchange-chain conversations
+	// (GET /api/v1/chat/threads)
+	ListChatThreads(w http.ResponseWriter, r *http.Request)
 	// SubscribeEvents Subscribe to server-sent events
 	// (GET /api/v1/events)
 	SubscribeEvents(w http.ResponseWriter, r *http.Request)
@@ -504,6 +725,18 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// ListAdminDeliveries List assembled-chain item deliveries for pickup-point staff
+// (GET /api/v1/admin/deliveries)
+func (_ Unimplemented) ListAdminDeliveries(w http.ResponseWriter, r *http.Request, params ListAdminDeliveriesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitionAdminDelivery Confirm pickup-point receipt, dispatch, or recipient hand-off
+// (POST /api/v1/admin/deliveries/{deliveryId}/transition)
+func (_ Unimplemented) TransitionAdminDelivery(w http.ResponseWriter, r *http.Request, deliveryId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListChains List chains involving the current user
 // (GET /api/v1/chains)
 func (_ Unimplemented) ListChains(w http.ResponseWriter, r *http.Request, params ListChainsParams) {
@@ -522,9 +755,39 @@ func (_ Unimplemented) GetChain(w http.ResponseWriter, r *http.Request, chainId 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListChatMessages Read or wait for direct-thread messages
+// (GET /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
+func (_ Unimplemented) ListChatMessages(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64, params ListChatMessagesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SendChatMessage Send a direct message to a neighboring participant
+// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
+func (_ Unimplemented) SendChatMessage(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MarkChatThreadRead Mark direct-thread messages as read
+// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/read)
+func (_ Unimplemented) MarkChatThreadRead(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // SubmitChainDecision Approve or decline participation in a chain
 // (POST /api/v1/chains/{chainId}/decision)
 func (_ Unimplemented) SubmitChainDecision(w http.ResponseWriter, r *http.Request, chainId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ConfirmChainReceipt Confirm receipt of the current participant's incoming item
+// (POST /api/v1/chains/{chainId}/receipt)
+func (_ Unimplemented) ConfirmChainReceipt(w http.ResponseWriter, r *http.Request, chainId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListChatThreads List all direct exchange-chain conversations
+// (GET /api/v1/chat/threads)
+func (_ Unimplemented) ListChatThreads(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -629,6 +892,91 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// ListAdminDeliveries operation middleware
+func (siw *ServerInterfaceWrapper) ListAdminDeliveries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAdminDeliveriesParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAdminDeliveries(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitionAdminDelivery operation middleware
+func (siw *ServerInterfaceWrapper) TransitionAdminDelivery(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "deliveryId" -------------
+	var deliveryId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "deliveryId", chi.URLParam(r, "deliveryId"), &deliveryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "deliveryId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitionAdminDelivery(w, r, deliveryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListChains operation middleware
 func (siw *ServerInterfaceWrapper) ListChains(w http.ResponseWriter, r *http.Request) {
 
@@ -728,6 +1076,153 @@ func (siw *ServerInterfaceWrapper) GetChain(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// ListChatMessages operation middleware
+func (siw *ServerInterfaceWrapper) ListChatMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "chainId" -------------
+	var chainId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chainId", chi.URLParam(r, "chainId"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chainId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "counterpartId" -------------
+	var counterpartId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListChatMessagesParams
+
+	// ------------- Optional query parameter "afterId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "afterId", r.URL.Query(), &params.AfterId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "afterId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "afterId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "waitSeconds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "waitSeconds", r.URL.Query(), &params.WaitSeconds, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "waitSeconds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "waitSeconds", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChatMessages(w, r, chainId, counterpartId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendChatMessage operation middleware
+func (siw *ServerInterfaceWrapper) SendChatMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "chainId" -------------
+	var chainId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chainId", chi.URLParam(r, "chainId"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chainId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "counterpartId" -------------
+	var counterpartId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendChatMessage(w, r, chainId, counterpartId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkChatThreadRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkChatThreadRead(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "chainId" -------------
+	var chainId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chainId", chi.URLParam(r, "chainId"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chainId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "counterpartId" -------------
+	var counterpartId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkChatThreadRead(w, r, chainId, counterpartId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SubmitChainDecision operation middleware
 func (siw *ServerInterfaceWrapper) SubmitChainDecision(w http.ResponseWriter, r *http.Request) {
 
@@ -745,6 +1240,46 @@ func (siw *ServerInterfaceWrapper) SubmitChainDecision(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SubmitChainDecision(w, r, chainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmChainReceipt operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmChainReceipt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "chainId" -------------
+	var chainId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chainId", chi.URLParam(r, "chainId"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chainId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmChainReceipt(w, r, chainId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListChatThreads operation middleware
+func (siw *ServerInterfaceWrapper) ListChatThreads(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChatThreads(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1253,6 +1788,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/chains/{chainId}/decision", wrapper.SubmitChainDecision)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/chains/{chainId}/receipt", wrapper.ConfirmChainReceipt)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/chat/threads", wrapper.ListChatThreads)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/chains/{chainId}/chat/{counterpartId}/messages", wrapper.ListChatMessages)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/chains/{chainId}/chat/{counterpartId}/messages", wrapper.SendChatMessage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/chains/{chainId}/chat/{counterpartId}/read", wrapper.MarkChatThreadRead)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/admin/deliveries", wrapper.ListAdminDeliveries)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/admin/deliveries/{deliveryId}/transition", wrapper.TransitionAdminDelivery)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/events", wrapper.SubscribeEvents)
 	})
 
@@ -1276,6 +1832,191 @@ type ServiceUnavailableJSONResponse Error
 type UnauthorizedJSONResponse Error
 
 type ValidationErrorJSONResponse Error
+
+type ListAdminDeliveriesRequestObject struct {
+	Params ListAdminDeliveriesParams
+}
+
+type ListAdminDeliveriesResponseObject interface {
+	VisitListAdminDeliveriesResponse(w http.ResponseWriter) error
+}
+
+type ListAdminDeliveries200JSONResponse AdminDeliveryList
+
+func (response ListAdminDeliveries200JSONResponse) VisitListAdminDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminDeliveries400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListAdminDeliveries400JSONResponse) VisitListAdminDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminDeliveries401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListAdminDeliveries401JSONResponse) VisitListAdminDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminDeliveries403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListAdminDeliveries403JSONResponse) VisitListAdminDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminDeliveries500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ListAdminDeliveries500JSONResponse) VisitListAdminDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitionAdminDeliveryRequestObject struct {
+	DeliveryId int64 `json:"deliveryId"`
+	Body       *TransitionAdminDeliveryJSONRequestBody
+}
+
+type TransitionAdminDeliveryResponseObject interface {
+	VisitTransitionAdminDeliveryResponse(w http.ResponseWriter) error
+}
+
+type TransitionAdminDelivery200JSONResponse AdminDelivery
+
+func (response TransitionAdminDelivery200JSONResponse) VisitTransitionAdminDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitionAdminDelivery400JSONResponse struct{ ValidationErrorJSONResponse }
+
+func (response TransitionAdminDelivery400JSONResponse) VisitTransitionAdminDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitionAdminDelivery401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response TransitionAdminDelivery401JSONResponse) VisitTransitionAdminDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitionAdminDelivery403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitionAdminDelivery403JSONResponse) VisitTransitionAdminDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitionAdminDelivery404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitionAdminDelivery404JSONResponse) VisitTransitionAdminDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitionAdminDelivery409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitionAdminDelivery409JSONResponse) VisitTransitionAdminDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitionAdminDelivery500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response TransitionAdminDelivery500JSONResponse) VisitTransitionAdminDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListChainsRequestObject struct {
 	Params ListChainsParams
@@ -1539,6 +2280,316 @@ func (response GetChain500JSONResponse) VisitGetChainResponse(w http.ResponseWri
 	return err
 }
 
+type ListChatMessagesRequestObject struct {
+	ChainId       int64 `json:"chainId"`
+	CounterpartId int64 `json:"counterpartId"`
+	Params        ListChatMessagesParams
+}
+
+type ListChatMessagesResponseObject interface {
+	VisitListChatMessagesResponse(w http.ResponseWriter) error
+}
+
+type ListChatMessages200JSONResponse ChatMessageList
+
+func (response ListChatMessages200JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListChatMessages400JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListChatMessages401JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListChatMessages403JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListChatMessages404JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ListChatMessages500JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessageRequestObject struct {
+	ChainId       int64 `json:"chainId"`
+	CounterpartId int64 `json:"counterpartId"`
+	Body          *SendChatMessageJSONRequestBody
+}
+
+type SendChatMessageResponseObject interface {
+	VisitSendChatMessageResponse(w http.ResponseWriter) error
+}
+
+type SendChatMessage200JSONResponse ChatMessage
+
+func (response SendChatMessage200JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage201JSONResponse ChatMessage
+
+func (response SendChatMessage201JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage400JSONResponse struct{ ValidationErrorJSONResponse }
+
+func (response SendChatMessage400JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SendChatMessage401JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SendChatMessage403JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SendChatMessage404JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SendChatMessage409JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response SendChatMessage500JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadReadRequestObject struct {
+	ChainId       int64 `json:"chainId"`
+	CounterpartId int64 `json:"counterpartId"`
+	Body          *MarkChatThreadReadJSONRequestBody
+}
+
+type MarkChatThreadReadResponseObject interface {
+	VisitMarkChatThreadReadResponse(w http.ResponseWriter) error
+}
+
+type MarkChatThreadRead200JSONResponse ChatReadState
+
+func (response MarkChatThreadRead200JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead400JSONResponse struct{ ValidationErrorJSONResponse }
+
+func (response MarkChatThreadRead400JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response MarkChatThreadRead401JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response MarkChatThreadRead403JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response MarkChatThreadRead404JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response MarkChatThreadRead500JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SubmitChainDecisionRequestObject struct {
 	ChainId int64 `json:"chainId"`
 	Body    *SubmitChainDecisionJSONRequestBody
@@ -1635,6 +2686,161 @@ func (response SubmitChainDecision409JSONResponse) VisitSubmitChainDecisionRespo
 type SubmitChainDecision500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response SubmitChainDecision500JSONResponse) VisitSubmitChainDecisionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmChainReceiptRequestObject struct {
+	ChainId int64 `json:"chainId"`
+}
+
+type ConfirmChainReceiptResponseObject interface {
+	VisitConfirmChainReceiptResponse(w http.ResponseWriter) error
+}
+
+type ConfirmChainReceipt200JSONResponse ChainReceipt
+
+func (response ConfirmChainReceipt200JSONResponse) VisitConfirmChainReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmChainReceipt400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ConfirmChainReceipt400JSONResponse) VisitConfirmChainReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmChainReceipt401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ConfirmChainReceipt401JSONResponse) VisitConfirmChainReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmChainReceipt403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ConfirmChainReceipt403JSONResponse) VisitConfirmChainReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmChainReceipt404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ConfirmChainReceipt404JSONResponse) VisitConfirmChainReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmChainReceipt409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ConfirmChainReceipt409JSONResponse) VisitConfirmChainReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmChainReceipt500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ConfirmChainReceipt500JSONResponse) VisitConfirmChainReceiptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatThreadsRequestObject struct {
+}
+
+type ListChatThreadsResponseObject interface {
+	VisitListChatThreadsResponse(w http.ResponseWriter) error
+}
+
+type ListChatThreads200JSONResponse ChatThreadList
+
+func (response ListChatThreads200JSONResponse) VisitListChatThreadsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatThreads401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListChatThreads401JSONResponse) VisitListChatThreadsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatThreads500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ListChatThreads500JSONResponse) VisitListChatThreadsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2685,6 +3891,12 @@ func (response GetLegacyHealth200JSONResponse) VisitGetLegacyHealthResponse(w ht
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListAdminDeliveries List assembled-chain item deliveries for pickup-point staff
+	// (GET /api/v1/admin/deliveries)
+	ListAdminDeliveries(ctx context.Context, request ListAdminDeliveriesRequestObject) (ListAdminDeliveriesResponseObject, error)
+	// TransitionAdminDelivery Confirm pickup-point receipt, dispatch, or recipient hand-off
+	// (POST /api/v1/admin/deliveries/{deliveryId}/transition)
+	TransitionAdminDelivery(ctx context.Context, request TransitionAdminDeliveryRequestObject) (TransitionAdminDeliveryResponseObject, error)
 	// ListChains List chains involving the current user
 	// (GET /api/v1/chains)
 	ListChains(ctx context.Context, request ListChainsRequestObject) (ListChainsResponseObject, error)
@@ -2694,9 +3906,24 @@ type StrictServerInterface interface {
 	// GetChain Get a chain involving the current user
 	// (GET /api/v1/chains/{chainId})
 	GetChain(ctx context.Context, request GetChainRequestObject) (GetChainResponseObject, error)
+	// ListChatMessages Read or wait for direct-thread messages
+	// (GET /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
+	ListChatMessages(ctx context.Context, request ListChatMessagesRequestObject) (ListChatMessagesResponseObject, error)
+	// SendChatMessage Send a direct message to a neighboring participant
+	// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
+	SendChatMessage(ctx context.Context, request SendChatMessageRequestObject) (SendChatMessageResponseObject, error)
+	// MarkChatThreadRead Mark direct-thread messages as read
+	// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/read)
+	MarkChatThreadRead(ctx context.Context, request MarkChatThreadReadRequestObject) (MarkChatThreadReadResponseObject, error)
 	// SubmitChainDecision Approve or decline participation in a chain
 	// (POST /api/v1/chains/{chainId}/decision)
 	SubmitChainDecision(ctx context.Context, request SubmitChainDecisionRequestObject) (SubmitChainDecisionResponseObject, error)
+	// ConfirmChainReceipt Confirm receipt of the current participant's incoming item
+	// (POST /api/v1/chains/{chainId}/receipt)
+	ConfirmChainReceipt(ctx context.Context, request ConfirmChainReceiptRequestObject) (ConfirmChainReceiptResponseObject, error)
+	// ListChatThreads List all direct exchange-chain conversations
+	// (GET /api/v1/chat/threads)
+	ListChatThreads(ctx context.Context, request ListChatThreadsRequestObject) (ListChatThreadsResponseObject, error)
 	// SubscribeEvents Subscribe to server-sent events
 	// (GET /api/v1/events)
 	SubscribeEvents(ctx context.Context, request SubscribeEventsRequestObject) (SubscribeEventsResponseObject, error)
@@ -2785,6 +4012,65 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// ListAdminDeliveries operation middleware
+func (sh *strictHandler) ListAdminDeliveries(w http.ResponseWriter, r *http.Request, params ListAdminDeliveriesParams) {
+	var request ListAdminDeliveriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAdminDeliveries(ctx, request.(ListAdminDeliveriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAdminDeliveries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAdminDeliveriesResponseObject); ok {
+		if err := validResponse.VisitListAdminDeliveriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitionAdminDelivery operation middleware
+func (sh *strictHandler) TransitionAdminDelivery(w http.ResponseWriter, r *http.Request, deliveryId int64) {
+	var request TransitionAdminDeliveryRequestObject
+
+	request.DeliveryId = deliveryId
+
+	var body TransitionAdminDeliveryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitionAdminDelivery(ctx, request.(TransitionAdminDeliveryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitionAdminDelivery")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitionAdminDeliveryResponseObject); ok {
+		if err := validResponse.VisitTransitionAdminDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListChains operation middleware
 func (sh *strictHandler) ListChains(w http.ResponseWriter, r *http.Request, params ListChainsParams) {
 	var request ListChainsRequestObject
@@ -2868,6 +4154,102 @@ func (sh *strictHandler) GetChain(w http.ResponseWriter, r *http.Request, chainI
 	}
 }
 
+// ListChatMessages operation middleware
+func (sh *strictHandler) ListChatMessages(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64, params ListChatMessagesParams) {
+	var request ListChatMessagesRequestObject
+
+	request.ChainId = chainId
+	request.CounterpartId = counterpartId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChatMessages(ctx, request.(ListChatMessagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChatMessages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListChatMessagesResponseObject); ok {
+		if err := validResponse.VisitListChatMessagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendChatMessage operation middleware
+func (sh *strictHandler) SendChatMessage(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64) {
+	var request SendChatMessageRequestObject
+
+	request.ChainId = chainId
+	request.CounterpartId = counterpartId
+
+	var body SendChatMessageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendChatMessage(ctx, request.(SendChatMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendChatMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendChatMessageResponseObject); ok {
+		if err := validResponse.VisitSendChatMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MarkChatThreadRead operation middleware
+func (sh *strictHandler) MarkChatThreadRead(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64) {
+	var request MarkChatThreadReadRequestObject
+
+	request.ChainId = chainId
+	request.CounterpartId = counterpartId
+
+	var body MarkChatThreadReadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MarkChatThreadRead(ctx, request.(MarkChatThreadReadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MarkChatThreadRead")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MarkChatThreadReadResponseObject); ok {
+		if err := validResponse.VisitMarkChatThreadReadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SubmitChainDecision operation middleware
 func (sh *strictHandler) SubmitChainDecision(w http.ResponseWriter, r *http.Request, chainId int64) {
 	var request SubmitChainDecisionRequestObject
@@ -2894,6 +4276,56 @@ func (sh *strictHandler) SubmitChainDecision(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SubmitChainDecisionResponseObject); ok {
 		if err := validResponse.VisitSubmitChainDecisionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmChainReceipt operation middleware
+func (sh *strictHandler) ConfirmChainReceipt(w http.ResponseWriter, r *http.Request, chainId int64) {
+	var request ConfirmChainReceiptRequestObject
+
+	request.ChainId = chainId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmChainReceipt(ctx, request.(ConfirmChainReceiptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmChainReceipt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmChainReceiptResponseObject); ok {
+		if err := validResponse.VisitConfirmChainReceiptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListChatThreads operation middleware
+func (sh *strictHandler) ListChatThreads(w http.ResponseWriter, r *http.Request) {
+	var request ListChatThreadsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChatThreads(ctx, request.(ListChatThreadsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChatThreads")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListChatThreadsResponseObject); ok {
+		if err := validResponse.VisitListChatThreadsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3307,60 +4739,101 @@ func (sh *strictHandler) GetLegacyHealth(w http.ResponseWriter, r *http.Request)
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"AAD//w==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

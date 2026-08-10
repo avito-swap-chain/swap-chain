@@ -22,6 +22,9 @@ func NewMemoryService(fixtures ...User) *MemoryService {
 		byPhone: make(map[string]int64),
 	}
 	for _, user := range fixtures {
+		if user.Role == "" {
+			user.Role = RoleUser
+		}
 		service.users[user.ID] = user
 		service.byPhone[user.Phone] = user.ID
 		if user.ID >= service.nextID {
@@ -47,6 +50,7 @@ func (s *MemoryService) Create(_ context.Context, input CreateInput) (User, erro
 		ID:        s.nextID,
 		Username:  normalized.Username,
 		Phone:     normalized.Phone,
+		Role:      RoleUser,
 		CreatedAt: time.Now().UTC(),
 	}
 	s.users[user.ID] = user

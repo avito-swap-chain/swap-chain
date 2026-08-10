@@ -19,6 +19,8 @@ const (
 	defaultPenaltyFactor          = 0.25
 	defaultChainThreshold         = 0.30
 	defaultCompatibilityThreshold = 0.50
+	defaultUndefinedCategoryID    = 47
+	defaultUndefinedThreshold     = 0.60
 	defaultCategorySimilarity     = 0.65
 	defaultCategoryMargin         = 0.05
 	defaultAnalysisPoll           = 30 * time.Second
@@ -39,34 +41,36 @@ const (
 
 // Config contains runtime settings loaded from environment variables.
 type Config struct {
-	DatabaseURL                 string
-	MigrationsURL               string
-	HTTPAddress                 string
-	DBConnectTimeout            time.Duration
-	ShutdownTimeout             time.Duration
-	SimilarItemsAmount          int
-	ChainLength                 int
-	PenaltyFactor               float64
-	ChainThreshold              float64
-	CompatibilityThreshold      float64
-	CategorySimilarityThreshold float64
-	CategoryConfidenceMargin    float64
-	AnalysisPollInterval        time.Duration
-	AnalysisStaleAfter          time.Duration
-	AnalysisBatchSize           int
-	AnalysisBootstrapTimeout    time.Duration
-	CORSAllowedOrigin           string
-	SessionTTL                  time.Duration
-	CookieSecure                bool
-	OllamaBaseURL               string
-	OllamaChatModel             string
-	OllamaEmbeddingsModel       string
-	MinIOEndpoint               string
-	MinIOAccessKey              string
-	MinIOSecretKey              string
-	MinIOBucket                 string
-	MinIOUseSSL                 bool
-	MediaMaxUploadBytes         int64
+	DatabaseURL                     string
+	MigrationsURL                   string
+	HTTPAddress                     string
+	DBConnectTimeout                time.Duration
+	ShutdownTimeout                 time.Duration
+	SimilarItemsAmount              int
+	ChainLength                     int
+	PenaltyFactor                   float64
+	ChainThreshold                  float64
+	CompatibilityThreshold          float64
+	UndefinedCategoryID             int32
+	UndefinedCompatibilityThreshold float64
+	CategorySimilarityThreshold     float64
+	CategoryConfidenceMargin        float64
+	AnalysisPollInterval            time.Duration
+	AnalysisStaleAfter              time.Duration
+	AnalysisBatchSize               int
+	AnalysisBootstrapTimeout        time.Duration
+	CORSAllowedOrigin               string
+	SessionTTL                      time.Duration
+	CookieSecure                    bool
+	OllamaBaseURL                   string
+	OllamaChatModel                 string
+	OllamaEmbeddingsModel           string
+	MinIOEndpoint                   string
+	MinIOAccessKey                  string
+	MinIOSecretKey                  string
+	MinIOBucket                     string
+	MinIOUseSSL                     bool
+	MediaMaxUploadBytes             int64
 }
 
 // Migration contains the settings required by the migration command only.
@@ -124,8 +128,8 @@ func Load() (Config, error) {
 	if cfg.ChainLength, err = positiveIntFromEnv("MATCHING_CHAIN_LENGTH", defaultChainLength); err != nil {
 		return Config{}, err
 	}
-	if cfg.ChainLength < 3 || cfg.ChainLength > 3 {
-		return Config{}, fmt.Errorf("MATCHING_CHAIN_LENGTH must be 3")
+	if cfg.ChainLength < 2 || cfg.ChainLength > 3 {
+		return Config{}, fmt.Errorf("MATCHING_CHAIN_LENGTH must be between 2 and 3")
 	}
 	if cfg.PenaltyFactor, err = nonNegativeFloatFromEnv("MATCHING_PENALTY_FACTOR", defaultPenaltyFactor); err != nil {
 		return Config{}, err
@@ -135,6 +139,15 @@ func Load() (Config, error) {
 	}
 	if cfg.CompatibilityThreshold, err = boundedFloatFromEnv("MATCHING_COMPATIBILITY_THRESHOLD", defaultCompatibilityThreshold, 0, 1); err != nil {
 		return Config{}, err
+	}
+	if cfg.UndefinedCategoryID, err = positiveInt32FromEnv("UNDEFINED_CATEGORY_ID", defaultUndefinedCategoryID); err != nil {
+		return Config{}, err
+	}
+	if cfg.UndefinedCompatibilityThreshold, err = boundedFloatFromEnv("MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD", defaultUndefinedThreshold, 0, 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.UndefinedCompatibilityThreshold <= cfg.CompatibilityThreshold {
+		return Config{}, fmt.Errorf("MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD must be greater than MATCHING_COMPATIBILITY_THRESHOLD")
 	}
 	if cfg.CategorySimilarityThreshold, err = boundedFloatFromEnv("ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD", defaultCategorySimilarity, 0, 1); err != nil {
 		return Config{}, err
@@ -215,6 +228,19 @@ func positiveInt64FromEnv(name string, fallback int64) (int64, error) {
 		return 0, fmt.Errorf("%s must be a positive integer: %q", name, value)
 	}
 	return parsed, nil
+}
+
+func positiveInt32FromEnv(name string, fallback int32) (int32, error) {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("%s must be a positive 32-bit integer: %q", name, value)
+	}
+	return int32(parsed), nil
 }
 
 func nonNegativeFloatFromEnv(name string, fallback float64) (float64, error) {

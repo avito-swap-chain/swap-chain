@@ -7,7 +7,11 @@ sql:
       - "migrations/000003_add_user_phone.up.sql"
       - "migrations/000004_add_chain_cycle_key.up.sql"
       - "migrations/000005_add_analysis_metadata.up.sql"
-      - "migrations/000006_align_analysis_matching_schema.up.sql"
+      - "migrations/000006_add_admin_delivery_flow.up.sql"
+      - "migrations/000007_add_chain_chat.up.sql"
+      - "migrations/000008_add_delivery_completion.up.sql"
+      - "migrations/000009_add_matching_local_analysis_fields.up.sql"
+      - "migrations/000010_align_analysis_matching_schema.up.sql"
     queries: "sql/queries"
     gen:
       go:
@@ -21,3 +25,4 @@ sql:
             go_type:
               import: "github.com/pgvector/pgvector-go"
               type: "Vector"
+              pointer: true

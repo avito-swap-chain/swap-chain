@@ -15,6 +15,11 @@ var (
 	ErrPhoneExists = errors.New("phone is already registered")
 )
 
+const (
+	RoleUser  = "USER"
+	RoleAdmin = "ADMIN"
+)
+
 // ValidationError contains field-level registration or login errors.
 type ValidationError struct {
 	Fields map[string]string
@@ -29,6 +34,7 @@ type User struct {
 	ID        int64
 	Username  string
 	Phone     string
+	Role      string
 	CreatedAt time.Time
 }
 

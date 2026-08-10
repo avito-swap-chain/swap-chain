@@ -7,14 +7,14 @@ import (
 	"fmt"
 
 	"swap-chain/internal/cyclekey"
-	"swap-chain/matching/model"
+	"swap-chain/modules/matching/model"
 )
 
 // ErrInvalidItemID reports an invalid item identifier at the application boundary.
 var ErrInvalidItemID = errors.New("item id must be positive")
 
 type cycleMatcher interface {
-	FindCycles(ctx context.Context, itemID int) ([][]model.Edge, error)
+	FindCycles(ctx context.Context, itemID int64) ([][]model.Edge, error)
 }
 
 type cycleRegistry interface {
@@ -34,11 +34,10 @@ func NewFindCycles(matcher cycleMatcher, registry cycleRegistry) *FindCycles {
 
 // Execute validates the item identifier and delegates cycle discovery.
 func (useCase *FindCycles) Execute(ctx context.Context, itemID int64) ([][]model.Edge, error) {
-	matcherItemID := int(itemID)
-	if itemID <= 0 || int64(matcherItemID) != itemID {
+	if itemID <= 0 {
 		return nil, ErrInvalidItemID
 	}
-	cycles, err := useCase.matcher.FindCycles(ctx, matcherItemID)
+	cycles, err := useCase.matcher.FindCycles(ctx, itemID)
 	if err != nil {
 		return nil, err
 	}

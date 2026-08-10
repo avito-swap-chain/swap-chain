@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,7 +28,9 @@ import (
 	"swap-chain/internal/media"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
-	"swap-chain/matching/model"
+	adminmodel "swap-chain/modules/admin/model"
+	chatmodel "swap-chain/modules/chat/model"
+	"swap-chain/modules/matching/model"
 )
 
 func TestHealthAndMatchingRoutesUseIntegratedServices(t *testing.T) {
@@ -93,6 +97,8 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		eventHub,
 		sessions,
 		users.NewMemoryService(testUser(1)),
+		&testAdminService{},
+		newTestChatService(),
 		testReadiness{err: errors.New("ollama model is missing")},
 	)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
@@ -190,7 +196,14 @@ func TestSessionIsRequiredForPersonalRoutes(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/items"},
 		{method: http.MethodGet, path: "/api/v1/items/1/matching"},
 		{method: http.MethodPost, path: "/api/v1/chains", body: validChainPayload},
+		{method: http.MethodPost, path: "/api/v1/chains/12/receipt"},
+		{method: http.MethodGet, path: "/api/v1/chat/threads"},
+		{method: http.MethodGet, path: "/api/v1/chains/42/chat/2/messages"},
+		{method: http.MethodPost, path: "/api/v1/chains/42/chat/2/messages", body: validChatPayload},
+		{method: http.MethodPost, path: "/api/v1/chains/42/chat/2/read", body: `{"lastReadMessageId":1}`},
 		{method: http.MethodPost, path: "/api/v1/items", body: validItemPayload},
+		{method: http.MethodGet, path: "/api/v1/admin/deliveries"},
+		{method: http.MethodPost, path: "/api/v1/admin/deliveries/1/transition", body: `{"status":"AT_PVZ"}`},
 	} {
 		request, err := http.NewRequest(test.method, server.URL+test.path, strings.NewReader(test.body))
 		if err != nil {
@@ -213,6 +226,217 @@ func TestSessionIsRequiredForPersonalRoutes(t *testing.T) {
 	}
 }
 
+func TestChatContractUsesSessionActorAndMapsLifecycle(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	participant := newSessionClient(t, server.URL, 1)
+	created := postJSON(t, participant, server.URL+"/api/v1/chains/42/chat/2/messages", validChatPayload)
+	if created.StatusCode != http.StatusCreated {
+		body := readBody(t, created.Body)
+		closeBody(t, created.Body)
+		t.Fatalf("send status = %d, want %d; body=%s", created.StatusCode, http.StatusCreated, body)
+	}
+	var sent api.ChatMessage
+	if err := json.NewDecoder(created.Body).Decode(&sent); err != nil {
+		closeBody(t, created.Body)
+		t.Fatalf("decode sent message: %v", err)
+	}
+	closeBody(t, created.Body)
+	if sent.Sender.Id != 1 || sent.Recipient.Id != 2 || sent.Text != "Привет участникам!" {
+		t.Fatalf("sent message = %+v", sent)
+	}
+
+	repeated := postJSON(t, participant, server.URL+"/api/v1/chains/42/chat/2/messages", validChatPayload)
+	defer closeBody(t, repeated.Body)
+	if repeated.StatusCode != http.StatusOK {
+		t.Fatalf("idempotent retry status = %d, want %d", repeated.StatusCode, http.StatusOK)
+	}
+
+	listed, err := participant.Get(server.URL + "/api/v1/chains/42/chat/2/messages?afterId=0&limit=10&waitSeconds=0")
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	if listed.StatusCode != http.StatusOK {
+		body := readBody(t, listed.Body)
+		closeBody(t, listed.Body)
+		t.Fatalf("list status = %d, want %d; body=%s", listed.StatusCode, http.StatusOK, body)
+	}
+	var messages api.ChatMessageList
+	if err := json.NewDecoder(listed.Body).Decode(&messages); err != nil {
+		closeBody(t, listed.Body)
+		t.Fatalf("decode messages: %v", err)
+	}
+	closeBody(t, listed.Body)
+	if len(messages.Messages) != 1 || messages.NextAfterId == nil || *messages.NextAfterId != sent.Id {
+		t.Fatalf("messages = %+v", messages)
+	}
+
+	counterpart := newSessionClient(t, server.URL, 2)
+	received := postJSON(t, counterpart, server.URL+"/api/v1/chains/42/chat/1/messages", validChatPayload)
+	if received.StatusCode != http.StatusCreated {
+		body := readBody(t, received.Body)
+		closeBody(t, received.Body)
+		t.Fatalf("counterpart send status = %d, want %d; body=%s", received.StatusCode, http.StatusCreated, body)
+	}
+	var incoming api.ChatMessage
+	if err := json.NewDecoder(received.Body).Decode(&incoming); err != nil {
+		closeBody(t, received.Body)
+		t.Fatalf("decode counterpart message: %v", err)
+	}
+	closeBody(t, received.Body)
+
+	threadsResponse, err := participant.Get(server.URL + "/api/v1/chat/threads")
+	if err != nil {
+		t.Fatalf("list chat threads: %v", err)
+	}
+	var threads api.ChatThreadList
+	if err := json.NewDecoder(threadsResponse.Body).Decode(&threads); err != nil {
+		closeBody(t, threadsResponse.Body)
+		t.Fatalf("decode chat threads: %v", err)
+	}
+	closeBody(t, threadsResponse.Body)
+	if threadsResponse.StatusCode != http.StatusOK || len(threads.Threads) != 1 || threads.Threads[0].Counterpart.Id != 2 ||
+		threads.Threads[0].ReceiveItem == nil || threads.Threads[0].ReceiveItem.Id != 202 || threads.TotalUnreadCount != 1 {
+		t.Fatalf("threads status=%d body=%+v", threadsResponse.StatusCode, threads)
+	}
+
+	marked := postJSON(t, participant, server.URL+"/api/v1/chains/42/chat/2/read", fmt.Sprintf(`{"lastReadMessageId":%d}`, incoming.Id))
+	var readState api.ChatReadState
+	if err := json.NewDecoder(marked.Body).Decode(&readState); err != nil {
+		closeBody(t, marked.Body)
+		t.Fatalf("decode read state: %v", err)
+	}
+	closeBody(t, marked.Body)
+	if marked.StatusCode != http.StatusOK || readState.UnreadCount != 0 || readState.LastReadMessageId != incoming.Id {
+		t.Fatalf("read state status=%d body=%+v", marked.StatusCode, readState)
+	}
+
+	for _, test := range []struct {
+		name   string
+		client *http.Client
+		path   string
+		want   int
+	}{
+		{name: "pending chain", client: participant, path: "/api/v1/chains/43/chat/2/messages", want: http.StatusOK},
+		{name: "missing chain", client: participant, path: "/api/v1/chains/404/chat/2/messages", want: http.StatusNotFound},
+		{name: "unknown counterpart", client: participant, path: "/api/v1/chains/42/chat/7/messages", want: http.StatusNotFound},
+		{name: "outsider", client: newSessionClient(t, server.URL, 7), path: "/api/v1/chains/42/chat/2/messages", want: http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := test.client.Get(server.URL + test.path)
+			if err != nil {
+				t.Fatalf("GET chat: %v", err)
+			}
+			defer closeBody(t, response.Body)
+			if response.StatusCode != test.want {
+				t.Fatalf("status = %d, want %d", response.StatusCode, test.want)
+			}
+		})
+	}
+}
+
+func TestAdminDeliveryContractEnforcesRoleAndMapsTransitions(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	regularUser := newSessionClient(t, server.URL, 1)
+	forbidden, err := regularUser.Get(server.URL + "/api/v1/admin/deliveries")
+	if err != nil {
+		t.Fatalf("list as regular user: %v", err)
+	}
+	defer closeBody(t, forbidden.Body)
+	if forbidden.StatusCode != http.StatusForbidden {
+		t.Fatalf("regular user status = %d, want %d", forbidden.StatusCode, http.StatusForbidden)
+	}
+
+	admin := newSessionClient(t, server.URL, 7)
+	listed, err := admin.Get(server.URL + "/api/v1/admin/deliveries?status=AWAITING_PVZ")
+	if err != nil {
+		t.Fatalf("list as admin: %v", err)
+	}
+	if listed.StatusCode != http.StatusOK {
+		body := readBody(t, listed.Body)
+		closeBody(t, listed.Body)
+		t.Fatalf("admin list status = %d, want %d; body=%s", listed.StatusCode, http.StatusOK, body)
+	}
+	var list api.AdminDeliveryList
+	if err := json.NewDecoder(listed.Body).Decode(&list); err != nil {
+		closeBody(t, listed.Body)
+		t.Fatalf("decode admin list: %v", err)
+	}
+	closeBody(t, listed.Body)
+	if len(list.Deliveries) != 1 || list.Deliveries[0].Status != api.AdminDeliveryStatusAWAITINGPVZ {
+		t.Fatalf("admin deliveries = %#v", list.Deliveries)
+	}
+
+	transitioned := postJSON(t, admin, server.URL+"/api/v1/admin/deliveries/41/transition", `{"status":"AT_PVZ"}`)
+	defer closeBody(t, transitioned.Body)
+	if transitioned.StatusCode != http.StatusOK {
+		t.Fatalf("transition status = %d, want %d; body=%s", transitioned.StatusCode, http.StatusOK, readBody(t, transitioned.Body))
+	}
+
+	received := postJSON(t, admin, server.URL+"/api/v1/admin/deliveries/41/transition", `{"status":"RECEIVED"}`)
+	defer closeBody(t, received.Body)
+	if received.StatusCode != http.StatusOK {
+		t.Fatalf("receipt status = %d, want %d; body=%s", received.StatusCode, http.StatusOK, readBody(t, received.Body))
+	}
+
+	missing := postJSON(t, admin, server.URL+"/api/v1/admin/deliveries/404/transition", `{"status":"AT_PVZ"}`)
+	defer closeBody(t, missing.Body)
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing status = %d, want %d", missing.StatusCode, http.StatusNotFound)
+	}
+
+	conflict := postJSON(t, admin, server.URL+"/api/v1/admin/deliveries/42/transition", `{"status":"IN_DELIVERY"}`)
+	defer closeBody(t, conflict.Body)
+	if conflict.StatusCode != http.StatusConflict {
+		t.Fatalf("conflict status = %d, want %d", conflict.StatusCode, http.StatusConflict)
+	}
+}
+
+func TestChainReceiptContractUsesSessionRecipient(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	recipient := newSessionClient(t, server.URL, 2)
+	received := postJSON(t, recipient, server.URL+"/api/v1/chains/12/receipt", "")
+	if received.StatusCode != http.StatusOK {
+		body := readBody(t, received.Body)
+		closeBody(t, received.Body)
+		t.Fatalf("receipt status = %d, want %d; body=%s", received.StatusCode, http.StatusOK, body)
+	}
+	var receipt api.ChainReceipt
+	if err := json.NewDecoder(received.Body).Decode(&receipt); err != nil {
+		closeBody(t, received.Body)
+		t.Fatalf("decode receipt: %v", err)
+	}
+	closeBody(t, received.Body)
+	if receipt.Delivery.Status != api.AdminDeliveryStatusRECEIVED || receipt.ChainStatus != api.COMPLETED {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+
+	for _, test := range []struct {
+		name    string
+		userID  int64
+		chainID int64
+		want    int
+	}{
+		{name: "sender or outsider", userID: 1, chainID: 12, want: http.StatusForbidden},
+		{name: "wrong chain state", userID: 2, chainID: 43, want: http.StatusConflict},
+		{name: "missing chain", userID: 2, chainID: 404, want: http.StatusNotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := newSessionClient(t, server.URL, test.userID)
+			response := postJSON(t, client, fmt.Sprintf("%s/api/v1/chains/%d/receipt", server.URL, test.chainID), "")
+			defer closeBody(t, response.Body)
+			if response.StatusCode != test.want {
+				t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, test.want, readBody(t, response.Body))
+			}
+		})
+	}
+}
+
 func TestLoginCookieIdentifiesCurrentUser(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
@@ -228,7 +452,7 @@ func TestLoginCookieIdentifiesCurrentUser(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&current); err != nil {
 		t.Fatalf("decode session: %v", err)
 	}
-	if current.User.Id != 7 || current.User.Phone != phoneForUserID(7) {
+	if current.User.Id != 7 || current.User.Phone != phoneForUserID(7) || current.User.Role != api.ADMIN {
 		t.Fatalf("current user = %#v, want user 7", current.User)
 	}
 }
@@ -257,7 +481,7 @@ func TestRegistrationUnknownLoginAndLogout(t *testing.T) {
 		t.Fatalf("decode registration: %v", err)
 	}
 	closeBody(t, registered.Body)
-	if current.User.Username != "Danya" || current.User.Phone != "+79995550000" {
+	if current.User.Username != "Danya" || current.User.Phone != "+79995550000" || current.User.Role != api.USER {
 		t.Fatalf("registered user = %#v", current.User)
 	}
 
@@ -566,7 +790,7 @@ func newTestServerWithAllServices(t *testing.T, chainService chains.Service, ite
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, eventHub, sessions, userService)
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, eventHub, sessions, userService, &testAdminService{}, newTestChatService())
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -617,10 +841,15 @@ func newSessionClient(t *testing.T, baseURL string, userID int64) *http.Client {
 }
 
 func testUser(userID int64) users.User {
+	role := users.RoleUser
+	if userID == 7 {
+		role = users.RoleAdmin
+	}
 	return users.User{
 		ID:        userID,
 		Username:  fmt.Sprintf("user-%d", userID),
 		Phone:     phoneForUserID(userID),
+		Role:      role,
 		CreatedAt: time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC),
 	}
 }
@@ -753,10 +982,9 @@ func (service matchingReadyItems) Get(ctx context.Context, itemID int64) (items.
 type testFinder struct{}
 
 func (testFinder) Execute(_ context.Context, itemID int64) ([][]model.Edge, error) {
-	rootID := int(itemID)
 	return [][]model.Edge{{
-		{SourceID: rootID, TargetID: rootID + 1, Score: 0.8},
-		{SourceID: rootID + 1, TargetID: rootID, Score: 0.9},
+		{SourceID: itemID, TargetID: itemID + 1, Score: 0.8},
+		{SourceID: itemID + 1, TargetID: itemID, Score: 0.9},
 	}}, nil
 }
 
@@ -765,6 +993,197 @@ type testChainService struct {
 	createUserID int64
 	createInput  chains.CreateInput
 	createErr    error
+}
+
+type testAdminService struct{}
+
+type testChatService struct {
+	mu       sync.Mutex
+	nextID   int64
+	messages map[string]chatmodel.Message
+	reads    map[string]int64
+}
+
+func newTestChatService() *testChatService {
+	return &testChatService{messages: make(map[string]chatmodel.Message), reads: make(map[string]int64)}
+}
+
+func (s *testChatService) Send(_ context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (chatmodel.Message, bool, error) {
+	if err := testChatAccess(chainID, actorID, counterpartID); err != nil {
+		return chatmodel.Message{}, false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := fmt.Sprintf("%d:%d:%d:%s", chainID, actorID, counterpartID, clientMessageID)
+	if existing, ok := s.messages[key]; ok {
+		if existing.Text != text {
+			return chatmodel.Message{}, false, chatmodel.ErrIdempotencyConflict
+		}
+		return existing, false, nil
+	}
+	s.nextID++
+	message := chatmodel.Message{
+		ID:              s.nextID,
+		ChainID:         chainID,
+		Sender:          chatmodel.Sender{ID: actorID, Username: fmt.Sprintf("user-%d", actorID)},
+		Recipient:       chatmodel.Sender{ID: counterpartID, Username: fmt.Sprintf("user-%d", counterpartID)},
+		ClientMessageID: clientMessageID,
+		Text:            text,
+		CreatedAt:       time.Date(2026, 8, 10, 12, 30, 0, 0, time.UTC),
+	}
+	s.messages[key] = message
+	return message, true, nil
+}
+
+func (s *testChatService) List(_ context.Context, chainID, actorID, counterpartID, afterID int64, limit int, _ time.Duration) ([]chatmodel.Message, error) {
+	if err := testChatAccess(chainID, actorID, counterpartID); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	messages := make([]chatmodel.Message, 0, limit)
+	for _, message := range s.messages {
+		isThreadMessage := (message.Sender.ID == actorID && message.Recipient.ID == counterpartID) ||
+			(message.Sender.ID == counterpartID && message.Recipient.ID == actorID)
+		if message.ChainID == chainID && isThreadMessage && message.ID > afterID {
+			messages = append(messages, message)
+		}
+	}
+	sort.Slice(messages, func(i, j int) bool { return messages[i].ID < messages[j].ID })
+	if len(messages) > limit {
+		messages = messages[:limit]
+	}
+	return messages, nil
+}
+
+func (s *testChatService) ListThreads(_ context.Context, actorID int64) ([]chatmodel.Thread, error) {
+	if actorID != 1 && actorID != 2 {
+		return nil, chatmodel.ErrForbidden
+	}
+	counterpartID := int64(1)
+	if actorID == 1 {
+		counterpartID = 2
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	thread := chatmodel.Thread{
+		ChainID:     42,
+		Counterpart: chatmodel.Sender{ID: counterpartID, Username: fmt.Sprintf("user-%d", counterpartID)},
+		GiveItem:    &chatmodel.ItemSummary{ID: 101, Title: "Отдаваемая вещь", ImageURL: "/api/v1/media/give.jpg"},
+		ReceiveItem: &chatmodel.ItemSummary{ID: 202, Title: "Получаемая вещь", ImageURL: "/api/v1/media/receive.jpg"},
+	}
+	watermark := s.reads[fmt.Sprintf("%d:%d:%d", 42, actorID, counterpartID)]
+	for _, message := range s.messages {
+		isThreadMessage := message.ChainID == 42 && ((message.Sender.ID == actorID && message.Recipient.ID == counterpartID) ||
+			(message.Sender.ID == counterpartID && message.Recipient.ID == actorID))
+		if !isThreadMessage {
+			continue
+		}
+		if thread.LastMessage == nil || message.ID > thread.LastMessage.ID {
+			copy := message
+			thread.LastMessage = &copy
+		}
+		if message.Sender.ID == counterpartID && message.ID > watermark {
+			thread.UnreadCount++
+		}
+	}
+	return []chatmodel.Thread{thread}, nil
+}
+
+func (s *testChatService) MarkRead(_ context.Context, chainID, actorID, counterpartID, lastReadMessageID int64) (chatmodel.ReadState, error) {
+	if err := testChatAccess(chainID, actorID, counterpartID); err != nil {
+		return chatmodel.ReadState{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	belongs := false
+	for _, message := range s.messages {
+		if message.ID == lastReadMessageID && message.ChainID == chainID &&
+			((message.Sender.ID == actorID && message.Recipient.ID == counterpartID) ||
+				(message.Sender.ID == counterpartID && message.Recipient.ID == actorID)) {
+			belongs = true
+			break
+		}
+	}
+	if !belongs {
+		return chatmodel.ReadState{}, chatmodel.ErrMessageNotFound
+	}
+	key := fmt.Sprintf("%d:%d:%d", chainID, actorID, counterpartID)
+	if lastReadMessageID > s.reads[key] {
+		s.reads[key] = lastReadMessageID
+	}
+	unread := int64(0)
+	for _, message := range s.messages {
+		if message.ChainID == chainID && message.Sender.ID == counterpartID && message.Recipient.ID == actorID && message.ID > s.reads[key] {
+			unread++
+		}
+	}
+	return chatmodel.ReadState{ChainID: chainID, CounterpartID: counterpartID, LastReadMessageID: s.reads[key], UnreadCount: unread}, nil
+}
+
+func testChatAccess(chainID, actorID, counterpartID int64) error {
+	switch {
+	case chainID == 404:
+		return chatmodel.ErrChainNotFound
+	case actorID != 1 && actorID != 2:
+		return chatmodel.ErrForbidden
+	case counterpartID != 1 && counterpartID != 2, actorID == counterpartID:
+		return chatmodel.ErrThreadNotFound
+	default:
+		return nil
+	}
+}
+
+func (*testAdminService) ListDeliveries(_ context.Context, actorID int64, _ string, _ int64, _ int) ([]adminmodel.Delivery, *int64, error) {
+	if actorID != 7 {
+		return nil, nil, adminmodel.ErrForbidden
+	}
+	return []adminmodel.Delivery{testAdminDelivery()}, nil, nil
+}
+
+func (*testAdminService) TransitionDelivery(_ context.Context, actorID, deliveryID int64, targetStatus string) (adminmodel.Delivery, error) {
+	if actorID != 7 {
+		return adminmodel.Delivery{}, adminmodel.ErrForbidden
+	}
+	switch deliveryID {
+	case 404:
+		return adminmodel.Delivery{}, adminmodel.ErrDeliveryNotFound
+	case 42:
+		return adminmodel.Delivery{}, adminmodel.ErrTransitionConflict
+	}
+	delivery := testAdminDelivery()
+	delivery.Status = targetStatus
+	return delivery, nil
+}
+
+func (*testAdminService) ConfirmReceipt(_ context.Context, actorID, chainID int64) (adminmodel.Receipt, error) {
+	switch {
+	case chainID == 404:
+		return adminmodel.Receipt{}, adminmodel.ErrChainNotFound
+	case actorID != 2:
+		return adminmodel.Receipt{}, adminmodel.ErrReceiptForbidden
+	case chainID == 43:
+		return adminmodel.Receipt{}, adminmodel.ErrTransitionConflict
+	}
+	delivery := testAdminDelivery()
+	delivery.Status = adminmodel.DeliveryReceived
+	return adminmodel.Receipt{Delivery: delivery, ChainStatus: adminmodel.ChainCompleted}, nil
+}
+
+func testAdminDelivery() adminmodel.Delivery {
+	return adminmodel.Delivery{
+		ID:                41,
+		ChainID:           12,
+		ItemID:            55,
+		ItemTitle:         "Samsung Galaxy M54 5G",
+		SenderID:          1,
+		SenderUsername:    "Алиса",
+		RecipientID:       2,
+		RecipientUsername: "Вера",
+		Status:            adminmodel.DeliveryAwaitingPVZ,
+		UpdatedAt:         time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
+	}
 }
 
 func (s *testChainService) Create(_ context.Context, userID int64, input chains.CreateInput) (chains.Chain, error) {
@@ -814,4 +1233,9 @@ const validChainPayload = `{
     {"sourceItemId": 10, "targetItemId": 20},
     {"sourceItemId": 20, "targetItemId": 10}
   ]
+}`
+
+const validChatPayload = `{
+  "clientMessageId": "web-message-1",
+  "text": "Привет участникам!"
 }`

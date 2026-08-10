@@ -18,6 +18,8 @@ func TestLoadDefaults(t *testing.T) {
 		"MATCHING_PENALTY_FACTOR",
 		"MATCHING_CHAIN_THRESHOLD",
 		"MATCHING_COMPATIBILITY_THRESHOLD",
+		"MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD",
+		"UNDEFINED_CATEGORY_ID",
 		"ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD",
 		"ANALYSIS_CATEGORY_CONFIDENCE_MARGIN",
 		"ANALYSIS_RECOVERY_POLL_INTERVAL",
@@ -105,12 +107,12 @@ func TestLoadReadsMediaSettings(t *testing.T) {
 }
 
 func TestLoadRejectsInvalidChainLength(t *testing.T) {
-	for _, value := range []string{"1", "2", "4"} {
+	for _, value := range []string{"1", "4"} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv("MATCHING_CHAIN_LENGTH", value)
 
 			_, err := Load()
-			if err == nil || !strings.Contains(err.Error(), "MATCHING_CHAIN_LENGTH must be 3") {
+			if err == nil || !strings.Contains(err.Error(), "MATCHING_CHAIN_LENGTH must be between 2 and 3") {
 				t.Fatalf("Load() error = %v, want chain length error", err)
 			}
 		})
@@ -123,13 +125,16 @@ func TestLoadReadsMatchingSettings(t *testing.T) {
 	t.Setenv("MATCHING_PENALTY_FACTOR", "0.4")
 	t.Setenv("MATCHING_CHAIN_THRESHOLD", "0.5")
 	t.Setenv("MATCHING_COMPATIBILITY_THRESHOLD", "0.6")
+	t.Setenv("MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD", "0.8")
+	t.Setenv("UNDEFINED_CATEGORY_ID", "47")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if cfg.SimilarItemsAmount != 12 || cfg.ChainLength != 3 || cfg.PenaltyFactor != 0.4 || cfg.ChainThreshold != 0.5 || cfg.CompatibilityThreshold != 0.6 {
+	if cfg.SimilarItemsAmount != 12 || cfg.ChainLength != 3 || cfg.PenaltyFactor != 0.4 || cfg.ChainThreshold != 0.5 ||
+		cfg.CompatibilityThreshold != 0.6 || cfg.UndefinedCompatibilityThreshold != 0.8 || cfg.UndefinedCategoryID != 47 {
 		t.Fatalf("unexpected matching config: %+v", cfg)
 	}
 }

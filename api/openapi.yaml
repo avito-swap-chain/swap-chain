@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Swap Chain API
-  version: 0.5.0
+  version: 0.6.0
   description: Shared REST and realtime contract for the swap-chain MVP.
 
 servers:
@@ -15,6 +15,8 @@ tags:
   - name: media
   - name: matching
   - name: chains
+  - name: chat
+  - name: admin
   - name: events
 
 paths:
@@ -534,6 +536,373 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/chains/{chainId}/receipt:
+    parameters:
+      - name: chainId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: confirmChainReceipt
+      tags: [chains]
+      summary: Confirm receipt of the current participant's incoming item
+      description: >-
+        The authenticated session identifies the recipient. The server selects
+        the one item directed to that participant, so the client cannot confirm
+        another delivery. The item must already be IN_DELIVERY. Repeating a
+        successful confirmation is idempotent, including after the chain becomes
+        COMPLETED. The last receipt atomically completes the chain.
+      responses:
+        "200":
+          description: Current receipt and chain state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChainReceipt"
+              example:
+                delivery:
+                  id: 41
+                  chainId: 12
+                  itemId: 55
+                  itemTitle: Samsung Galaxy M54 5G
+                  sender: {id: 7, username: Алиса}
+                  recipient: {id: 9, username: Вера}
+                  status: RECEIVED
+                  updatedAt: "2026-08-10T14:00:00Z"
+                chainStatus: COMPLETED
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/chat/threads:
+    get:
+      operationId: listChatThreads
+      tags: [chat]
+      summary: List all direct exchange-chain conversations
+      description: >-
+        Returns one thread per exchange chain and neighboring participant. A
+        neighbor either gives an item to the authenticated user or receives an
+        item from them. Threads exist as soon as a matched chain is persisted,
+        including while its status is PENDING.
+      responses:
+        "200":
+          description: Available threads ordered by latest message, then by stable identifiers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatThreadList"
+              example:
+                threads:
+                  - chainId: 12
+                    counterpart: {id: 9, username: Вера}
+                    giveItem: null
+                    receiveItem:
+                      id: 55
+                      title: Samsung Galaxy M54 5G
+                      imageUrl: /api/v1/media/demo/samsung.jpg
+                    lastMessage:
+                      id: 81
+                      chainId: 12
+                      sender: {id: 9, username: Вера}
+                      recipient: {id: 7, username: Алиса}
+                      clientMessageId: web-550e8400-e29b-41d4-a716-446655440000
+                      text: Встречаемся в ПВЗ после доставки?
+                      createdAt: "2026-08-10T12:30:00Z"
+                    hasUnread: true
+                    unreadCount: 1
+                totalUnreadCount: 1
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/chains/{chainId}/chat/{counterpartId}/messages:
+    parameters:
+      - name: chainId
+        in: path
+        required: true
+        description: Exchange-chain identifier.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: counterpartId
+        in: path
+        required: true
+        description: Neighboring participant in this exchange chain.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: listChatMessages
+      tags: [chat]
+      summary: Read or wait for direct-thread messages
+      description: >-
+        Available only when the authenticated user and counterpart are neighbors
+        in the selected chain. The chain may still be PENDING. Returns immediately
+        when messages newer than afterId exist; otherwise waits up to waitSeconds.
+        PostgreSQL remains the source of truth.
+      parameters:
+        - name: afterId
+          in: query
+          description: Return messages whose ID is greater than this cursor.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: waitSeconds
+          in: query
+          description: Bounded long-poll wait; zero performs an immediate read.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 25
+            default: 0
+      responses:
+        "200":
+          description: New messages in ascending ID order, or an empty list after timeout.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessageList"
+              examples:
+                messagesAvailable:
+                  value:
+                    messages:
+                      - id: 81
+                        chainId: 12
+                        sender: {id: 7, username: Алиса}
+                        recipient: {id: 9, username: Вера}
+                        clientMessageId: web-550e8400-e29b-41d4-a716-446655440000
+                        text: Встречаемся в ПВЗ после доставки?
+                        createdAt: "2026-08-10T12:30:00Z"
+                    nextAfterId: 81
+                longPollTimeout:
+                  value:
+                    messages: []
+                    nextAfterId: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: sendChatMessage
+      tags: [chat]
+      summary: Send a direct message to a neighboring participant
+      description: >-
+        The authenticated session is always the sender. clientMessageId is an
+        idempotency key scoped to the chain, sender and counterpart. Retrying the
+        same key and text returns the original message; reusing the key with
+        different text returns 409. PENDING chains are supported.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendChatMessageRequest"
+            example:
+              clientMessageId: web-550e8400-e29b-41d4-a716-446655440000
+              text: Встречаемся в ПВЗ после доставки?
+      responses:
+        "201":
+          description: Message created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "200":
+          description: Original message returned for an idempotent retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/chains/{chainId}/chat/{counterpartId}/read:
+    parameters:
+      - name: chainId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+      - name: counterpartId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: markChatThreadRead
+      tags: [chat]
+      summary: Mark direct-thread messages as read
+      description: >-
+        Advances the authenticated user's read watermark. Repeating a request or
+        sending an older message ID is safe and never moves the watermark back.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkChatThreadReadRequest"
+            example:
+              lastReadMessageId: 81
+      responses:
+        "200":
+          description: Current read watermark and remaining unread count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatReadState"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/admin/deliveries:
+    get:
+      operationId: listAdminDeliveries
+      tags: [admin]
+      summary: List assembled-chain item deliveries for pickup-point staff
+      description: Requires an authenticated user with the ADMIN role.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/AdminDeliveryStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Delivery ID returned as nextCursor by the previous page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deliveries visible to pickup-point staff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDeliveryList"
+              example:
+                deliveries:
+                  - id: 41
+                    chainId: 12
+                    itemId: 55
+                    itemTitle: Samsung Galaxy M54 5G
+                    sender: {id: 7, username: Алиса}
+                    recipient: {id: 9, username: Вера}
+                    status: AWAITING_PVZ
+                    updatedAt: "2026-08-10T12:00:00Z"
+                nextCursor: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/admin/deliveries/{deliveryId}/transition:
+    parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        description: chain_items identifier returned by the admin delivery list.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: transitionAdminDelivery
+      tags: [admin]
+      summary: Confirm pickup-point receipt, dispatch, or recipient hand-off
+      description: Repeating a transition to the current status is idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDeliveryTransitionRequest"
+            examples:
+              acceptAtPickupPoint:
+                value: {status: AT_PVZ}
+              dispatch:
+                value: {status: IN_DELIVERY}
+              handOffToRecipient:
+                value: {status: RECEIVED}
+      responses:
+        "200":
+          description: Current delivery after applying the transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDelivery"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/events:
     get:
       operationId: subscribeEvents
@@ -666,9 +1035,13 @@ components:
           minLength: 10
           maxLength: 32
 
+    UserRole:
+      type: string
+      enum: [USER, ADMIN]
+
     CurrentUser:
       type: object
-      required: [id, username, phone, createdAt]
+      required: [id, username, phone, role, createdAt]
       properties:
         id:
           type: integer
@@ -678,6 +1051,8 @@ components:
         phone:
           type: string
           description: Canonical E.164-like phone used for demo login
+        role:
+          $ref: "#/components/schemas/UserRole"
         createdAt:
           type: string
           format: date-time
@@ -787,7 +1162,7 @@ components:
 
     ChainStatus:
       type: string
-      enum: [PENDING, ACCEPTED, REJECTED]
+      enum: [PENDING, ACCEPTED, REJECTED, COMPLETED]
 
     ParticipantStatus:
       type: string
@@ -936,6 +1311,201 @@ components:
       properties:
         decision:
           $ref: "#/components/schemas/ChainDecision"
+
+    SendChatMessageRequest:
+      type: object
+      required: [clientMessageId, text]
+      properties:
+        clientMessageId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+          description: Client-generated idempotency key scoped to chain, sender and counterpart.
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    ChatMessage:
+      type: object
+      required: [id, chainId, sender, recipient, clientMessageId, text, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        chainId:
+          type: integer
+          format: int64
+        sender:
+          $ref: "#/components/schemas/UserSummary"
+        recipient:
+          $ref: "#/components/schemas/UserSummary"
+        clientMessageId:
+          type: string
+        text:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ChatMessageList:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        nextAfterId:
+          type: integer
+          format: int64
+          nullable: true
+
+    ChatThread:
+      type: object
+      required: [chainId, counterpart, giveItem, receiveItem, hasUnread, unreadCount]
+      properties:
+        chainId:
+          type: integer
+          format: int64
+        counterpart:
+          $ref: "#/components/schemas/UserSummary"
+        giveItem:
+          nullable: true
+          description: Item transferred from the authenticated user to this counterpart, when this thread covers that edge.
+          allOf:
+            - $ref: "#/components/schemas/ChatItemSummary"
+        receiveItem:
+          nullable: true
+          description: Item transferred from this counterpart to the authenticated user, when this thread covers that edge.
+          allOf:
+            - $ref: "#/components/schemas/ChatItemSummary"
+        lastMessage:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ChatMessage"
+        hasUnread:
+          type: boolean
+        unreadCount:
+          type: integer
+          format: int64
+          minimum: 0
+
+    ChatItemSummary:
+      type: object
+      required: [id, title, imageUrl]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+
+    ChatThreadList:
+      type: object
+      required: [threads, totalUnreadCount]
+      properties:
+        threads:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatThread"
+        totalUnreadCount:
+          type: integer
+          format: int64
+          minimum: 0
+
+    MarkChatThreadReadRequest:
+      type: object
+      required: [lastReadMessageId]
+      properties:
+        lastReadMessageId:
+          type: integer
+          format: int64
+          minimum: 1
+
+    ChatReadState:
+      type: object
+      required: [chainId, counterpartId, lastReadMessageId, unreadCount]
+      properties:
+        chainId:
+          type: integer
+          format: int64
+        counterpartId:
+          type: integer
+          format: int64
+        lastReadMessageId:
+          type: integer
+          format: int64
+        unreadCount:
+          type: integer
+          format: int64
+          minimum: 0
+
+    AdminDeliveryStatus:
+      type: string
+      description: Physical hand-off state of one item in an assembled chain.
+      enum: [AWAITING_PVZ, AT_PVZ, IN_DELIVERY, RECEIVED]
+
+    AdminDeliveryTransitionStatus:
+      type: string
+      enum: [AT_PVZ, IN_DELIVERY, RECEIVED]
+
+    AdminDeliveryTransitionRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/AdminDeliveryTransitionStatus"
+
+    AdminDelivery:
+      type: object
+      required: [id, chainId, itemId, itemTitle, sender, recipient, status, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        chainId:
+          type: integer
+          format: int64
+        itemId:
+          type: integer
+          format: int64
+        itemTitle:
+          type: string
+        sender:
+          $ref: "#/components/schemas/UserSummary"
+        recipient:
+          $ref: "#/components/schemas/UserSummary"
+        status:
+          $ref: "#/components/schemas/AdminDeliveryStatus"
+        updatedAt:
+          type: string
+          format: date-time
+
+    AdminDeliveryList:
+      type: object
+      required: [deliveries]
+      properties:
+        deliveries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDelivery"
+        nextCursor:
+          type: string
+          nullable: true
+
+    ChainReceipt:
+      type: object
+      required: [delivery, chainStatus]
+      properties:
+        delivery:
+          $ref: "#/components/schemas/AdminDelivery"
+        chainStatus:
+          $ref: "#/components/schemas/ChainStatus"
 
     PipelineEvent:
       type: object

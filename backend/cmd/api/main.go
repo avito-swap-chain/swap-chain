@@ -11,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"swap-chain/analyze/adapters"
-	analyzeservice "swap-chain/analyze/service"
 	applicationmatching "swap-chain/internal/application/matching"
 	"swap-chain/internal/chains"
 	"swap-chain/internal/config"
@@ -24,8 +22,15 @@ import (
 	"swap-chain/internal/media"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
-	matchingrepository "swap-chain/matching/repository"
-	"swap-chain/matching/service"
+	adminrepository "swap-chain/modules/admin/repository"
+	adminservice "swap-chain/modules/admin/service"
+	"swap-chain/modules/analyze/adapters"
+	analyzerepository "swap-chain/modules/analyze/repository"
+	analyzeservice "swap-chain/modules/analyze/service"
+	chatrepository "swap-chain/modules/chat/repository"
+	chatservice "swap-chain/modules/chat/service"
+	matchingrepository "swap-chain/modules/matching/repository"
+	"swap-chain/modules/matching/service"
 	"swap-chain/shared/db"
 
 	"go.uber.org/zap"
@@ -101,7 +106,11 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create vectorizer: %w", err)
 	}
-	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(queries, llmClient)
+	analysisRepo, err := analyzerepository.NewPostgreSQLAnalysis(queries)
+	if err != nil {
+		return fmt.Errorf("create analysis repo: %w", err)
+	}
+	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(analysisRepo, llmClient)
 	if err != nil {
 		return fmt.Errorf("create category bootstrap: %w", err)
 	}
@@ -115,9 +124,10 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("bootstrap category embeddings: %w", err)
 	}
 	cancelBootstrap()
-	tagging, err := analyzeservice.NewTagging(vectorizer, queries, analyzeservice.TaggingConfig{
+	tagging, err := analyzeservice.NewTagging(analysisRepo, analyzeservice.TaggingConfig{
 		SimilarityThreshold: cfg.CategorySimilarityThreshold,
 		ConfidenceMargin:    cfg.CategoryConfidenceMargin,
+		UndefinedCategoryID: cfg.UndefinedCategoryID,
 	})
 	if err != nil {
 		return fmt.Errorf("create tagging: %w", err)
@@ -126,7 +136,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create scoring: %w", err)
 	}
-	analysis, err := analyzeservice.NewAnalysis(queries, scoring, tagging, vectorizer)
+	analysis, err := analyzeservice.NewAnalysis(analysisRepo, scoring, tagging, vectorizer)
 	if err != nil {
 		return fmt.Errorf("create analysis: %w", err)
 	}
@@ -143,11 +153,13 @@ func run(logger *zap.Logger) error {
 		matchingRepo,
 		service.NewScoring(),
 		service.MatchingConfig{
-			SimilarItemsAmount:     cfg.SimilarItemsAmount,
-			CompatibilityThreshold: cfg.CompatibilityThreshold,
-			ChainLen:               cfg.ChainLength,
-			PenaltyFactor:          cfg.PenaltyFactor,
-			ChainRatingThreshold:   cfg.ChainThreshold,
+			SimilarItemsAmount:              cfg.SimilarItemsAmount,
+			CompatibilityThreshold:          cfg.CompatibilityThreshold,
+			UndefinedCategoryID:             cfg.UndefinedCategoryID,
+			UndefinedCompatibilityThreshold: cfg.UndefinedCompatibilityThreshold,
+			ChainLen:                        cfg.ChainLength,
+			PenaltyFactor:                   cfg.PenaltyFactor,
+			ChainRatingThreshold:            cfg.ChainThreshold,
 		},
 	)
 	if err != nil {
@@ -158,6 +170,22 @@ func run(logger *zap.Logger) error {
 	})
 	finder := applicationmatching.NewFindCycles(matcher, chainService)
 	userService := users.NewPostgresService(database)
+	adminRepo, err := adminrepository.NewPostgreSQL(database)
+	if err != nil {
+		return fmt.Errorf("create admin repository: %w", err)
+	}
+	adminModule, err := adminservice.New(adminRepo)
+	if err != nil {
+		return fmt.Errorf("create admin service: %w", err)
+	}
+	chatRepo, err := chatrepository.NewPostgreSQL(database)
+	if err != nil {
+		return fmt.Errorf("create chat repository: %w", err)
+	}
+	chatModule, err := chatservice.New(chatRepo)
+	if err != nil {
+		return fmt.Errorf("create chat service: %w", err)
+	}
 	handler := httpapi.NewHandler(
 		database,
 		finder,
@@ -168,6 +196,8 @@ func run(logger *zap.Logger) error {
 		eventHub,
 		sessions,
 		userService,
+		adminModule,
+		chatModule,
 		llmClient,
 		categoryBootstrap,
 	)
@@ -185,7 +215,7 @@ func run(logger *zap.Logger) error {
 	}
 	shutdownSignal, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
-	recoveryWorker, err := analyzeservice.NewAnalysisRecoveryWorker(queries, analysis, logger, analyzeservice.AnalysisRecoveryWorkerConfig{
+	recoveryWorker, err := analyzeservice.NewAnalysisRecoveryWorker(analysisRepo, analysis, logger, analyzeservice.AnalysisRecoveryWorkerConfig{
 		PollInterval: cfg.AnalysisPollInterval,
 		StaleAfter:   cfg.AnalysisStaleAfter,
 		BatchSize:    int32(cfg.AnalysisBatchSize),

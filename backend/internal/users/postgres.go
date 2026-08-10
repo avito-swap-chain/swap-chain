@@ -29,7 +29,7 @@ func (s *PostgresService) Create(ctx context.Context, input CreateInput) (User, 
 	user, err := scanUser(s.database.QueryRowContext(ctx, `
 		INSERT INTO users (username, phone)
 		VALUES ($1, $2)
-		RETURNING id, username, phone, created_at`, normalized.Username, normalized.Phone))
+		RETURNING id, username, phone, role::text, created_at`, normalized.Username, normalized.Phone))
 	if err != nil {
 		var postgresError *pq.Error
 		if errors.As(err, &postgresError) && postgresError.Code == "23505" && postgresError.Constraint == "users_phone_key" {
@@ -43,7 +43,7 @@ func (s *PostgresService) Create(ctx context.Context, input CreateInput) (User, 
 // Get returns a user by ID.
 func (s *PostgresService) Get(ctx context.Context, userID int64) (User, error) {
 	user, err := scanUser(s.database.QueryRowContext(ctx, `
-		SELECT id, username, phone, created_at
+		SELECT id, username, phone, role::text, created_at
 		FROM users WHERE id = $1`, userID))
 	return mapLookupError(user, err, "get user")
 }
@@ -55,7 +55,7 @@ func (s *PostgresService) FindByPhone(ctx context.Context, phone string) (User, 
 		return User{}, err
 	}
 	user, err := scanUser(s.database.QueryRowContext(ctx, `
-		SELECT id, username, phone, created_at
+		SELECT id, username, phone, role::text, created_at
 		FROM users WHERE phone = $1`, normalized))
 	return mapLookupError(user, err, "find user by phone")
 }
@@ -66,7 +66,7 @@ type rowScanner interface {
 
 func scanUser(row rowScanner) (User, error) {
 	var user User
-	err := row.Scan(&user.ID, &user.Username, &user.Phone, &user.CreatedAt)
+	err := row.Scan(&user.ID, &user.Username, &user.Phone, &user.Role, &user.CreatedAt)
 	return user, err
 }
 
