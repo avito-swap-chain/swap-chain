@@ -15,24 +15,28 @@ export function HandoffView({ chain, me, neighbours }: ChainViewProps) {
   // объективный сигнал о ходе передачи, который есть у цепочки. Дальше ход снова за ним.
   const handedOver = receiver.receiptConfirmed
 
+  // Передача идёт через пункт выдачи, а не из рук в руки: участники не встречаются и не знают
+  // адресов друг друга, а «заморозка вещи» становится физической, а не статусом в базе.
   const steps: Step[] = [
     {
       state: handedOver ? 'done' : 'current',
       content: (
         <>
-          Договоритесь о встрече — вашу вещь получает <b className="font-bold">{receiver.name}</b>
+          Сдайте «{me.givesItem.title}» в пункт выдачи — вещь получит{' '}
+          <b className="font-bold">{receiver.name}</b>
         </>
       ),
     },
     {
       state: handedOver ? 'done' : 'todo',
-      content: <>Передайте «{me.givesItem.title}»</>,
+      content: <>Дождитесь, пока ПВЗ передаст её в доставку</>,
     },
     {
       state: handedOver ? 'current' : 'todo',
       content: (
         <>
-          Заберите «{receive.title}» — вещь отдаёт <b className="font-bold">{giver.name}</b>
+          Заберите «{receive.title}» в пункте выдачи — вещь отдаёт{' '}
+          <b className="font-bold">{giver.name}</b>
         </>
       ),
     },
