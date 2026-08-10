@@ -333,6 +333,22 @@ export async function respondToChain(id: string, decision: ChainDecision): Promi
   }, 2500)
 }
 
+/**
+ * Вещь сняли с обмена — предложения с ней больше не соберутся. На бэкенде это делает он сам
+ * и присылает `chain.rejected` с причиной `item_withdrawn`, поэтому здесь только мок: без
+ * этого в демо остались бы висеть варианты с вещью, которой в подборе уже нет.
+ *
+ * Живёт в `entities/chain`, потому что трогает цепочки; вызывает её фича снятия — ей можно
+ * знать про обе сущности сразу, а сущностям друг про друга нет.
+ */
+export function dissolveChainsWithItem(itemId: string) {
+  chains = chains.map((chain) =>
+    chain.status === 'formed' && chain.participants.some((p) => p.givesItem.id === itemId)
+      ? { ...chain, status: 'dissolved' }
+      : chain,
+  )
+}
+
 /** Выйти из цепочки до общего подтверждения — вещь снова свободна. */
 export async function leaveChain(id: string): Promise<void> {
   if (isBackendConnected) {

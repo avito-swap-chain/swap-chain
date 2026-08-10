@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
-import { createItem, getMyItems, setItemWish } from './itemsApi'
+import { createItem, getMyItems, setItemWish, withdrawItem } from './itemsApi'
 
 const [DASHA, MARK] = PERSONAS
 
@@ -90,6 +90,33 @@ describe('варианты желания — каждый отдельное р
     ])
 
     expect(updated.wish).toEqual([{ category: 'Электроника', description: 'Монитор 27"' }])
+  })
+})
+
+describe('withdrawItem — снятие с обмена', () => {
+  beforeEach(() => {
+    usePersonaStore.setState({ personaId: DASHA.id })
+  })
+
+  it('вещь остаётся в кабинете, но без желания и вне подбора', async () => {
+    await setItemWish('3', wish)
+    const withdrawn = await withdrawItem('3')
+
+    expect(withdrawn.status).toBe('withdrawn')
+    expect(withdrawn.wish).toEqual([])
+    // Не удаление: объявление никуда не делось, его снова можно отдать в обмен.
+    expect(await itemOf('3')).toMatchObject({ status: 'withdrawn', title: withdrawn.title })
+  })
+
+  it('снятую вещь можно вернуть в обмен', async () => {
+    await setItemWish('3', wish)
+    await withdrawItem('3')
+
+    expect((await setItemWish('3', wish)).status).toBe('searching')
+  })
+
+  it('чужое объявление снять нельзя', async () => {
+    await expect(withdrawItem('23')).rejects.toThrow()
   })
 })
 
