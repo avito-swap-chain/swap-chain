@@ -28,6 +28,9 @@ WHERE candidate_item.id != source_item.id
   AND (candidate_item.offer_category_id = source_item.want_category_id
        OR candidate_item.offer_category_id = sqlc.arg(undefined_category_id)::int
        OR source_item.want_category_id = sqlc.arg(undefined_category_id)::int)
+  AND candidate_item.offer_embedding_local IS NOT NULL
+  AND candidate_item.want_embedding_local IS NOT NULL
+  AND source_item.want_embedding_local IS NOT NULL
 ORDER BY candidate_item.offer_embedding_local <=> source_item.want_embedding_local
 LIMIT $2;
 

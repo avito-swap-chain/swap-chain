@@ -77,13 +77,67 @@ func (r *Analysis) FindCategories(
 	return mapCategoryCandidates(rows), nil
 }
 
+func (r *Analysis) CountCategories(ctx context.Context) (int64, error) {
+	count, err := r.queries.CountCategories(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count categories: %w", err)
+	}
+
+	return count, nil
+}
+
+func (r *Analysis) CountCategoriesMissingEmbedding(ctx context.Context) (int64, error) {
+	count, err := r.queries.CountCategoriesMissingEmbedding(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("count categories missing embedding: %w", err)
+	}
+
+	return count, nil
+}
+
+func (r *Analysis) ListCategoriesMissingEmbedding(
+	ctx context.Context,
+) ([]service.CategoryEmbeddingTarget, error) {
+	rows, err := r.queries.ListCategoriesMissingEmbedding(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list categories missing embedding: %w", err)
+	}
+
+	categories := make([]service.CategoryEmbeddingTarget, 0, len(rows))
+	for _, row := range rows {
+		categories = append(categories, service.CategoryEmbeddingTarget{ID: row.ID, Name: row.Name})
+	}
+
+	return categories, nil
+}
+
+func (r *Analysis) SetCategoryEmbedding(
+	ctx context.Context,
+	categoryID int32,
+	embedding []float32,
+) (bool, error) {
+	embeddingVector := pgvector.NewVector(embedding)
+	rowsAffected, err := r.queries.SetCategoryEmbedding(ctx, db.SetCategoryEmbeddingParams{
+		EmbeddingLocal: &embeddingVector,
+		ID:             categoryID,
+	})
+	if err != nil {
+		return false, fmt.Errorf("set category %d embedding: %w", categoryID, err)
+	}
+	if rowsAffected > 1 {
+		return false, fmt.Errorf("set category %d embedding: unexpected affected rows count %d", categoryID, rowsAffected)
+	}
+
+	return rowsAffected == 1, nil
+}
+
 func (r *Analysis) ClaimStaleAnalyzingItems(
 	ctx context.Context,
 	staleBefore time.Time,
 	batchSize int32,
 ) ([]int64, error) {
 	itemIDs, err := r.queries.ClaimStaleAnalyzingItems(ctx, db.ClaimStaleAnalyzingItemsParams{
-		StaleBefore: sql.NullTime{Time: staleBefore, Valid: true},
+		StaleBefore: staleBefore,
 		BatchSize:   batchSize,
 	})
 	if err != nil {
@@ -113,7 +167,7 @@ func mapAnalysisResult(result model.AnalysisResult) db.CompleteItemAnalysisParam
 			String: strconv.FormatFloat(result.ParamRichness, 'f', -1, 64),
 			Valid:  true,
 		},
-		IsCategoryManual:    sql.NullBool{Bool: result.IsCategoryManual, Valid: true},
+		IsCategoryManual:    result.IsCategoryManual,
 		OfferEmbeddingLocal: &offerEmbedding,
 		WantEmbeddingLocal:  &wantEmbedding,
 		ID:                  result.ItemID,
@@ -141,16 +195,13 @@ func nullableString(value sql.NullString) string {
 	return value.String
 }
 
-func mapItemStatus(status db.NullItemStatus) model.ItemStatus {
-	if !status.Valid {
-		return model.ItemStatusUnknown
-	}
-
-	return model.ItemStatus(status.ItemStatus)
+func mapItemStatus(status db.ItemStatus) model.ItemStatus {
+	return model.ItemStatus(status)
 }
 
 var (
-	_ service.AnalysisRepository      = (*Analysis)(nil)
-	_ service.TaggingRepo             = (*Analysis)(nil)
-	_ service.StaleAnalysisRepository = (*Analysis)(nil)
+	_ service.AnalysisRepository          = (*Analysis)(nil)
+	_ service.TaggingRepo                 = (*Analysis)(nil)
+	_ service.StaleAnalysisRepository     = (*Analysis)(nil)
+	_ service.CategoryBootstrapRepository = (*Analysis)(nil)
 )

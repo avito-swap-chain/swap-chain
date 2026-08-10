@@ -88,12 +88,12 @@ func mapItemMatch(sourceID int64, row db.FindSimilarItemsRow) (model.ItemMatch, 
 		return model.ItemMatch{}, err
 	}
 
-	userRating, err := parseNullableFloat("user_rating", row.UserRating)
+	userRating, err := parseFloat("user_rating", row.UserRating)
 	if err != nil {
 		return model.ItemMatch{}, err
 	}
 
-	userSuccessRate, err := parseNullableFloat("user_success_rate", row.UserSuccessRate)
+	userSuccessRate, err := parseFloat("user_success_rate", row.UserSuccessRate)
 	if err != nil {
 		return model.ItemMatch{}, err
 	}
@@ -123,7 +123,7 @@ func mapItemMatch(sourceID int64, row db.FindSimilarItemsRow) (model.ItemMatch, 
 			Meta: model.ItemMetadata{
 				TitleLen:       len([]rune(row.OfferTitle)),
 				DescriptionLen: len([]rune(offerDescription)),
-				ImageAmount:    nullableInt32(row.ImageAmount),
+				ImageAmount:    int(row.ImageAmount.Int32),
 				ParamRichness:  paramRichness,
 				QualityScore:   qualityScore,
 				UserRating:     userRating,
@@ -140,12 +140,16 @@ func parseNullableFloat(field string, value sql.NullString) (float64, error) {
 		return 0, nil
 	}
 
-	parsed, err := strconv.ParseFloat(value.String, 64)
+	return parseFloat(field, value.String)
+}
+
+func parseFloat(field, value string) (float64, error) {
+	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
-		return 0, fmt.Errorf("parse %s value %q: %w", field, value.String, err)
+		return 0, fmt.Errorf("parse %s value %q: %w", field, value, err)
 	}
 	if math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-		return 0, fmt.Errorf("parse %s value %q: value must be finite", field, value.String)
+		return 0, fmt.Errorf("parse %s value %q: value must be finite", field, value)
 	}
 
 	return parsed, nil
@@ -159,18 +163,6 @@ func nullableString(value sql.NullString) string {
 	return value.String
 }
 
-func nullableInt32(value sql.NullInt32) int {
-	if !value.Valid {
-		return 0
-	}
-
-	return int(value.Int32)
-}
-
-func mapItemStatus(status db.NullItemStatus) model.ItemStatus {
-	if !status.Valid {
-		return model.ItemStatusUnknown
-	}
-
-	return model.ItemStatus(status.ItemStatus)
+func mapItemStatus(status db.ItemStatus) model.ItemStatus {
+	return model.ItemStatus(status)
 }

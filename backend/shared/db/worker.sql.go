@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	pgvector_go "github.com/pgvector/pgvector-go"
 )
@@ -30,8 +31,8 @@ RETURNING claimed_item.id
 `
 
 type ClaimStaleAnalyzingItemsParams struct {
-	StaleBefore sql.NullTime `json:"stale_before"`
-	BatchSize   int32        `json:"batch_size"`
+	StaleBefore time.Time `json:"stale_before"`
+	BatchSize   int32     `json:"batch_size"`
 }
 
 func (q *Queries) ClaimStaleAnalyzingItems(ctx context.Context, arg ClaimStaleAnalyzingItemsParams) ([]int64, error) {
@@ -75,7 +76,7 @@ type CompleteItemAnalysisParams struct {
 	OfferCategoryID     sql.NullInt32       `json:"offer_category_id"`
 	WantCategoryID      sql.NullInt32       `json:"want_category_id"`
 	ParamRichness       sql.NullString      `json:"param_richness"`
-	IsCategoryManual    sql.NullBool        `json:"is_category_manual"`
+	IsCategoryManual    bool                `json:"is_category_manual"`
 	OfferEmbeddingLocal *pgvector_go.Vector `json:"offer_embedding_local"`
 	WantEmbeddingLocal  *pgvector_go.Vector `json:"want_embedding_local"`
 	ID                  int64               `json:"id"`
@@ -112,7 +113,7 @@ type GetItemForAnalysisRow struct {
 	OfferTitle       string         `json:"offer_title"`
 	OfferDescription sql.NullString `json:"offer_description"`
 	WantDescription  sql.NullString `json:"want_description"`
-	Status           NullItemStatus `json:"status"`
+	Status           ItemStatus     `json:"status"`
 }
 
 func (q *Queries) GetItemForAnalysis(ctx context.Context, id int64) (GetItemForAnalysisRow, error) {

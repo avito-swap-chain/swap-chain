@@ -22,8 +22,8 @@ func TestMapItemMatch(t *testing.T) {
 		ImageAmount:         sql.NullInt32{Int32: 2, Valid: true},
 		ParamRichness:       sql.NullString{String: "0.7", Valid: true},
 		QualityScore:        sql.NullString{String: "0.8", Valid: true},
-		UserRating:          sql.NullString{String: "4.5", Valid: true},
-		UserSuccessRate:     sql.NullString{String: "0.9", Valid: true},
+		UserRating:          "4.5",
+		UserSuccessRate:     "0.9",
 		Similarity:          0.91,
 	}
 
