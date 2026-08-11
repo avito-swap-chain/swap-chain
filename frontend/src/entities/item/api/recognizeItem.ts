@@ -1,61 +1,92 @@
-import type { Item } from '../model/types'
-
-/** Что распознавание достаёт из фотографии. Желание и само фото остаются за человеком. */
-export type RecognizedItem = Pick<Item, 'title' | 'category' | 'condition'>
+import { unwrap } from '@/shared/api/fetcher'
+import { onVisionResult, whenStreamConnected } from '@/shared/api/events'
+import { analyzePhoto, uploadMedia } from '@/shared/api/generated/endpoints'
+import type {
+  MediaUpload,
+  VisionAnalysisAccepted,
+  VisionAnalysisResponse,
+  VisualQuality,
+} from '@/shared/api/generated/model'
+import { isBackendConnected } from '@/shared/config/backend'
+import { recognize as recognizeMock } from './itemMocks'
+import type { ItemCondition, RecognizedItem } from '../model/types'
 
 /**
- * Пауза перед ответом: за неё состояние «распознаём» успевает стать видимым.
- * Вынесена в параметр, чтобы тесты не ждали реального времени.
+ * Пять градаций модели против трёх наших. `EXCELLENT` и `GOOD` для человека одно и то же
+ * «хорошее»: разницу между «почти новое» и «следы использования» по фото не проверить,
+ * а в обмене состояние — предмет разговора, а не точная величина.
  */
-const RECOGNIZE_MS = 1700
-
-/**
- * Что заглушка узнаёт: фрагмент имени файла → правдоподобный результат.
- * Ключи покрывают демо-фотографии из `public/mock/items`.
- */
-const KNOWN: Record<string, RecognizedItem> = {
-  bike: { title: 'Горный велосипед', category: 'Спорт и отдых', condition: 'good' },
-  dumbbells: { title: 'Гантели 20 кг', category: 'Спорт и отдых', condition: 'used' },
-  scooter: { title: 'Электросамокат', category: 'Транспорт', condition: 'good' },
-  monitor24: { title: 'Монитор 24"', category: 'Электроника', condition: 'good' },
-  monitor: { title: 'Монитор LG 27" IPS', category: 'Электроника', condition: 'good' },
-  console: { title: 'Игровая приставка PlayStation 4', category: 'Электроника', condition: 'used' },
-  camera: { title: 'Плёночный фотоаппарат', category: 'Электроника', condition: 'used' },
-  keyboard: { title: 'Механическая клавиатура', category: 'Электроника', condition: 'new' },
-  watch: { title: 'Умные часы Amazfit GTR', category: 'Электроника', condition: 'good' },
-  phone: { title: 'Смартфон', category: 'Электроника', condition: 'good' },
-  headphones: { title: 'Наушники', category: 'Аудио', condition: 'good' },
-  guitar: { title: 'Акустическая гитара', category: 'Хобби и творчество', condition: 'good' },
-  coffee: { title: 'Кофеварка', category: 'Дом и дача', condition: 'good' },
-  grinder: { title: 'Кофемолка', category: 'Дом и дача', condition: 'good' },
-  lamp: { title: 'Настольная лампа', category: 'Дом и дача', condition: 'good' },
-  blanket: { title: 'Плед', category: 'Дом и дача', condition: 'new' },
-  beanbag: { title: 'Кресло-мешок', category: 'Дом и дача', condition: 'good' },
+const CONDITION: Record<VisualQuality, ItemCondition> = {
+  NEW: 'new',
+  EXCELLENT: 'good',
+  GOOD: 'good',
+  FAIR: 'used',
+  POOR: 'used',
 }
+
+/** Сколько ждём ответ модели. Дольше — человек уже заполнил форму руками. */
+const ANALYSIS_TIMEOUT_MS = 30_000
+
+const fromVision = (result: VisionAnalysisResponse): RecognizedItem => ({
+  category: result.suggestedCategory,
+  condition: CONDITION[result.visualQuality],
+  description: result.marketplaceDescription,
+  imageUrl: result.imageUrl,
+})
 
 /**
  * Распознавание вещи по фотографии — второй вход в сервис, публикация нового объявления:
  * там фото загружают с нуля и поля пустые. У главного входа (обмен у уже размещённого
  * объявления) распознавать нечего — название и категория там уже заполнены.
  *
- * ⚠️ Заглушка: модели за этой функцией нет. Результат берётся из имени файла — демо-фото
- * из `public/mock/items` она узнаёт, на остальных честно отказывается, а не выдумывает
- * название. Реальная модель заменит **тело** функции: интерфейс (файл → название, категория,
- * состояние; не узнали — ошибка) рассчитан на настоящий запрос к бэку и меняться не должен.
+ * Анализ асинхронный: `POST /vision/analyze` только ставит задачу, а результат приходит
+ * событием `vision.analysis.completed` в общий поток. Поэтому сначала дожидаемся, что поток
+ * установлен, и только потом запускаем разбор — иначе ответ придёт в никуда, а повторить
+ * его сервер не сможет: реплея у потока нет.
  *
  * Ответ — подсказка, а не решение за человека: любое поле в форме можно переписать.
  */
-export async function recognizeItem(file: File, delayMs = RECOGNIZE_MS): Promise<RecognizedItem> {
-  await new Promise((resolve) => setTimeout(resolve, delayMs))
+export async function recognizeItem(file: File): Promise<RecognizedItem> {
+  if (!isBackendConnected) return recognizeMock(file)
 
-  const name = file.name.toLowerCase()
+  const uploaded = unwrap<MediaUpload>(await uploadMedia({ file }))
 
-  // Длинные ключи проверяем первыми: `monitor24.jpg` подходит и под `monitor`.
-  const key = Object.keys(KNOWN)
-    .sort((a, b) => b.length - a.length)
-    .find((candidate) => name.includes(candidate))
+  const streaming = await whenStreamConnected()
+  if (!streaming) throw new Error('Нет связи с сервером — распознавание недоступно')
 
-  if (!key) throw new Error('Не удалось распознать вещь на фото')
+  // Подписываемся до запроса: анализ короткого фото может завершиться раньше, чем вернётся
+  // ответ «принято», и событие тогда пришло бы в пустоту.
+  const analysis = waitForResult(uploaded.url)
 
-  return KNOWN[key]
+  unwrap<VisionAnalysisAccepted>(await analyzePhoto({ imageUrl: uploaded.url }))
+
+  return fromVision(await analysis)
+}
+
+/**
+ * Ждём событие именно про нашу фотографию: человек мог заменить фото, не дождавшись ответа,
+ * и в потоке окажутся два результата подряд — чужой отбрасываем по адресу.
+ */
+function waitForResult(imageUrl: string): Promise<VisionAnalysisResponse> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      stop()
+      reject(new Error('Распознавание не ответило — заполните поля сами'))
+    }, ANALYSIS_TIMEOUT_MS)
+
+    const stop = onVisionResult((result) => {
+      if (result instanceof Error) {
+        clearTimeout(timer)
+        stop()
+        reject(result)
+        return
+      }
+
+      if (result.imageUrl !== imageUrl) return
+
+      clearTimeout(timer)
+      stop()
+      resolve(result)
+    })
+  })
 }

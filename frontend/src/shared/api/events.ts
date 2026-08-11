@@ -1,3 +1,5 @@
+import type { VisionAnalysisResponse } from './generated/model'
+
 /**
  * Подписка на поток событий бэкенда.
  *
@@ -6,12 +8,13 @@
  * `EventSource`: он сам разбирает формат, сам переподключается и понимает именованные события,
  * а сервер шлёт именно их.
  *
- * Событие — только сигнал «данные устарели», а не сами данные. Реплея сервер не хранит:
- * пропущенное за время обрыва не придёт, поэтому и при подключении, и при каждом
- * переподключении надо перечитать состояние заново.
+ * Почти всякое событие — только сигнал «данные устарели», а не сами данные: реплея сервер
+ * не хранит, поэтому и при подключении, и при каждом переподключении состояние перечитывается
+ * целиком. Исключение — распознавание фото: его результат приходит именно в событии и нигде
+ * больше не лежит, отдельной ручки за ним нет.
  */
 
-/** События бэкенда. Полезная нагрузка не разбирается: она нужна только серверу. */
+/** События бэкенда. Полезная нагрузка не разбирается — кроме распознавания фото. */
 export type BackendEvent =
   | 'item.created'
   | 'item.status.updated'
@@ -39,6 +42,51 @@ interface Handlers {
 }
 
 /**
+ * Кто ждёт результат распознавания. Подписка живёт отдельно от компонента с формой:
+ * поток один на приложение и открывается в `app`, а форма появляется и исчезает.
+ */
+type VisionListener = (result: VisionAnalysisResponse | Error) => void
+
+const visionListeners = new Set<VisionListener>()
+
+/** Ждать результат анализа фото. Возвращает функцию отписки. */
+export function onVisionResult(listener: VisionListener): () => void {
+  visionListeners.add(listener)
+  return () => {
+    visionListeners.delete(listener)
+  }
+}
+
+const notifyVision = (result: VisionAnalysisResponse | Error) => {
+  for (const listener of visionListeners) listener(result)
+}
+
+/**
+ * Поток открыт и сервер прислал `stream.connected`. Контракт требует дождаться этого
+ * до запуска анализа: результат придёт только в поток, а пропущенное не переотправляется.
+ */
+let connected = false
+let awaitingConnection: (() => void)[] = []
+
+export function whenStreamConnected(timeoutMs = 5000): Promise<boolean> {
+  if (connected) return Promise.resolve(true)
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs)
+    awaitingConnection.push(() => {
+      clearTimeout(timer)
+      resolve(true)
+    })
+  })
+}
+
+const markConnected = () => {
+  connected = true
+  for (const waiting of awaitingConnection) waiting()
+  awaitingConnection = []
+}
+
+/**
  * Открывает поток и возвращает функцию отписки.
  *
  * `withCredentials` обязателен: сессия живёт в куке, без неё поток ответит 401.
@@ -49,9 +97,31 @@ export function subscribeToBackendEvents({ onItems, onChains, onConnected }: Han
 
   // `stream.connected` приходит и на первое подключение, и после каждого разрыва —
   // одного обработчика хватает на оба случая.
-  source.addEventListener('stream.connected', onConnected)
+  source.addEventListener('stream.connected', () => {
+    markConnected()
+    onConnected()
+  })
   for (const event of ITEM_EVENTS) source.addEventListener(event, onItems)
   for (const event of CHAIN_EVENTS) source.addEventListener(event, onChains)
 
-  return () => source.close()
+  // Результат распознавания — единственное событие, из которого мы читаем данные.
+  // Полезная нагрузка лежит в поле `data` конверта; кривой JSON здесь означает,
+  // что анализ до формы не доедет, и человеку об этом надо сказать.
+  source.addEventListener('vision.analysis.completed', (event) => {
+    try {
+      const { data } = JSON.parse((event as MessageEvent<string>).data)
+      notifyVision(data as VisionAnalysisResponse)
+    } catch {
+      notifyVision(new Error('Не удалось разобрать ответ распознавания'))
+    }
+  })
+
+  source.addEventListener('vision.analysis.failed', () => {
+    notifyVision(new Error('Не удалось распознать вещь на фото'))
+  })
+
+  return () => {
+    connected = false
+    source.close()
+  }
 }

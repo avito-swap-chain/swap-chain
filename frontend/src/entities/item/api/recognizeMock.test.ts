@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { recognizeItem } from './recognizeItem'
+import { recognize as recognizeMock } from './itemMocks'
 
 /** Задержку в тестах убираем: состояние «распознаём» нужно интерфейсу, а не проверке. */
-const recognize = (name: string) => recognizeItem(new File([], name), 0)
+const recognize = (name: string) => recognizeMock(new File([], name), 0)
 
-describe('recognizeItem — распознавание вещи по фото', () => {
+describe('распознавание вещи по фото на моках', () => {
   it('узнаёт демо-фотографию и заполняет все три поля', async () => {
     expect(await recognize('bike.jpg')).toEqual({
       title: 'Горный велосипед',

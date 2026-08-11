@@ -11,6 +11,13 @@ export {
   withdrawItem,
 } from './api/itemsApi'
 export { suggestWish, type GivenItem } from './api/suggestWish'
-export { recognizeItem, type RecognizedItem } from './api/recognizeItem'
+export { recognizeItem } from './api/recognizeItem'
 export { CATEGORIES, CONDITIONS, CONDITION_LABEL } from './model/dictionaries'
-export type { Item, ItemDraft, ItemStatus, ItemCondition, Wish } from './model/types'
+export type {
+  Item,
+  ItemDraft,
+  ItemStatus,
+  ItemCondition,
+  RecognizedItem,
+  Wish,
+} from './model/types'

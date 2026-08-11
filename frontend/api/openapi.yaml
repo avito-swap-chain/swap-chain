@@ -18,6 +18,7 @@ tags:
   - name: chat
   - name: admin
   - name: events
+  - name: vision
 
 paths:
   /health:
@@ -341,6 +342,67 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+
+  /api/v1/vision/analyze:
+    post:
+      operationId: analyzePhoto
+      tags: [vision]
+      summary: Trigger async AI photo analysis
+      description: >
+        Accepts previously uploaded media URL, downloads the photo from the
+        internal store, and starts background vision analysis via the
+        configured AI model. Analysis results are delivered asynchronously
+        through the SSE stream at /api/v1/events as `vision.analysis.completed`
+        events. The frontend must establish the authenticated SSE stream and
+        receive `stream.connected` before triggering analysis. Results are not
+        replayed; if the stream is interrupted, the user can retry analysis.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [imageUrl]
+              properties:
+                imageUrl:
+                  type: string
+                  format: uri-reference
+                  description: URL returned by POST /api/v1/media
+      responses:
+        "202":
+          description: Analysis started, results will arrive via SSE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisionAnalysisAccepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "415":
+          description: Stored media format is unsupported by vision analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Too many photo analyses are already pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          description: Vision analysis is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/items/{itemId}:
     parameters:
@@ -1013,6 +1075,12 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
 
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: swap_chain_session
+
   schemas:
     LivenessResponse:
       type: object
@@ -1584,3 +1652,47 @@ components:
         details:
           type: object
           additionalProperties: true
+
+    VisualQuality:
+      type: string
+      description: Physical condition of the item as determined by AI vision analysis.
+      enum: [NEW, EXCELLENT, GOOD, FAIR, POOR]
+
+    VisionAnalysisAccepted:
+      type: object
+      required: [imageUrl, status]
+      properties:
+        imageUrl:
+          type: string
+          format: uri-reference
+        status:
+          type: string
+          description: Always "accepted" — results arrive asynchronously via SSE
+
+    VisionAnalysisResponse:
+      type: object
+      required:
+        - imageUrl
+        - suggestedCategory
+        - visualQuality
+        - qualityScore
+        - marketplaceDescription
+      properties:
+        imageUrl:
+          type: string
+          format: uri-reference
+          description: URL of the analyzed photo
+        suggestedCategory:
+          type: string
+          description: AI-suggested marketplace category from the supported category list
+        visualQuality:
+          $ref: "#/components/schemas/VisualQuality"
+        qualityScore:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Numeric assessment of the item's condition where 1.0 is flawless
+        marketplaceDescription:
+          type: string
+          description: AI-generated professional marketplace-style description in Russian

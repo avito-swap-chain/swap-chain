@@ -18,6 +18,21 @@ export interface Wish {
   description: string
 }
 
+/**
+ * Что распознавание достаёт из фотографии. Названия у модели нет: она не придумывает
+ * конкретный бренд, а угаданное «Redmi Note 12 Pro» вместо настоящего только вредит —
+ * искать обмен будут по нему. Название пишет человек, остальное подсказывает модель.
+ */
+export interface RecognizedItem {
+  title?: string
+  category?: string
+  condition?: ItemCondition
+  /** Описание вещи так, как его написал бы продавец: им бэкенд и ищет обмен. */
+  description?: string
+  /** Адрес уже загруженного фото — чтобы при публикации не грузить его второй раз. */
+  imageUrl?: string
+}
+
 /** Что пользователь заполняет в форме: вещь без служебных полей. */
 export type ItemDraft = Omit<Item, 'id' | 'status'> & {
   /**
@@ -26,6 +41,11 @@ export type ItemDraft = Omit<Item, 'id' | 'status'> & {
    * свои же адреса из `POST /api/v1/media` и внешние http(s).
    */
   photoFile?: File
+  /**
+   * Адрес фотографии в хранилище бэкенда, если она уже уехала туда ради распознавания.
+   * Второй раз то же фото не загружаем.
+   */
+  uploadedUrl?: string
 }
 
 export interface Item {
