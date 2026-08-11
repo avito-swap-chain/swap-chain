@@ -14,10 +14,12 @@ tags:
   - name: items
   - name: media
   - name: matching
+  - name: categories
   - name: chains
   - name: chat
   - name: admin
   - name: events
+  - name: notifications
   - name: vision
 
 paths:
@@ -518,6 +520,25 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/categories:
+    get:
+      operationId: listCategories
+      tags: [categories]
+      summary: List all available item categories
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Sorted list of exchange categories
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1022,6 +1043,65 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List the current user's notifications with unread count
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notifications newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/notifications/read:
+    post:
+      operationId: markNotificationsRead
+      tags: [notifications]
+      summary: Mark selected or all notifications as read
+      description: >
+        Empty or absent IDs array marks all unread notifications as read.
+        IDs that do not belong to the current user are silently ignored.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkNotificationsReadRequest"
+      responses:
+        "200":
+          description: Notifications marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/events:
     get:
       operationId: subscribeEvents
@@ -1227,6 +1307,10 @@ components:
           items:
             type: string
             format: uri-reference
+        categoryId:
+          type: integer
+          format: int32
+          description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
 
     UpdateItemRequest:
       type: object
@@ -1247,6 +1331,10 @@ components:
         withdraw:
           type: boolean
           description: Remove the wish and stop matching this item. Cannot be combined with wantDescription.
+        categoryId:
+          type: integer
+          format: int32
+          description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
 
     MediaUpload:
       type: object
@@ -1295,6 +1383,21 @@ components:
             format: uri-reference
         status:
           $ref: "#/components/schemas/ItemStatus"
+        categoryId:
+          type: integer
+          format: int32
+          nullable: true
+          description: User-selected offer category; null when not explicitly set. Maps to offer_category_id.
+        offerCategoryId:
+          type: integer
+          format: int32
+          nullable: true
+          description: Assigned by AI analysis; null until analysis completes.
+        wantCategoryId:
+          type: integer
+          format: int32
+          nullable: true
+          description: Assigned by AI analysis; null until analysis completes.
         createdAt:
           type: string
           format: date-time
@@ -1317,6 +1420,27 @@ components:
     ItemStatus:
       type: string
       enum: [ANALYZING, MATCHING, LOCKED, WITHDRAWN]
+
+    Category:
+      type: object
+      required: [id, name, isSystem]
+      properties:
+        id:
+          type: integer
+          format: int32
+        name:
+          type: string
+        isSystem:
+          type: boolean
+
+    CategoryList:
+      type: object
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Category"
 
     ChainStatus:
       type: string
@@ -1676,6 +1800,63 @@ components:
           $ref: "#/components/schemas/AdminDelivery"
         chainStatus:
           $ref: "#/components/schemas/ChainStatus"
+
+    NotificationKind:
+      type: string
+      enum: [CHAIN, OFFER, MESSAGE, DELIVERY]
+
+    AppNotification:
+      type: object
+      required: [id, kind, title, text, createdAt, read]
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          $ref: "#/components/schemas/NotificationKind"
+        title:
+          type: string
+        text:
+          type: string
+        chainId:
+          type: integer
+          format: int64
+          nullable: true
+        itemId:
+          type: integer
+          format: int64
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        read:
+          type: boolean
+
+    NotificationList:
+      type: object
+      required: [notifications, totalUnread]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppNotification"
+        nextCursor:
+          type: string
+          nullable: true
+        totalUnread:
+          type: integer
+          format: int64
+          minimum: 0
+
+    MarkNotificationsReadRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 1
 
     PipelineEvent:
       type: object

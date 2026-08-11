@@ -1,10 +1,11 @@
 import { currentPersonaId } from './persona'
 
 /**
- * Про что уведомление. Три повода — ровно те, ради которых человек возвращается в сервис:
- * ему написали, цепочка сменила состояние, вариант перестал быть возможным.
+ * Про что уведомление. Поводы — ровно те, ради которых человек возвращается в сервис:
+ * ему написали, цепочка сменила состояние, вариант перестал быть возможным, вещь поехала.
+ * Набор совпадает с тем, что шлёт бэкенд (`NotificationKind` в контракте).
  */
-export type NotificationKind = 'message' | 'chain' | 'offer'
+export type NotificationKind = 'message' | 'chain' | 'offer' | 'delivery'
 
 export interface AppNotification {
   id: string
@@ -18,11 +19,19 @@ export interface AppNotification {
   read: boolean
 }
 
+/** Список вместе со счётчиком: с бэкенда они приходят одним ответом, здесь — тоже. */
+export interface NotificationList {
+  items: AppNotification[]
+  totalUnread: number
+}
+
 /**
- * Журнал уведомлений живёт в `shared`, а не в своей сущности, потому что писать в него
- * должны и цепочки, и переписка: entity не может зависеть от соседней entity, а от shared —
- * может. Читает журнал раздел уведомлений.
+ * Журнал уведомлений на моках. С подключённым бэкендом уведомления хранит он
+ * (`entities/notification`), а это — то же самое для демо, которое обязано открываться
+ * по ссылке без сервера.
  *
+ * Живёт в `shared`, а не в своей сущности, потому что писать в него должны и цепочки,
+ * и переписка: entity не может зависеть от соседней entity, а от shared — может.
  * Записи раскладываются по персонам: уведомление получает тот, кто был «я» в момент события.
  */
 let byPersona: Record<string, AppNotification[]> = {}
@@ -54,6 +63,12 @@ export function countUnreadNotifications(): number {
   return (byPersona[currentPersonaId()] ?? []).filter((n) => !n.read).length
 }
 
+/** То же, что отдаёт ручка бэкенда: список и счётчик одним ответом. */
+export const listForPersona = (): NotificationList => ({
+  items: listNotifications(),
+  totalUnread: countUnreadNotifications(),
+})
+
 /** Список открыли — всё в нём считается просмотренным, как в уведомлениях Авито. */
 export function markNotificationsRead(): void {
   const personaId = currentPersonaId()
@@ -62,6 +77,8 @@ export function markNotificationsRead(): void {
 
   byPersona = { ...byPersona, [personaId]: list.map((n) => ({ ...n, read: true })) }
 }
+
+export const markAllRead = markNotificationsRead
 
 /** Сброс журнала — для тестов. */
 export const resetNotifications = (): void => {

@@ -11,6 +11,7 @@ import type {
   AdminDeliveryTransitionRequest,
   AnalyzePhotoBody,
   BadRequestResponse,
+  CategoryList,
   Chain,
   ChainList,
   ChainReceipt,
@@ -32,14 +33,17 @@ import type {
   ListChainsParams,
   ListChatMessagesParams,
   ListItemsParams,
+  ListNotificationsParams,
   ListUserItemsParams,
   LivenessResponse,
   LoginRequest,
   MarkChatThreadReadRequest,
+  MarkNotificationsReadRequest,
   MatchingResponse,
   MediaUpload,
   NotFoundResponse,
   NotImplementedResponse,
+  NotificationList,
   SendChatMessageRequest,
   ServiceUnavailableResponse,
   Session,
@@ -1029,6 +1033,54 @@ export const findMatchingCycles = async (itemId: number, options?: Parameters<ty
 
 
 
+export type listCategoriesResponse200 = {
+  data: CategoryList
+  status: 200
+}
+
+export type listCategoriesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listCategoriesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listCategoriesResponseSuccess = (listCategoriesResponse200) & {
+  headers: Headers;
+};
+export type listCategoriesResponseError = (listCategoriesResponse401 | listCategoriesResponse500) & {
+  headers: Headers;
+};
+
+export type listCategoriesResponse = (listCategoriesResponseSuccess | listCategoriesResponseError)
+
+export const getListCategoriesUrl = () => {
+
+
+
+
+  return `/api/v1/categories`
+}
+
+/**
+ * @summary List all available item categories
+ */
+export const listCategories = async ( options?: Parameters<typeof apiFetch>[1]): Promise<listCategoriesResponse> => {
+
+  return apiFetch<listCategoriesResponse>(getListCategoriesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export type createChainResponse201 = {
   data: Chain
   status: 201
@@ -1757,6 +1809,120 @@ export const transitionAdminDelivery = async (deliveryId: number,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(adminDeliveryTransitionRequest)
+  }
+);}
+
+
+
+export type listNotificationsResponse200 = {
+  data: NotificationList
+  status: 200
+}
+
+export type listNotificationsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listNotificationsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listNotificationsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listNotificationsResponseSuccess = (listNotificationsResponse200) & {
+  headers: Headers;
+};
+export type listNotificationsResponseError = (listNotificationsResponse400 | listNotificationsResponse401 | listNotificationsResponse500) & {
+  headers: Headers;
+};
+
+export type listNotificationsResponse = (listNotificationsResponseSuccess | listNotificationsResponseError)
+
+export const getListNotificationsUrl = (params?: ListNotificationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/notifications?${stringifiedParams}` : `/api/v1/notifications`
+}
+
+/**
+ * @summary List the current user's notifications with unread count
+ */
+export const listNotifications = async (params?: ListNotificationsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listNotificationsResponse> => {
+
+  return apiFetch<listNotificationsResponse>(getListNotificationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type markNotificationsReadResponse200 = {
+  data: NotificationList
+  status: 200
+}
+
+export type markNotificationsReadResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type markNotificationsReadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type markNotificationsReadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type markNotificationsReadResponseSuccess = (markNotificationsReadResponse200) & {
+  headers: Headers;
+};
+export type markNotificationsReadResponseError = (markNotificationsReadResponse400 | markNotificationsReadResponse401 | markNotificationsReadResponse500) & {
+  headers: Headers;
+};
+
+export type markNotificationsReadResponse = (markNotificationsReadResponseSuccess | markNotificationsReadResponseError)
+
+export const getMarkNotificationsReadUrl = () => {
+
+
+
+
+  return `/api/v1/notifications/read`
+}
+
+/**
+ * Empty or absent IDs array marks all unread notifications as read. IDs that do not belong to the current user are silently ignored.
+ * @summary Mark selected or all notifications as read
+ */
+export const markNotificationsRead = async (markNotificationsReadRequest?: MarkNotificationsReadRequest, options?: Parameters<typeof apiFetch>[1]): Promise<markNotificationsReadResponse> => {
+
+  return apiFetch<markNotificationsReadResponse>(getMarkNotificationsReadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(markNotificationsReadRequest)
   }
 );}
 

@@ -1,10 +1,12 @@
 import { useRef, useState, type ChangeEvent, type SubmitEvent } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
-  CATEGORIES,
+  categoryKeys,
   CONDITIONS,
   CONDITION_LABEL,
   DescriptionField,
+  getCategories,
+  matchCategory,
   recognizeItem,
   type ItemCondition,
   type ItemDraft,
@@ -23,8 +25,15 @@ interface AddItemFormProps {
 }
 
 export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
+  // Справочник категорий — с бэкенда: по нему же идёт подбор, и свой список тут завести
+  // значит выбирать из одного, а искать по другому.
+  const { data: categories = [] } = useQuery({
+    queryKey: categoryKeys.list(),
+    queryFn: getCategories,
+  })
+
   const [values, setValues] = useState<ItemFormValues>(
-    initial ?? { title: '', category: CATEGORIES[0], condition: 'good' },
+    initial ?? { title: '', category: '', condition: 'good' },
   )
 
   // Поля, которые человек заполнил сам: распознавание приходит с задержкой и их не трогает.
@@ -57,7 +66,16 @@ export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
   const applyRecognition = () => {
     if (!recognition.data) return
 
-    patch(recognitionPatch(recognition.data, edited.current))
+    const suggested = matchCategory(recognition.data.category, categories)
+
+    patch({
+      ...recognitionPatch(recognition.data, edited.current),
+      // Модель отвечает названием из своего промпта, а не идентификатором справочника:
+      // не нашлось пары — категорию не трогаем, описание и состояние всё равно полезны.
+      ...(suggested && !edited.current.has('category')
+        ? { category: suggested.name, categoryId: suggested.id }
+        : {}),
+    })
     recognition.reset()
   }
 
@@ -156,13 +174,19 @@ export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
 
       <Field label="Категория">
         <Select
-          value={values.category}
-          onChange={(event) => edit('category', { category: event.target.value })}
-          disabled={recognition.isPending}
+          value={values.categoryId ?? ''}
+          onChange={(event) => {
+            const chosen = categories.find((item) => String(item.id) === event.target.value)
+            edit('category', { category: chosen?.name ?? '', categoryId: chosen?.id })
+          }}
+          disabled={recognition.isPending || categories.length === 0}
         >
-          {CATEGORIES.map((category) => (
-            <option key={category} value={category}>
-              {category}
+          <option value="" disabled>
+            Выберите категорию
+          </option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
             </option>
           ))}
         </Select>

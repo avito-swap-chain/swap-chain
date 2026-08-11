@@ -1,8 +1,7 @@
-export type { AppNotification, NotificationKind } from '@/shared/model/notifications'
-export {
-  notificationKeys,
-  getNotifications,
-  getUnreadCount,
-  readNotifications,
-} from './api/notificationsApi'
+export type {
+  AppNotification,
+  NotificationKind,
+  NotificationList,
+} from '@/shared/model/notifications'
+export { notificationKeys, getNotifications, readNotifications } from './api/notificationsApi'
 export { NotificationCard } from './ui/NotificationCard'

@@ -1,14 +1,16 @@
 import { Link } from 'react-router-dom'
 import { cx } from '@/shared/lib'
 import type { AppNotification, NotificationKind } from '@/shared/model/notifications'
-import { IconChat, IconClock, IconSwap } from '@/shared/ui'
+import { IconBox, IconChat, IconClock, IconSwap } from '@/shared/ui'
 
-/* Иконка по поводу: сообщение, состояние цепочки, судьба варианта. Цвет несёт смысл —
- * азур для переписки, зелёный для движения цепочки, оранжевый для потерянного варианта. */
+/* Иконка по поводу: сообщение, состояние цепочки, судьба варианта, движение вещи.
+ * Цвет несёт смысл — азур для переписки, зелёный для движения цепочки, оранжевый
+ * для потерянного варианта, нейтральный для доставки: там от человека ничего не требуется. */
 const ICONS: Record<NotificationKind, { icon: typeof IconChat; tone: string }> = {
   message: { icon: IconChat, tone: 'bg-brand-pale text-brand' },
   chain: { icon: IconSwap, tone: 'bg-ok-bg text-ok' },
   offer: { icon: IconClock, tone: 'bg-attention-bg text-attention' },
+  delivery: { icon: IconBox, tone: 'bg-line-2 text-ink-2' },
 }
 
 /** «14:03» сегодня, «21 апр.» раньше — как в списках Авито. */

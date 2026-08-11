@@ -24,4 +24,6 @@ export interface CreateItemRequest {
   wantDescription: string;
   /** @maxItems 10 */
   imageUrls?: string[];
+  /** User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. */
+  categoryId?: number;
 }

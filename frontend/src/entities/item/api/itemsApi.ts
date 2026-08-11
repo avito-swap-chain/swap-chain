@@ -32,6 +32,8 @@ export interface ItemEdit {
   description?: string
   /** Название. Появилось в контракте позже остального — до этого правка была наполовину. */
   title?: string
+  /** Категория справочника. Её смена перезапускает разбор вещи на бэкенде. */
+  categoryId?: number
 }
 
 /**
@@ -81,11 +83,15 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
   const created = unwrap<ApiItem>(
     await createItemRequest({
       offerTitle: draft.title,
-      // Категорию и состояние сюда не подмешиваем: описание читает человек, а бэкенд
-      // по нему ищет обмен — служебным словам вроде «good» не место ни там, ни там.
+      // Состояние в описание не подмешиваем: его читает человек, а бэкенд по нему ищет
+      // обмен — служебным словам вроде «good» не место ни там, ни там. Категория едет
+      // отдельным полем, для подбора она и нужна.
       offerDescription: draft.description?.trim() || draft.title,
       wantDescription: asWantDescription(wish),
       imageUrls: imageUrl ? [imageUrl] : [],
+      // Категорию бэкенд принимает и учитывает в подборе; если человек её не выбрал,
+      // поле не отправляем — модель определит сама при разборе описания.
+      ...(draft.categoryId ? { categoryId: draft.categoryId } : {}),
     }),
   )
   return mapItem(created)
@@ -99,7 +105,10 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
  * желания — отдельное ребро графа, поэтому без желания объявление в подборе не участвует
  * и пустым его не сохраняем.
  */
-export async function editItem(id: string, { wish, description, title }: ItemEdit): Promise<Item> {
+export async function editItem(
+  id: string,
+  { wish, description, title, categoryId }: ItemEdit,
+): Promise<Item> {
   const usable = usableWishes(wish)
   if (usable.length === 0) throw new Error('Не указано, что хочется взамен')
 
@@ -116,6 +125,7 @@ export async function editItem(id: string, { wish, description, title }: ItemEdi
         wantDescription: asWantDescription(usable),
         ...(text ? { offerDescription: text } : {}),
         ...(name ? { offerTitle: name } : {}),
+        ...(categoryId ? { categoryId } : {}),
       }),
     ),
   )

@@ -20,12 +20,12 @@ export function NotificationsPage() {
   })
 
   const queryClient = useQueryClient()
-  const unreadCount = data?.filter((item) => !item.read).length ?? 0
+  const unreadCount = data?.totalUnread ?? 0
 
   useEffect(() => {
     if (unreadCount === 0) return
     readNotifications().then(() => {
-      queryClient.invalidateQueries({ queryKey: notificationKeys.unread() })
+      queryClient.invalidateQueries({ queryKey: notificationKeys.list() })
     })
   }, [unreadCount, queryClient])
 
@@ -42,7 +42,7 @@ export function NotificationsPage() {
         {/* В карточке, а не текстом по серому: без неё пустой раздел выглядел брошенной
             страницей — заголовок пустого состояния почти совпадал по весу с заголовком
             раздела и читался как его повтор, а вокруг не было ничего. */}
-        {data && data.length === 0 && (
+        {data && data.items.length === 0 && (
           <Card className="px-4 lg:px-6">
             <EmptyState
               title="Уведомлений пока нет"
@@ -51,9 +51,9 @@ export function NotificationsPage() {
           </Card>
         )}
 
-        {data && data.length > 0 && (
+        {data && data.items.length > 0 && (
           <div className="flex flex-col">
-            {data.map((notification) => (
+            {data.items.map((notification) => (
               <NotificationCard key={notification.id} notification={notification} />
             ))}
           </div>

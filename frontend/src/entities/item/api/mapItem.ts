@@ -30,6 +30,9 @@ const STATUS: Record<ApiItem['status'], ItemStatus> = {
 export const mapItem = (item: ApiItem): Item => ({
   id: String(item.id),
   title: item.offerTitle,
+  // Имя категории приходит вместе со словарём ключевых слов для матчинга, поэтому
+  // подпись на карточке собирается из справочника, а не из ответа про вещь.
+  categoryId: item.categoryId ?? item.offerCategoryId ?? undefined,
   category: '',
   condition: undefined,
   // Пустую строку сводим к `undefined`: у бэкенда описание обязательно, но у засеянных
