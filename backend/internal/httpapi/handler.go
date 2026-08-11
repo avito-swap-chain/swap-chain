@@ -1385,7 +1385,7 @@ func itemModel(item items.Item) api.Item {
 		OfferTitle:       item.OfferTitle,
 		OfferDescription: item.OfferDescription,
 		WantDescription:  item.WantDescription,
-		ImageUrls:        append([]string(nil), item.ImageURLs...),
+		ImageUrls:        append([]string{}, item.ImageURLs...),
 		Status:           api.ItemStatus(item.Status),
 		CategoryId:       item.OfferCategoryID,
 		OfferCategoryId:  item.OfferCategoryID,

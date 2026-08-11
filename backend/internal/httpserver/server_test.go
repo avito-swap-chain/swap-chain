@@ -885,8 +885,12 @@ func TestChainContractReturnsCurrentUsersChains(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
 	}
+	body := readBody(t, response.Body)
+	if strings.Contains(body, `"imageUrls":null`) {
+		t.Fatalf("chain item imageUrls must be an array; body=%s", body)
+	}
 	var result api.ChainList
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal([]byte(body), &result); err != nil {
 		t.Fatalf("decode chains: %v", err)
 	}
 	if len(result.Chains) != 1 || result.Chains[0].Id != 42 {

@@ -15,6 +15,12 @@ type Publisher interface {
 	Publish(ctx context.Context, event Event) error
 }
 
+type workerStore interface {
+	Claim(ctx context.Context, workerID string, limit int, lease time.Duration) ([]Event, error)
+	MarkPublished(ctx context.Context, eventID int64, workerID string) error
+	Retry(ctx context.Context, eventID int64, workerID, message string, delay time.Duration) error
+}
+
 type WorkerConfig struct {
 	PollInterval time.Duration
 	RetryDelay   time.Duration
@@ -32,7 +38,7 @@ func DefaultWorkerConfig() WorkerConfig {
 }
 
 type Worker struct {
-	store     *Store
+	store     workerStore
 	publisher Publisher
 	logger    *zap.Logger
 	config    WorkerConfig

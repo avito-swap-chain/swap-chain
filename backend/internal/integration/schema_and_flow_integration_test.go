@@ -2,7 +2,9 @@ package integration_test
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -617,6 +619,172 @@ func TestDeliveryTransitionCreatesClaimableOutboxEvent(t *testing.T) {
 	}
 }
 
+func TestOutboxLeaseRetryAndDeduplication(t *testing.T) {
+	database := newMigratedDatabase(t, 0)
+	ctx := context.Background()
+	store, err := outbox.NewStore(database)
+	if err != nil {
+		t.Fatalf("create outbox store: %v", err)
+	}
+
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin outbox transaction: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	event := outbox.PendingEvent{
+		DeduplicationKey: "integration:outbox:deduplicated",
+		Type:             "chain.updated",
+		EntityID:         "42",
+		RecipientIDs:     []int64{10, 20},
+		Data:             map[string]any{"status": "AT_PVZ"},
+	}
+	if err := store.EnqueueTx(ctx, tx, event); err != nil {
+		t.Fatalf("enqueue outbox event: %v", err)
+	}
+	if err := store.EnqueueTx(ctx, tx, event); err != nil {
+		t.Fatalf("repeat outbox event: %v", err)
+	}
+	invalid := event
+	invalid.RecipientIDs = nil
+	if err := store.EnqueueTx(ctx, tx, invalid); err == nil {
+		t.Fatal("invalid outbox event error = nil")
+	}
+	unencodable := event
+	unencodable.DeduplicationKey = "integration:outbox:unencodable"
+	unencodable.Data = map[string]any{"function": func() {}}
+	if err := store.EnqueueTx(ctx, tx, unencodable); err == nil {
+		t.Fatal("unencodable outbox event error = nil")
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit outbox events: %v", err)
+	}
+
+	var stored int
+	if err := database.QueryRowContext(ctx, `SELECT count(*) FROM outbox_events WHERE deduplication_key = $1`, event.DeduplicationKey).Scan(&stored); err != nil {
+		t.Fatalf("count deduplicated events: %v", err)
+	}
+	if stored != 1 {
+		t.Fatalf("deduplicated events = %d, want 1", stored)
+	}
+
+	first, err := store.Claim(ctx, "worker-a", 10, time.Minute)
+	if err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	if len(first) != 1 || first[0].Data["status"] != "AT_PVZ" {
+		t.Fatalf("first claim = %#v", first)
+	}
+	if second, claimErr := store.Claim(ctx, "worker-b", 10, time.Minute); claimErr != nil || len(second) != 0 {
+		t.Fatalf("competing claim = %#v, error = %v", second, claimErr)
+	}
+	if err := store.MarkPublished(ctx, first[0].ID, "worker-b"); err == nil {
+		t.Fatal("foreign lease MarkPublished() error = nil")
+	}
+	if err := store.Retry(ctx, first[0].ID, "worker-a", "temporary failure", 0); err != nil {
+		t.Fatalf("retry event: %v", err)
+	}
+
+	retried, err := store.Claim(ctx, "worker-b", 10, time.Minute)
+	if err != nil {
+		t.Fatalf("claim retried event: %v", err)
+	}
+	if len(retried) != 1 || retried[0].ID != first[0].ID {
+		t.Fatalf("retried claim = %#v", retried)
+	}
+	if err := store.Retry(ctx, retried[0].ID, "worker-a", "stale owner", 0); err == nil {
+		t.Fatal("foreign lease Retry() error = nil")
+	}
+	if err := store.MarkPublished(ctx, retried[0].ID, "worker-b"); err != nil {
+		t.Fatalf("mark retried event published: %v", err)
+	}
+	if remaining, claimErr := store.Claim(ctx, "worker-c", 10, time.Minute); claimErr != nil || len(remaining) != 0 {
+		t.Fatalf("claim after publication = %#v, error = %v", remaining, claimErr)
+	}
+}
+
+func TestAdminRepositoryCoversDeliveryLifecycleAndAuthorization(t *testing.T) {
+	database := newMigratedDatabase(t, 0)
+	ctx := context.Background()
+	chainID, userIDs, deliveryIDs := seedDeliveryChain(t, database, adminmodel.ChainAccepted)
+	store, err := outbox.NewStore(database)
+	if err != nil {
+		t.Fatalf("create outbox store: %v", err)
+	}
+	repository, err := adminrepository.NewPostgreSQLWithOutbox(database, store)
+	if err != nil {
+		t.Fatalf("create admin repository: %v", err)
+	}
+	var adminID int64
+	if err := database.QueryRowContext(ctx, `SELECT id FROM users WHERE role = 'ADMIN' ORDER BY id LIMIT 1`).Scan(&adminID); err != nil {
+		t.Fatalf("load admin: %v", err)
+	}
+
+	if _, _, err := repository.ListDeliveries(ctx, userIDs[0], "", 0, 10); !errors.Is(err, adminmodel.ErrForbidden) {
+		t.Fatalf("regular user list error = %v, want ErrForbidden", err)
+	}
+	firstPage, next, err := repository.ListDeliveries(ctx, adminID, adminmodel.DeliveryAwaitingPVZ, 0, 2)
+	if err != nil {
+		t.Fatalf("list first delivery page: %v", err)
+	}
+	if len(firstPage) != 2 || next == nil {
+		t.Fatalf("first delivery page = %d, next = %v", len(firstPage), next)
+	}
+	secondPage, _, err := repository.ListDeliveries(ctx, adminID, adminmodel.DeliveryAwaitingPVZ, *next, 2)
+	if err != nil || len(secondPage) != 1 {
+		t.Fatalf("second delivery page = %d, error = %v", len(secondPage), err)
+	}
+	if _, err := repository.TransitionDelivery(ctx, userIDs[0], deliveryIDs[0], adminmodel.DeliveryAtPVZ); !errors.Is(err, adminmodel.ErrForbidden) {
+		t.Fatalf("regular user transition error = %v, want ErrForbidden", err)
+	}
+	if _, err := repository.TransitionDelivery(ctx, adminID, 9_999_999, adminmodel.DeliveryAtPVZ); !errors.Is(err, adminmodel.ErrDeliveryNotFound) {
+		t.Fatalf("missing delivery error = %v, want ErrDeliveryNotFound", err)
+	}
+	if _, err := repository.TransitionDelivery(ctx, adminID, deliveryIDs[0], adminmodel.DeliveryInTransit); !errors.Is(err, adminmodel.ErrTransitionConflict) {
+		t.Fatalf("skipped transition error = %v, want ErrTransitionConflict", err)
+	}
+
+	for _, deliveryID := range deliveryIDs {
+		if _, err := repository.TransitionDelivery(ctx, adminID, deliveryID, adminmodel.DeliveryAtPVZ); err != nil {
+			t.Fatalf("move delivery %d to PVZ: %v", deliveryID, err)
+		}
+		if _, err := repository.TransitionDelivery(ctx, adminID, deliveryID, adminmodel.DeliveryAtPVZ); err != nil {
+			t.Fatalf("repeat delivery %d PVZ transition: %v", deliveryID, err)
+		}
+		if _, err := repository.TransitionDelivery(ctx, adminID, deliveryID, adminmodel.DeliveryInTransit); err != nil {
+			t.Fatalf("move delivery %d in transit: %v", deliveryID, err)
+		}
+	}
+	if _, err := repository.ConfirmReceipt(ctx, adminID, chainID); !errors.Is(err, adminmodel.ErrReceiptForbidden) {
+		t.Fatalf("non-participant receipt error = %v, want ErrReceiptForbidden", err)
+	}
+	if _, err := repository.TransitionDelivery(ctx, adminID, deliveryIDs[0], adminmodel.DeliveryReceived); err != nil {
+		t.Fatalf("receive first delivery as admin: %v", err)
+	}
+	for _, userID := range userIDs {
+		if _, err := repository.ConfirmReceipt(ctx, userID, chainID); err != nil {
+			t.Fatalf("confirm receipt for user %d: %v", userID, err)
+		}
+	}
+
+	var chainStatus string
+	if err := database.QueryRowContext(ctx, `SELECT status::text FROM chains WHERE id = $1`, chainID).Scan(&chainStatus); err != nil {
+		t.Fatalf("load completed chain: %v", err)
+	}
+	if chainStatus != adminmodel.ChainCompleted {
+		t.Fatalf("chain status = %q, want COMPLETED", chainStatus)
+	}
+	var repeatedAuditRows int
+	if err := database.QueryRowContext(ctx, `
+		SELECT count(*) FROM admin_delivery_events
+		WHERE chain_item_id = $1 AND to_status = 'AT_PVZ'`, deliveryIDs[0]).Scan(&repeatedAuditRows); err != nil {
+		t.Fatalf("count idempotent audit rows: %v", err)
+	}
+	if repeatedAuditRows != 1 {
+		t.Fatalf("AT_PVZ audit rows = %d, want 1", repeatedAuditRows)
+	}
+}
+
 func TestPostgreSQLBroadcasterFansOutToBackendInstances(t *testing.T) {
 	databaseURL, cleanup := newTestDatabase(t)
 	t.Cleanup(cleanup)
@@ -746,7 +914,7 @@ func newTestDatabase(t *testing.T) (string, func()) {
 		t.Fatalf("parse TEST_DATABASE_URL: %v", err)
 	}
 	admin := openDatabase(t, adminURL)
-	name := "swap_chain_integration_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	name := newTestDatabaseName(t)
 	if _, err := admin.Exec(`CREATE DATABASE ` + pq.QuoteIdentifier(name)); err != nil {
 		_ = admin.Close()
 		t.Fatalf("create test database: %v", err)
@@ -763,6 +931,15 @@ func newTestDatabase(t *testing.T) (string, func()) {
 		}
 	}
 	return testURL.String(), cleanup
+}
+
+func newTestDatabaseName(t *testing.T) string {
+	t.Helper()
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		t.Fatalf("generate test database name: %v", err)
+	}
+	return "swap_chain_integration_" + hex.EncodeToString(random)
 }
 
 func newMigrator(t *testing.T, databaseURL string) *migrate.Migrate {
