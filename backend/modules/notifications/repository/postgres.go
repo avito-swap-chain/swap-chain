@@ -45,7 +45,7 @@ func (r *PostgresRepository) Create(ctx context.Context, notification model.Noti
 	return result, nil
 }
 
-func (r *PostgresRepository) List(ctx context.Context, userID int64, cursor int64, limit int) (model.ListResult, error) {
+func (r *PostgresRepository) List(ctx context.Context, userID int64, cursor int64, limit int) (result model.ListResult, err error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND NOT read`, userID)
 	var unreadCount int64
@@ -54,7 +54,6 @@ func (r *PostgresRepository) List(ctx context.Context, userID int64, cursor int6
 	}
 
 	var rows *sql.Rows
-	var err error
 	if cursor == 0 {
 		rows, err = r.db.QueryContext(ctx,
 			`SELECT id, user_id, kind, title, text, chain_id, item_id, read, created_at
@@ -73,7 +72,12 @@ func (r *PostgresRepository) List(ctx context.Context, userID int64, cursor int6
 	if err != nil {
 		return model.ListResult{}, fmt.Errorf("list notifications: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			result = model.ListResult{}
+			err = fmt.Errorf("close notification rows: %w", closeErr)
+		}
+	}()
 
 	items := make([]model.Notification, 0, limit)
 	for rows.Next() {

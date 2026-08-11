@@ -1749,7 +1749,22 @@ func newTestNotificationService() *testNotificationService {
 	}
 }
 
-func (s *testNotificationService) Create(ctx context.Context, userID int64, kind, title, text string, chainID, itemID *int64) (notificationmodel.Notification, error) {
+func mustCreateNotification(
+	t *testing.T,
+	svc *testNotificationService,
+	userID int64,
+	kind, title, text string,
+	chainID, itemID *int64,
+) notificationmodel.Notification {
+	t.Helper()
+	notification, err := svc.Create(context.Background(), userID, kind, title, text, chainID, itemID)
+	if err != nil {
+		t.Fatalf("create test notification: %v", err)
+	}
+	return notification
+}
+
+func (s *testNotificationService) Create(_ context.Context, userID int64, kind, title, text string, chainID, itemID *int64) (notificationmodel.Notification, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := notificationmodel.Notification{
@@ -1767,7 +1782,7 @@ func (s *testNotificationService) Create(ctx context.Context, userID int64, kind
 	return n, nil
 }
 
-func (s *testNotificationService) List(ctx context.Context, userID int64, cursor int64, limit int) (notificationmodel.ListResult, error) {
+func (s *testNotificationService) List(_ context.Context, userID int64, cursor int64, limit int) (notificationmodel.ListResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1801,7 +1816,7 @@ func (s *testNotificationService) List(ctx context.Context, userID int64, cursor
 	}, nil
 }
 
-func (s *testNotificationService) MarkRead(ctx context.Context, userID int64, ids []int64) error {
+func (s *testNotificationService) MarkRead(_ context.Context, userID int64, ids []int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1932,9 +1947,9 @@ func TestListNotifications_Empty(t *testing.T) {
 func TestListNotifications_WithData(t *testing.T) {
 	svc := newTestNotificationService()
 	chainID := int64(42)
-	svc.Create(context.Background(), 1, "CHAIN", "Title 1", "Text 1", &chainID, nil)
-	svc.Create(context.Background(), 1, "MESSAGE", "Title 2", "Text 2", &chainID, nil)
-	svc.Create(context.Background(), 2, "CHAIN", "Other user", "Other", &chainID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "Title 1", "Text 1", &chainID, nil)
+	mustCreateNotification(t, svc, 1, "MESSAGE", "Title 2", "Text 2", &chainID, nil)
+	mustCreateNotification(t, svc, 2, "CHAIN", "Other user", "Other", &chainID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1964,8 +1979,8 @@ func TestListNotifications_WithData(t *testing.T) {
 func TestMarkNotificationsRead_MarkAll(t *testing.T) {
 	svc := newTestNotificationService()
 	cID := int64(1)
-	svc.Create(context.Background(), 1, "CHAIN", "T1", "Text", &cID, nil)
-	svc.Create(context.Background(), 1, "CHAIN", "T2", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "T1", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "T2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1989,8 +2004,8 @@ func TestMarkNotificationsRead_MarkAll(t *testing.T) {
 func TestMarkNotificationsRead_MarkSelected(t *testing.T) {
 	svc := newTestNotificationService()
 	cID := int64(1)
-	n1, _ := svc.Create(context.Background(), 1, "CHAIN", "T1", "Text", &cID, nil)
-	n2, _ := svc.Create(context.Background(), 1, "CHAIN", "T2", "Text", &cID, nil)
+	n1 := mustCreateNotification(t, svc, 1, "CHAIN", "T1", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "T2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -2002,8 +2017,6 @@ func TestMarkNotificationsRead_MarkSelected(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-
-	_ = n2
 
 	var list api.NotificationList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
@@ -2018,7 +2031,7 @@ func TestListNotifications_CursorPagination(t *testing.T) {
 	svc := newTestNotificationService()
 	cID := int64(1)
 	for i := 0; i < 5; i++ {
-		svc.Create(context.Background(), 1, "CHAIN",
+		mustCreateNotification(t, svc, 1, "CHAIN",
 			fmt.Sprintf("T%d", i), "Text", &cID, nil)
 	}
 
@@ -2081,8 +2094,8 @@ func TestListNotifications_InvalidCursor(t *testing.T) {
 func TestNotifications_CrossUserIsolation(t *testing.T) {
 	svc := newTestNotificationService()
 	cID := int64(1)
-	svc.Create(context.Background(), 1, "CHAIN", "User 1", "Text", &cID, nil)
-	svc.Create(context.Background(), 2, "CHAIN", "User 2", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "User 1", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 2, "CHAIN", "User 2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
