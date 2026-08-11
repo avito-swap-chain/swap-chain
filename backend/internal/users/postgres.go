@@ -60,6 +60,20 @@ func (s *PostgresService) FindByPhone(ctx context.Context, phone string) (User, 
 	return mapLookupError(user, err, "find user by phone")
 }
 
+// Update validates and persists a username change for the given user.
+func (s *PostgresService) Update(ctx context.Context, userID int64, input UpdateInput) (User, error) {
+	normalized, err := normalizeUpdateInput(input)
+	if err != nil {
+		return User{}, err
+	}
+
+	user, err := scanUser(s.database.QueryRowContext(ctx, `
+		UPDATE users SET username = $1
+		WHERE id = $2
+		RETURNING id, username, phone, role::text, created_at`, normalized.Username, userID))
+	return mapLookupError(user, err, "update user")
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

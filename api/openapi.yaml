@@ -165,8 +165,36 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
-        "501":
-          $ref: "#/components/responses/NotImplemented"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update the current user's profile
+      description: Only the authenticated user can update their own profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1122,6 +1150,15 @@ components:
           type: string
           minLength: 10
           maxLength: 32
+
+    UpdateUserRequest:
+      type: object
+      required: [username]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 100
 
     LoginRequest:
       type: object

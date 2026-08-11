@@ -44,11 +44,17 @@ type CreateInput struct {
 	Phone    string
 }
 
+// UpdateInput contains fields the user is allowed to modify on their own profile.
+type UpdateInput struct {
+	Username string
+}
+
 // Service defines user operations required by the HTTP handler.
 type Service interface {
 	Create(ctx context.Context, input CreateInput) (User, error)
 	Get(ctx context.Context, userID int64) (User, error)
 	FindByPhone(ctx context.Context, phone string) (User, error)
+	Update(ctx context.Context, userID int64, input UpdateInput) (User, error)
 }
 
 func normalizeCreateInput(input CreateInput) (CreateInput, error) {
@@ -68,6 +74,21 @@ func normalizeCreateInput(input CreateInput) (CreateInput, error) {
 	}
 	if len(fields) > 0 {
 		return CreateInput{}, &ValidationError{Fields: fields}
+	}
+	return input, nil
+}
+
+func normalizeUpdateInput(input UpdateInput) (UpdateInput, error) {
+	input.Username = strings.TrimSpace(input.Username)
+	fields := make(map[string]string)
+	usernameLength := len([]rune(input.Username))
+	if usernameLength == 0 {
+		fields["username"] = "must not be blank"
+	} else if usernameLength > 100 {
+		fields["username"] = "must contain at most 100 characters"
+	}
+	if len(fields) > 0 {
+		return UpdateInput{}, &ValidationError{Fields: fields}
 	}
 	return input, nil
 }

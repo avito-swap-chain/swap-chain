@@ -504,6 +504,95 @@ func TestRegistrationUnknownLoginAndLogout(t *testing.T) {
 	}
 }
 
+func TestGetUserProfile(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	response, err := http.Get(fmt.Sprintf("%s/api/v1/users/1", server.URL))
+	if err != nil {
+		t.Fatalf("GET user profile: %v", err)
+	}
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
+	}
+	var profile api.UserProfile
+	if err := json.NewDecoder(response.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode user profile: %v", err)
+	}
+	if profile.Id != 1 || profile.Username != "user-1" {
+		t.Fatalf("user profile = %#v, want id=1 username=user-1", profile)
+	}
+}
+
+func TestGetUserProfileNotFound(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	response, err := http.Get(fmt.Sprintf("%s/api/v1/users/999", server.URL))
+	if err != nil {
+		t.Fatalf("GET missing user: %v", err)
+	}
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusNotFound, readBody(t, response.Body))
+	}
+}
+
+func TestUpdateUserProfile(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	response := patchJSON(t, client, fmt.Sprintf("%s/api/v1/users/1", server.URL), `{"username":"  New Name  "}`)
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
+	}
+	var profile api.UserProfile
+	if err := json.NewDecoder(response.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode updated profile: %v", err)
+	}
+	if profile.Username != "New Name" || profile.Id != 1 {
+		t.Fatalf("updated profile = %#v, want username=New Name", profile)
+	}
+}
+
+func TestUpdateUserProfileRejectsForeignUser(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	response := patchJSON(t, client, fmt.Sprintf("%s/api/v1/users/2", server.URL), `{"username":"Hijack"}`)
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusForbidden, readBody(t, response.Body))
+	}
+}
+
+func TestUpdateUserProfileRequiresSession(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	response := patchJSON(t, http.DefaultClient, fmt.Sprintf("%s/api/v1/users/1", server.URL), `{"username":"NoSession"}`)
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusUnauthorized, readBody(t, response.Body))
+	}
+}
+
+func TestUpdateUserProfileValidatesInput(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	response := patchJSON(t, client, fmt.Sprintf("%s/api/v1/users/1", server.URL), `{"username":"  "}`)
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusBadRequest, readBody(t, response.Body))
+	}
+}
+
 func TestItemListIsScopedToCurrentSession(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
@@ -1028,6 +1117,11 @@ func waitForEvent(t *testing.T, scanner *bufio.Scanner, eventType string, timeou
 func postJSON(t *testing.T, client *http.Client, url, payload string) *http.Response {
 	t.Helper()
 	return sendJSON(t, client, http.MethodPost, url, payload)
+}
+
+func patchJSON(t *testing.T, client *http.Client, url, payload string) *http.Response {
+	t.Helper()
+	return sendJSON(t, client, http.MethodPatch, url, payload)
 }
 
 func sendJSON(t *testing.T, client *http.Client, method, url, payload string) *http.Response {

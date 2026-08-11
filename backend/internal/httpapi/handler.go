@@ -323,17 +323,72 @@ func (h *Handler) CreateUser(ctx context.Context, request api.CreateUserRequestO
 	}, nil
 }
 
-// GetUser exposes the generated contract until the user service is connected.
-func (h *Handler) GetUser(ctx context.Context, _ api.GetUserRequestObject) (api.GetUserResponseObject, error) {
-	return api.GetUser501JSONResponse{
-		NotImplementedJSONResponse: api.NotImplementedJSONResponse(userServiceNotImplemented(ctx)),
-	}, nil
+// GetUser returns a user profile by ID.
+func (h *Handler) GetUser(ctx context.Context, request api.GetUserRequestObject) (api.GetUserResponseObject, error) {
+	user, err := h.users.Get(ctx, request.UserId)
+	if errors.Is(err, users.ErrNotFound) {
+		return api.GetUser404JSONResponse{
+			NotFoundJSONResponse: api.NotFoundJSONResponse(errorModel(ctx, "USER_NOT_FOUND", "user not found", nil)),
+		}, nil
+	}
+	if err != nil {
+		h.logger.Error("get user", zap.Int64("user_id", request.UserId), zap.Error(err))
+		return api.GetUser500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to load user profile", nil)),
+		}, nil
+	}
+	return api.GetUser200JSONResponse(userProfileModel(user)), nil
+}
+
+// UpdateUser updates the profile of the currently authenticated user.
+func (h *Handler) UpdateUser(ctx context.Context, request api.UpdateUserRequestObject) (api.UpdateUserResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.UpdateUser401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.UserId != current.UserID {
+		return api.UpdateUser403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(errorModel(ctx, "USER_FORBIDDEN", "profile can only be edited by its owner", nil)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.UpdateUser400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	user, err := h.users.Update(ctx, current.UserID, users.UpdateInput{Username: request.Body.Username})
+	if err != nil {
+		var validationError *users.ValidationError
+		switch {
+		case errors.As(err, &validationError):
+			details := make(map[string]any, len(validationError.Fields))
+			for field, message := range validationError.Fields {
+				details[field] = message
+			}
+			return api.UpdateUser400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "user validation failed", details)),
+			}, nil
+		case errors.Is(err, users.ErrNotFound):
+			return api.UpdateUser404JSONResponse{
+				NotFoundJSONResponse: api.NotFoundJSONResponse(errorModel(ctx, "USER_NOT_FOUND", "user not found", nil)),
+			}, nil
+		default:
+			h.logger.Error("update user", zap.Int64("user_id", current.UserID), zap.Error(err))
+			return api.UpdateUser500JSONResponse{
+				InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to update user profile", nil)),
+			}, nil
+		}
+	}
+	return api.UpdateUser200JSONResponse(userProfileModel(user)), nil
 }
 
 // ListUserItems exposes the generated contract until the user service is connected.
 func (h *Handler) ListUserItems(ctx context.Context, _ api.ListUserItemsRequestObject) (api.ListUserItemsResponseObject, error) {
 	return api.ListUserItems501JSONResponse{
-		NotImplementedJSONResponse: api.NotImplementedJSONResponse(userServiceNotImplemented(ctx)),
+		NotImplementedJSONResponse: api.NotImplementedJSONResponse(errorModel(ctx, "USER_SERVICE_NOT_IMPLEMENTED", "user business service is not connected", nil)),
 	}, nil
 }
 
@@ -1125,6 +1180,14 @@ func sessionModel(current session.Session, user users.User) api.Session {
 	}
 }
 
+func userProfileModel(user users.User) api.UserProfile {
+	return api.UserProfile{
+		Id:        user.ID,
+		Username:  user.Username,
+		CreatedAt: user.CreatedAt,
+	}
+}
+
 func errorModel(ctx context.Context, code, message string, details map[string]any) api.Error {
 	requestID := middleware.GetReqID(ctx)
 	model := api.Error{Code: code, Message: message}
@@ -1255,8 +1318,4 @@ func chainErrorModel(ctx context.Context, err error) api.Error {
 
 func chainInternalError(ctx context.Context) api.Error {
 	return errorModel(ctx, "INTERNAL_ERROR", "chain operation failed", nil)
-}
-
-func userServiceNotImplemented(ctx context.Context) api.Error {
-	return errorModel(ctx, "USER_SERVICE_NOT_IMPLEMENTED", "user business service is not connected", nil)
 }
