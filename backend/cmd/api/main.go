@@ -36,6 +36,8 @@ import (
 	chatservice "swap-chain/modules/chat/service"
 	matchingrepository "swap-chain/modules/matching/repository"
 	"swap-chain/modules/matching/service"
+	metricsrepository "swap-chain/modules/metrics/repository"
+	metricsservice "swap-chain/modules/metrics/service"
 	notificationrepository "swap-chain/modules/notifications/repository"
 	notificationservice "swap-chain/modules/notifications/service"
 	reputationrepository "swap-chain/modules/reputation/repository"
@@ -277,6 +279,14 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create reputation service: %w", err)
 	}
+	metricsRepo, err := metricsrepository.NewPostgreSQL(database)
+	if err != nil {
+		return fmt.Errorf("create metrics repository: %w", err)
+	}
+	metricsModule, err := metricsservice.New(metricsRepo)
+	if err != nil {
+		return fmt.Errorf("create metrics service: %w", err)
+	}
 	adminRepo, err := adminrepository.NewPostgreSQLWithOutbox(database, outboxStore)
 	if err != nil {
 		return fmt.Errorf("create admin repository: %w", err)
@@ -319,6 +329,7 @@ func run(logger *zap.Logger) error {
 		chatModule,
 		notificationService,
 		reputationModule,
+		metricsModule,
 		visionService,
 		ollamaClient,
 		categoryBootstrap,

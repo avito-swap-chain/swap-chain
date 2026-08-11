@@ -247,7 +247,7 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 	}
 
 	if !expiresAt.After(s.now()) {
-		return s.rejectAndCommit(ctx, tx, chainID, "expired")
+		return s.rejectAndCommit(ctx, tx, chainID, "expired", 0)
 	}
 	if decision == DecisionDeclined {
 		if _, err := tx.ExecContext(ctx, `
@@ -255,7 +255,7 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 			WHERE chain_id = $1 AND user_id = $2`, chainID, userID); err != nil {
 			return Chain{}, fmt.Errorf("decline chain: %w", err)
 		}
-		return s.rejectAndCommit(ctx, tx, chainID, "declined")
+		return s.rejectAndCommit(ctx, tx, chainID, "declined", userID)
 	}
 
 	participantChanged := participantStatus == ParticipantWaiting
@@ -292,7 +292,7 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 		return Chain{}, err
 	}
 	if !allMatching {
-		return s.rejectAndCommit(ctx, tx, chainID, "item_unavailable")
+		return s.rejectAndCommit(ctx, tx, chainID, "item_unavailable", 0)
 	}
 
 	competing, err := competingRecipients(ctx, tx, chainID, itemIDs)
@@ -313,6 +313,11 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 			UPDATE chains SET status = 'REJECTED', updated_at = now()
 			WHERE id = ANY($1) AND status = 'PENDING'`, pq.Array(competitorIDs)); err != nil {
 			return Chain{}, fmt.Errorf("reject competing chains: %w", err)
+		}
+		for _, competingID := range competitorIDs {
+			if err := recordChainRejection(ctx, tx, competingID, "item_unavailable", 0, 0); err != nil {
+				return Chain{}, err
+			}
 		}
 	}
 
@@ -404,6 +409,9 @@ func (s *PostgresService) expireOne(ctx context.Context, chainID int64) (Chain, 
 	if err != nil {
 		return Chain{}, false, err
 	}
+	if err := recordChainRejection(ctx, tx, chainID, "expired", 0, 0); err != nil {
+		return Chain{}, false, err
+	}
 	if err := s.enqueueChainEvent(ctx, tx, chain, "chain.rejected", "rejected", map[string]any{"reason": "expired"}); err != nil {
 		return Chain{}, false, err
 	}
@@ -413,11 +421,24 @@ func (s *PostgresService) expireOne(ctx context.Context, chainID int64) (Chain, 
 	return chain, true, nil
 }
 
-func (s *PostgresService) rejectAndCommit(ctx context.Context, tx *sql.Tx, chainID int64, reason string) (Chain, error) {
+func (s *PostgresService) rejectAndCommit(ctx context.Context, tx *sql.Tx, chainID int64, reason string, actorID int64) (Chain, error) {
 	if _, err := tx.ExecContext(ctx, `UPDATE chains SET status = 'REJECTED', updated_at = now() WHERE id = $1`, chainID); err != nil {
 		return Chain{}, fmt.Errorf("reject chain: %w", err)
 	}
+	if err := recordChainRejection(ctx, tx, chainID, reason, actorID, 0); err != nil {
+		return Chain{}, err
+	}
 	return s.commitUpdated(ctx, tx, chainID, "chain.rejected", "rejected", map[string]any{"reason": reason})
+}
+
+func recordChainRejection(ctx context.Context, tx *sql.Tx, chainID int64, reason string, actorID, itemID int64) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO chain_rejections (chain_id, reason, actor_user_id, item_id)
+		VALUES ($1, $2, NULLIF($3::bigint, 0), NULLIF($4::bigint, 0))
+		ON CONFLICT (chain_id) DO NOTHING`, chainID, reason, actorID, itemID); err != nil {
+		return fmt.Errorf("record chain %d rejection: %w", chainID, err)
+	}
+	return nil
 }
 
 func (s *PostgresService) commitUpdated(ctx context.Context, tx *sql.Tx, chainID int64, eventType, eventKey string, data map[string]any) (Chain, error) {
@@ -615,8 +636,8 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 	for rows.Next() {
 		var participant Participant
 		var giveImages, receiveImages pq.StringArray
-		var deliveryStatus sql.NullString
-		var deliveryUpdatedAt sql.NullTime
+		var incomingDeliveryStatus sql.NullString
+		var incomingDeliveryUpdatedAt sql.NullTime
 		if err := rows.Scan(
 			&chain.ID, &chain.Status, &chain.CreatedAt, &chain.ExpiresAt, &chain.UpdatedAt,
 			&participant.User.ID, &participant.User.Username, &participant.Status,
@@ -626,15 +647,19 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 			&participant.ReceiveItem.ID, &participant.ReceiveItem.UserID, &participant.ReceiveItem.OfferTitle,
 			&participant.ReceiveItem.OfferDescription, &participant.ReceiveItem.WantDescription,
 			&receiveImages, &participant.ReceiveItem.Status, &participant.ReceiveItem.CreatedAt, &participant.ReceiveItem.UpdatedAt,
-			&deliveryStatus, &deliveryUpdatedAt,
+			&incomingDeliveryStatus, &incomingDeliveryUpdatedAt,
 		); err != nil {
 			return Chain{}, fmt.Errorf("scan chain: %w", err)
 		}
-		if deliveryStatus.Valid && deliveryStatus.String == "RECEIVED" {
+		if !incomingDeliveryStatus.Valid || !incomingDeliveryUpdatedAt.Valid {
+			return Chain{}, fmt.Errorf("load chain %d: participant %d has no incoming delivery", chainID, participant.User.ID)
+		}
+		participant.IncomingDeliveryStatus = incomingDeliveryStatus.String
+		participant.IncomingDeliveryUpdatedAt = incomingDeliveryUpdatedAt.Time
+		if participant.IncomingDeliveryStatus == "RECEIVED" {
 			participant.ReceiptConfirmed = true
-			if deliveryUpdatedAt.Valid {
-				participant.ReceiptConfirmedAt = &deliveryUpdatedAt.Time
-			}
+			confirmedAt := participant.IncomingDeliveryUpdatedAt
+			participant.ReceiptConfirmedAt = &confirmedAt
 		}
 		if giveImages == nil {
 			participant.GiveItem.ImageURLs = []string{}

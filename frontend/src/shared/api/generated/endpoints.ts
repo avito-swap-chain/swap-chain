@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.7.0
+ * OpenAPI spec version: 0.8.0
  */
 import type {
   AdminDelivery,
@@ -26,6 +26,7 @@ import type {
   CreateUserReviewRequest,
   Error,
   ForbiddenResponse,
+  FunnelMetrics,
   HealthResponse,
   InternalErrorResponse,
   Item,
@@ -1945,6 +1946,60 @@ export const transitionAdminDelivery = async (deliveryId: number,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(adminDeliveryTransitionRequest)
+  }
+);}
+
+
+
+export type getAdminFunnelMetricsResponse200 = {
+  data: FunnelMetrics
+  status: 200
+}
+
+export type getAdminFunnelMetricsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getAdminFunnelMetricsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getAdminFunnelMetricsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getAdminFunnelMetricsResponseSuccess = (getAdminFunnelMetricsResponse200) & {
+  headers: Headers;
+};
+export type getAdminFunnelMetricsResponseError = (getAdminFunnelMetricsResponse401 | getAdminFunnelMetricsResponse403 | getAdminFunnelMetricsResponse500) & {
+  headers: Headers;
+};
+
+export type getAdminFunnelMetricsResponse = (getAdminFunnelMetricsResponseSuccess | getAdminFunnelMetricsResponseError)
+
+export const getGetAdminFunnelMetricsUrl = () => {
+
+
+
+
+  return `/api/v1/admin/metrics/funnel`
+}
+
+/**
+ * Requires ADMIN. Rates are null when their denominator is zero. Accepted chains include both currently ACCEPTED and already COMPLETED chains.
+ * @summary Get the current product funnel snapshot
+ */
+export const getAdminFunnelMetrics = async ( options?: Parameters<typeof apiFetch>[1]): Promise<getAdminFunnelMetricsResponse> => {
+
+  return apiFetch<getAdminFunnelMetricsResponse>(getGetAdminFunnelMetricsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 

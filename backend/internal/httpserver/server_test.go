@@ -33,6 +33,7 @@ import (
 	analyzemodel "swap-chain/modules/analyze/model"
 	chatmodel "swap-chain/modules/chat/model"
 	"swap-chain/modules/matching/model"
+	metricsmodel "swap-chain/modules/metrics/model"
 	notificationmodel "swap-chain/modules/notifications/model"
 	notificationservice "swap-chain/modules/notifications/service"
 	reputationmodel "swap-chain/modules/reputation/model"
@@ -107,6 +108,7 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		newTestChatService(),
 		nil,
 		&testReputationService{},
+		&testMetricsService{},
 		nil,
 		testReadiness{err: errors.New("ollama model is missing")},
 	)
@@ -212,6 +214,7 @@ func TestSessionIsRequiredForPersonalRoutes(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/chains/42/chat/2/read", body: `{"lastReadMessageId":1}`},
 		{method: http.MethodPost, path: "/api/v1/items", body: validItemPayload},
 		{method: http.MethodGet, path: "/api/v1/admin/deliveries"},
+		{method: http.MethodGet, path: "/api/v1/admin/metrics/funnel"},
 		{method: http.MethodPost, path: "/api/v1/admin/deliveries/1/transition", body: `{"status":"AT_PVZ"}`},
 	} {
 		request, err := http.NewRequest(test.method, server.URL+test.path, strings.NewReader(test.body))
@@ -391,6 +394,42 @@ func TestAdminDeliveryContractEnforcesRoleAndMapsTransitions(t *testing.T) {
 	defer closeBody(t, conflict.Body)
 	if conflict.StatusCode != http.StatusConflict {
 		t.Fatalf("conflict status = %d, want %d", conflict.StatusCode, http.StatusConflict)
+	}
+}
+
+func TestAdminFunnelMetricsContractEnforcesRoleAndMapsSnapshot(t *testing.T) {
+	server := newTestServerWithServices(t, &testChainService{chain: testChain()}, items.NewMemoryService())
+	defer server.Close()
+
+	regularUser := newSessionClient(t, server.URL, 1)
+	forbidden, err := regularUser.Get(server.URL + "/api/v1/admin/metrics/funnel")
+	if err != nil {
+		t.Fatalf("get metrics as regular user: %v", err)
+	}
+	defer closeBody(t, forbidden.Body)
+	if forbidden.StatusCode != http.StatusForbidden {
+		body := readBody(t, forbidden.Body)
+		t.Fatalf("regular user metrics status = %d, want %d; body=%s", forbidden.StatusCode, http.StatusForbidden, body)
+	}
+
+	admin := newSessionClient(t, server.URL, 7)
+	response, err := admin.Get(server.URL + "/api/v1/admin/metrics/funnel")
+	if err != nil {
+		t.Fatalf("get metrics as admin: %v", err)
+	}
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("admin metrics status = %d, want %d; body=%s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
+	}
+	var snapshot api.FunnelMetrics
+	if err := json.NewDecoder(response.Body).Decode(&snapshot); err != nil {
+		t.Fatalf("decode metrics: %v", err)
+	}
+	if snapshot.EligibleItems != 10 || snapshot.ItemsWithChain != 5 || snapshot.AcceptedChains != 2 || snapshot.CompletedChains != 1 {
+		t.Fatalf("funnel metrics = %#v", snapshot)
+	}
+	if snapshot.ItemsWithChainRate == nil || *snapshot.ItemsWithChainRate != 0.5 || len(snapshot.RejectionReasons) != 1 {
+		t.Fatalf("funnel rates/reasons = %#v", snapshot)
 	}
 }
 
@@ -853,6 +892,14 @@ func TestChainContractReturnsCurrentUsersChains(t *testing.T) {
 	if len(result.Chains) != 1 || result.Chains[0].Id != 42 {
 		t.Fatalf("chains = %#v, want chain 42", result.Chains)
 	}
+	for _, participant := range result.Chains[0].Participants {
+		if participant.IncomingDeliveryStatus != api.AdminDeliveryStatusAWAITINGPVZ {
+			t.Fatalf("incoming delivery status = %q, want AWAITING_PVZ", participant.IncomingDeliveryStatus)
+		}
+		if participant.IncomingDeliveryUpdatedAt.IsZero() {
+			t.Fatal("incoming delivery updated at is zero")
+		}
+	}
 }
 
 func TestCreateChainPassesSessionUserAndSelectedCycle(t *testing.T) {
@@ -1141,7 +1188,7 @@ func newTestServerWithAllServicesAndVision(t *testing.T, chainService chains.Ser
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, &testReputationService{}, vision)
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, &testReputationService{}, &testMetricsService{}, vision)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1399,6 +1446,28 @@ type testAdminService struct{}
 
 type testReputationService struct{}
 
+type testMetricsService struct{}
+
+func (*testMetricsService) Funnel(_ context.Context, actorID int64) (metricsmodel.Funnel, error) {
+	if actorID != 7 {
+		return metricsmodel.Funnel{}, metricsmodel.ErrForbidden
+	}
+	rate := 0.5
+	return metricsmodel.Funnel{
+		GeneratedAt:                    time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC),
+		EligibleItems:                  10,
+		ItemsWithChain:                 5,
+		ItemsWithChainRate:             &rate,
+		AverageTimeToFirstChainSeconds: &rate,
+		DecidedChains:                  4,
+		AcceptedChains:                 2,
+		AcceptanceRate:                 &rate,
+		CompletedChains:                1,
+		DeliveryCompletionRate:         &rate,
+		RejectionReasons:               []metricsmodel.RejectionReason{{Reason: "declined", Count: 2}},
+	}, nil
+}
+
 func (*testReputationService) Stats(_ context.Context, _ int64) (reputationmodel.Stats, error) {
 	rating := 4.5
 	return reputationmodel.Stats{CompletedExchanges: 2, Rating: &rating, ReviewsCount: 3}, nil
@@ -1639,8 +1708,8 @@ func testChain() chains.Chain {
 		CreatedAt: now,
 		ExpiresAt: now.Add(24 * time.Hour),
 		Participants: []chains.Participant{
-			{User: chains.User{ID: 1, Username: "first"}, GiveItem: first, ReceiveItem: second, Status: chains.ParticipantApproved},
-			{User: chains.User{ID: 2, Username: "second"}, GiveItem: second, ReceiveItem: first, Status: chains.ParticipantWaiting},
+			{User: chains.User{ID: 1, Username: "first"}, GiveItem: first, ReceiveItem: second, Status: chains.ParticipantApproved, IncomingDeliveryStatus: adminmodel.DeliveryAwaitingPVZ, IncomingDeliveryUpdatedAt: now},
+			{User: chains.User{ID: 2, Username: "second"}, GiveItem: second, ReceiveItem: first, Status: chains.ParticipantWaiting, IncomingDeliveryStatus: adminmodel.DeliveryAwaitingPVZ, IncomingDeliveryUpdatedAt: now},
 		},
 	}
 }
@@ -1789,6 +1858,7 @@ func newTestServerWithNotifications(t *testing.T, notificationService notificati
 		newTestChatService(),
 		notificationService,
 		&testReputationService{},
+		&testMetricsService{},
 		nil,
 	)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Swap Chain API
-  version: 0.7.0
+  version: 0.8.0
   description: Shared REST and realtime contract for the swap-chain MVP.
 
 servers:
@@ -1131,6 +1131,28 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/admin/metrics/funnel:
+    get:
+      operationId: getAdminFunnelMetrics
+      tags: [admin]
+      summary: Get the current product funnel snapshot
+      description: >-
+        Requires ADMIN. Rates are null when their denominator is zero. Accepted
+        chains include both currently ACCEPTED and already COMPLETED chains.
+      responses:
+        "200":
+          description: Product funnel calculated from committed PostgreSQL state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunnelMetrics"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/notifications:
     get:
       operationId: listNotifications
@@ -1639,7 +1661,7 @@ components:
 
     ChainParticipant:
       type: object
-      required: [user, giveItem, receiveItem, status, receiptConfirmed]
+      required: [user, giveItem, receiveItem, status, receiptConfirmed, incomingDeliveryStatus, incomingDeliveryUpdatedAt]
       properties:
         user:
           $ref: "#/components/schemas/UserSummary"
@@ -1657,6 +1679,12 @@ components:
           format: date-time
           nullable: true
           description: When the participant confirmed receipt. Null until confirmed.
+        incomingDeliveryStatus:
+          $ref: "#/components/schemas/AdminDeliveryStatus"
+        incomingDeliveryUpdatedAt:
+          type: string
+          format: date-time
+          description: When the incoming delivery last changed status.
 
     Chain:
       type: object
@@ -1947,6 +1975,90 @@ components:
         nextCursor:
           type: string
           nullable: true
+
+    FunnelMetrics:
+      type: object
+      required:
+        - generatedAt
+        - eligibleItems
+        - itemsWithChain
+        - itemsWithChainRate
+        - averageTimeToFirstChainSeconds
+        - decidedChains
+        - acceptedChains
+        - acceptanceRate
+        - completedChains
+        - deliveryCompletionRate
+        - rejectionReasons
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        eligibleItems:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Current MATCHING or LOCKED items.
+        itemsWithChain:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Eligible items that have participated in at least one persisted chain.
+        itemsWithChainRate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          nullable: true
+        averageTimeToFirstChainSeconds:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+          description: Average time from item creation to its first persisted chain.
+        decidedChains:
+          type: integer
+          format: int64
+          minimum: 0
+          description: ACCEPTED, COMPLETED or REJECTED chains; PENDING is excluded.
+        acceptedChains:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Chains that reached ACCEPTED, including subsequently COMPLETED chains.
+        acceptanceRate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          nullable: true
+        completedChains:
+          type: integer
+          format: int64
+          minimum: 0
+        deliveryCompletionRate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          nullable: true
+          description: COMPLETED divided by all chains that reached ACCEPTED.
+        rejectionReasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/FunnelRejectionReason"
+
+    FunnelRejectionReason:
+      type: object
+      required: [reason, count]
+      properties:
+        reason:
+          type: string
+          enum: [declined, expired, item_unavailable, item_changed, item_withdrawn, unknown]
+        count:
+          type: integer
+          format: int64
+          minimum: 0
 
     ChainReceipt:
       type: object

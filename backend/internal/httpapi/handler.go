@@ -26,6 +26,8 @@ import (
 	chatmodel "swap-chain/modules/chat/model"
 	chatservice "swap-chain/modules/chat/service"
 	"swap-chain/modules/matching/model"
+	metricsmodel "swap-chain/modules/metrics/model"
+	metricsservice "swap-chain/modules/metrics/service"
 	notificationmodel "swap-chain/modules/notifications/model"
 	notificationservice "swap-chain/modules/notifications/service"
 	reputationmodel "swap-chain/modules/reputation/model"
@@ -65,6 +67,7 @@ type Handler struct {
 	chat          chatservice.Service
 	notifications notificationservice.Service
 	reputation    reputationservice.Service
+	metrics       metricsservice.Service
 	vision        VisionService
 	visionJobs    chan struct{}
 	readiness     []readinessChecker
@@ -86,6 +89,7 @@ func NewHandler(
 	chatService chatservice.Service,
 	notificationService notificationservice.Service,
 	reputationService reputationservice.Service,
+	metricsService metricsservice.Service,
 	visionService VisionService,
 	readiness ...readinessChecker,
 ) *Handler {
@@ -104,6 +108,7 @@ func NewHandler(
 		chat:          chatService,
 		notifications: notificationService,
 		reputation:    reputationService,
+		metrics:       metricsService,
 		vision:        visionService,
 		readiness:     readiness,
 	}
@@ -111,6 +116,30 @@ func NewHandler(
 		handler.visionJobs = make(chan struct{}, maxPendingVisionJobs)
 	}
 	return handler
+}
+
+// GetAdminFunnelMetrics returns an internally consistent product funnel snapshot.
+func (h *Handler) GetAdminFunnelMetrics(ctx context.Context, _ api.GetAdminFunnelMetricsRequestObject) (api.GetAdminFunnelMetricsResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.GetAdminFunnelMetrics401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	metrics, err := h.metrics.Funnel(ctx, current.UserID)
+	if errors.Is(err, metricsmodel.ErrForbidden) {
+		return api.GetAdminFunnelMetrics403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(errorModel(ctx, "ADMIN_REQUIRED", "admin access is required", nil)),
+		}, nil
+	}
+	if err != nil {
+		h.logger.Error("get admin funnel metrics", zap.Int64("actor_id", current.UserID), zap.Error(err))
+		return api.GetAdminFunnelMetrics500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to load product metrics", nil)),
+		}, nil
+	}
+	return api.GetAdminFunnelMetrics200JSONResponse(funnelMetricsModel(metrics)), nil
 }
 
 // UploadMedia stores one image for the current session user.
@@ -1374,10 +1403,12 @@ func chainModel(chain chains.Chain) api.Chain {
 				Id:       participant.User.ID,
 				Username: participant.User.Username,
 			},
-			GiveItem:         itemModel(participant.GiveItem),
-			ReceiveItem:      itemModel(participant.ReceiveItem),
-			Status:           api.ParticipantStatus(participant.Status),
-			ReceiptConfirmed: participant.ReceiptConfirmed,
+			GiveItem:                  itemModel(participant.GiveItem),
+			ReceiveItem:               itemModel(participant.ReceiveItem),
+			Status:                    api.ParticipantStatus(participant.Status),
+			ReceiptConfirmed:          participant.ReceiptConfirmed,
+			IncomingDeliveryStatus:    api.AdminDeliveryStatus(participant.IncomingDeliveryStatus),
+			IncomingDeliveryUpdatedAt: participant.IncomingDeliveryUpdatedAt,
 		}
 		if participant.ReceiptConfirmedAt != nil {
 			p.ReceiptConfirmedAt = participant.ReceiptConfirmedAt
@@ -1512,6 +1543,29 @@ func userReviewModel(review reputationmodel.Review) api.UserReview {
 		Rating:       review.Rating,
 		Text:         review.Text,
 		CreatedAt:    review.CreatedAt,
+	}
+}
+
+func funnelMetricsModel(metrics metricsmodel.Funnel) api.FunnelMetrics {
+	reasons := make([]api.FunnelRejectionReason, 0, len(metrics.RejectionReasons))
+	for _, reason := range metrics.RejectionReasons {
+		reasons = append(reasons, api.FunnelRejectionReason{
+			Reason: api.FunnelRejectionReasonReason(reason.Reason),
+			Count:  reason.Count,
+		})
+	}
+	return api.FunnelMetrics{
+		GeneratedAt:                    metrics.GeneratedAt,
+		EligibleItems:                  metrics.EligibleItems,
+		ItemsWithChain:                 metrics.ItemsWithChain,
+		ItemsWithChainRate:             metrics.ItemsWithChainRate,
+		AverageTimeToFirstChainSeconds: metrics.AverageTimeToFirstChainSeconds,
+		DecidedChains:                  metrics.DecidedChains,
+		AcceptedChains:                 metrics.AcceptedChains,
+		AcceptanceRate:                 metrics.AcceptanceRate,
+		CompletedChains:                metrics.CompletedChains,
+		DeliveryCompletionRate:         metrics.DeliveryCompletionRate,
+		RejectionReasons:               reasons,
 	}
 }
 

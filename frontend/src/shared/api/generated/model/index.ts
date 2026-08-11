@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.7.0
+ * OpenAPI spec version: 0.8.0
  */
 
 export * from './adminDelivery';
@@ -38,6 +38,9 @@ export * from './currentUser';
 export * from './error';
 export * from './errorDetails';
 export * from './forbiddenResponse';
+export * from './funnelMetrics';
+export * from './funnelRejectionReason';
+export * from './funnelRejectionReasonReason';
 export * from './healthResponse';
 export * from './healthResponseAnalysis';
 export * from './healthResponseDatabase';

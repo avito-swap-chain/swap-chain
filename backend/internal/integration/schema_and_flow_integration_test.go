@@ -29,6 +29,9 @@ import (
 	analyzerepository "swap-chain/modules/analyze/repository"
 	matchingrepository "swap-chain/modules/matching/repository"
 	matchingservice "swap-chain/modules/matching/service"
+	metricsmodel "swap-chain/modules/metrics/model"
+	metricsrepository "swap-chain/modules/metrics/repository"
+	metricsservice "swap-chain/modules/metrics/service"
 	reputationmodel "swap-chain/modules/reputation/model"
 	reputationrepository "swap-chain/modules/reputation/repository"
 	reputationservice "swap-chain/modules/reputation/service"
@@ -38,6 +41,8 @@ import (
 const migrationBeforeSchemaAlignment = 9
 
 const migrationBeforeReputation = 14
+
+const migrationBeforeChainRejections = 16
 
 func TestMigrationsCreateAnalyzeAndMatchingSchema(t *testing.T) {
 	database := newMigratedDatabase(t, 0)
@@ -230,6 +235,70 @@ func TestReputationAndOutboxRollbackPreservesExistingUsers(t *testing.T) {
 		if exists {
 			t.Fatalf("table %s still exists after rollback", table)
 		}
+	}
+}
+
+func TestChainRejectionsUpgradeBackfillsAndRollsBack(t *testing.T) {
+	databaseURL, cleanup := newTestDatabase(t)
+	t.Cleanup(cleanup)
+
+	migrator := newMigrator(t, databaseURL)
+	if err := migrator.Steps(migrationBeforeChainRejections); err != nil {
+		t.Fatalf("apply migrations through version 16: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database := openDatabase(t, databaseURL)
+	var chainID int64
+	if err := database.QueryRow(`
+		INSERT INTO chains (status, cycle_key)
+		VALUES ('REJECTED', 'rejection-backfill')
+		RETURNING id`).Scan(&chainID); err != nil {
+		t.Fatalf("create rejected chain before migration: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 16 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Steps(1); err != nil {
+		t.Fatalf("apply chain rejection migration: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	var reason string
+	if err := database.QueryRow(`SELECT reason FROM chain_rejections WHERE chain_id = $1`, chainID).Scan(&reason); err != nil {
+		t.Fatalf("load backfilled rejection: %v", err)
+	}
+	if reason != "unknown" {
+		t.Fatalf("backfilled rejection reason = %q, want unknown", reason)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 17 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Migrate(migrationBeforeChainRejections); err != nil {
+		t.Fatalf("roll back chain rejection migration: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	t.Cleanup(func() { _ = database.Close() })
+	var chainStatus string
+	if err := database.QueryRow(`SELECT status::text FROM chains WHERE id = $1`, chainID).Scan(&chainStatus); err != nil {
+		t.Fatalf("load chain after rollback: %v", err)
+	}
+	if chainStatus != "REJECTED" {
+		t.Fatalf("chain status after rollback = %q, want REJECTED", chainStatus)
+	}
+	var rejectionTableExists bool
+	if err := database.QueryRow(`SELECT to_regclass('chain_rejections') IS NOT NULL`).Scan(&rejectionTableExists); err != nil {
+		t.Fatalf("check rejection table after rollback: %v", err)
+	}
+	if rejectionTableExists {
+		t.Fatal("chain_rejections still exists after rollback")
 	}
 }
 
@@ -433,6 +502,66 @@ func TestCompletedChainReviewsUpdateReputation(t *testing.T) {
 	}
 	if len(reviews.Reviews) != 2 {
 		t.Fatalf("review count = %d, want 2", len(reviews.Reviews))
+	}
+}
+
+func TestProductFunnelMetricsUseCommittedChainState(t *testing.T) {
+	database := newMigratedDatabase(t, 0)
+	ctx := context.Background()
+	_, userIDs, _ := seedDeliveryChain(t, database, adminmodel.ChainCompleted)
+
+	var rejectedChainID int64
+	if err := database.QueryRowContext(ctx, `
+		INSERT INTO chains (status, cycle_key)
+		VALUES ('REJECTED', $1)
+		RETURNING id`, fmt.Sprintf("metrics-rejected:%d", time.Now().UnixNano())).Scan(&rejectedChainID); err != nil {
+		t.Fatalf("create rejected metrics chain: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO chain_rejections (chain_id, reason, actor_user_id)
+		VALUES ($1, 'declined', $2)`, rejectedChainID, userIDs[0]); err != nil {
+		t.Fatalf("record rejected metrics chain: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE users SET role = 'ADMIN' WHERE id = $1`, userIDs[0]); err != nil {
+		t.Fatalf("promote metrics user: %v", err)
+	}
+
+	repository, err := metricsrepository.NewPostgreSQL(database)
+	if err != nil {
+		t.Fatalf("create metrics repository: %v", err)
+	}
+	service, err := metricsservice.New(repository)
+	if err != nil {
+		t.Fatalf("create metrics service: %v", err)
+	}
+	if _, err := service.Funnel(ctx, userIDs[1]); !errors.Is(err, metricsmodel.ErrForbidden) {
+		t.Fatalf("regular user metrics error = %v, want ErrForbidden", err)
+	}
+
+	snapshot, err := service.Funnel(ctx, userIDs[0])
+	if err != nil {
+		t.Fatalf("load product funnel: %v", err)
+	}
+	if snapshot.EligibleItems != 3 || snapshot.ItemsWithChain != 3 {
+		t.Fatalf("item funnel = eligible %d, with chain %d; want 3 and 3", snapshot.EligibleItems, snapshot.ItemsWithChain)
+	}
+	if snapshot.ItemsWithChainRate == nil || *snapshot.ItemsWithChainRate != 1 {
+		t.Fatalf("items with chain rate = %v, want 1", snapshot.ItemsWithChainRate)
+	}
+	if snapshot.AverageTimeToFirstChainSeconds == nil || *snapshot.AverageTimeToFirstChainSeconds < 0 {
+		t.Fatalf("average time to first chain = %v, want non-negative value", snapshot.AverageTimeToFirstChainSeconds)
+	}
+	if snapshot.DecidedChains != 2 || snapshot.AcceptedChains != 1 || snapshot.CompletedChains != 1 {
+		t.Fatalf("chain funnel = %#v", snapshot)
+	}
+	if snapshot.AcceptanceRate == nil || *snapshot.AcceptanceRate != 0.5 {
+		t.Fatalf("acceptance rate = %v, want 0.5", snapshot.AcceptanceRate)
+	}
+	if snapshot.DeliveryCompletionRate == nil || *snapshot.DeliveryCompletionRate != 1 {
+		t.Fatalf("delivery completion rate = %v, want 1", snapshot.DeliveryCompletionRate)
+	}
+	if len(snapshot.RejectionReasons) != 1 || snapshot.RejectionReasons[0].Reason != "declined" || snapshot.RejectionReasons[0].Count != 1 {
+		t.Fatalf("rejection reasons = %#v", snapshot.RejectionReasons)
 	}
 }
 

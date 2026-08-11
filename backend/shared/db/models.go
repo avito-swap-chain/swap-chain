@@ -265,6 +265,14 @@ type ChainItem struct {
 	DeliveryUpdatedAt time.Time         `json:"delivery_updated_at"`
 }
 
+type ChainRejection struct {
+	ChainID     int64         `json:"chain_id"`
+	Reason      string        `json:"reason"`
+	ActorUserID sql.NullInt64 `json:"actor_user_id"`
+	ItemID      sql.NullInt64 `json:"item_id"`
+	OccurredAt  time.Time     `json:"occurred_at"`
+}
+
 type ChatMessage struct {
 	ID              int64     `json:"id"`
 	ChainID         int64     `json:"chain_id"`
