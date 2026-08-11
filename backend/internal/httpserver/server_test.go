@@ -1591,18 +1591,18 @@ func newTestNotificationService() *testNotificationService {
 	}
 }
 
-func (s *testNotificationService) Create(ctx context.Context, userID int64, kind, title, text, targetURL string, entityID *int64) (notificationmodel.Notification, error) {
+func (s *testNotificationService) Create(ctx context.Context, userID int64, kind, title, text string, chainID, itemID *int64) (notificationmodel.Notification, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := notificationmodel.Notification{
-		ID:        s.nextID,
-		UserID:    userID,
-		Kind:      kind,
-		Title:     title,
-		Text:      text,
-		TargetURL: targetURL,
-		EntityID:  entityID,
-		IsRead:    false,
+		ID:      s.nextID,
+		UserID:  userID,
+		Kind:    kind,
+		Title:   title,
+		Text:    text,
+		ChainID: chainID,
+		ItemID:  itemID,
+		Read:    false,
 	}
 	s.nextID++
 	s.notifications = append([]notificationmodel.Notification{n}, s.notifications...)
@@ -1622,7 +1622,7 @@ func (s *testNotificationService) List(ctx context.Context, userID int64, cursor
 
 	var unreadCount int64
 	for _, n := range s.notifications {
-		if n.UserID == userID && !n.IsRead {
+		if n.UserID == userID && !n.Read {
 			unreadCount++
 		}
 	}
@@ -1630,16 +1630,16 @@ func (s *testNotificationService) List(ctx context.Context, userID int64, cursor
 	if len(filtered) > limit {
 		last := filtered[limit-1]
 		return notificationmodel.ListResult{
-			Items:       filtered[:limit],
-			NextCursor:  &last.ID,
-			UnreadCount: unreadCount,
+			Notifications: filtered[:limit],
+			NextCursor:    &last.ID,
+			TotalUnread:   unreadCount,
 		}, nil
 	}
 
 	return notificationmodel.ListResult{
-		Items:       filtered,
-		NextCursor:  nil,
-		UnreadCount: unreadCount,
+		Notifications: filtered,
+		NextCursor:    nil,
+		TotalUnread:   unreadCount,
 	}, nil
 }
 
@@ -1650,7 +1650,7 @@ func (s *testNotificationService) MarkRead(ctx context.Context, userID int64, id
 	if len(ids) == 0 {
 		for i := range s.notifications {
 			if s.notifications[i].UserID == userID {
-				s.notifications[i].IsRead = true
+				s.notifications[i].Read = true
 			}
 		}
 		return nil
@@ -1662,7 +1662,7 @@ func (s *testNotificationService) MarkRead(ctx context.Context, userID int64, id
 		}
 		for _, id := range ids {
 			if s.notifications[i].ID == id {
-				s.notifications[i].IsRead = true
+				s.notifications[i].Read = true
 				break
 			}
 		}
@@ -1760,20 +1760,20 @@ func TestListNotifications_Empty(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(list.Items) != 0 {
-		t.Errorf("expected 0 items, got %d", len(list.Items))
+	if len(list.Notifications) != 0 {
+		t.Errorf("expected 0 items, got %d", len(list.Notifications))
 	}
-	if list.UnreadCount != 0 {
-		t.Errorf("expected 0 unread, got %d", list.UnreadCount)
+	if list.TotalUnread != 0 {
+		t.Errorf("expected 0 unread, got %d", list.TotalUnread)
 	}
 }
 
 func TestListNotifications_WithData(t *testing.T) {
 	svc := newTestNotificationService()
-	entityID := int64(42)
-	svc.Create(context.Background(), 1, "chain", "Title 1", "Text 1", "/chains/1", &entityID)
-	svc.Create(context.Background(), 1, "message", "Title 2", "Text 2", "/chat/1", &entityID)
-	svc.Create(context.Background(), 2, "chain", "Other user", "Other", "/chains/2", nil)
+	chainID := int64(42)
+	svc.Create(context.Background(), 1, "CHAIN", "Title 1", "Text 1", &chainID, nil)
+	svc.Create(context.Background(), 1, "MESSAGE", "Title 2", "Text 2", &chainID, nil)
+	svc.Create(context.Background(), 2, "CHAIN", "Other user", "Other", &chainID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1792,19 +1792,19 @@ func TestListNotifications_WithData(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(list.Items) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(list.Items))
+	if len(list.Notifications) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(list.Notifications))
 	}
-	if list.UnreadCount != 2 {
-		t.Errorf("expected 2 unread, got %d", list.UnreadCount)
+	if list.TotalUnread != 2 {
+		t.Errorf("expected 2 unread, got %d", list.TotalUnread)
 	}
 }
 
 func TestMarkNotificationsRead_MarkAll(t *testing.T) {
 	svc := newTestNotificationService()
-	eID := int64(1)
-	svc.Create(context.Background(), 1, "chain", "T1", "Text", "/c/1", &eID)
-	svc.Create(context.Background(), 1, "chain", "T2", "Text", "/c/2", &eID)
+	cID := int64(1)
+	svc.Create(context.Background(), 1, "CHAIN", "T1", "Text", &cID, nil)
+	svc.Create(context.Background(), 1, "CHAIN", "T2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1820,16 +1820,16 @@ func TestMarkNotificationsRead_MarkAll(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if list.UnreadCount != 0 {
-		t.Errorf("expected 0 unread after mark all, got %d", list.UnreadCount)
+	if list.TotalUnread != 0 {
+		t.Errorf("expected 0 unread after mark all, got %d", list.TotalUnread)
 	}
 }
 
 func TestMarkNotificationsRead_MarkSelected(t *testing.T) {
 	svc := newTestNotificationService()
-	eID := int64(1)
-	n1, _ := svc.Create(context.Background(), 1, "chain", "T1", "Text", "/c/1", &eID)
-	n2, _ := svc.Create(context.Background(), 1, "chain", "T2", "Text", "/c/2", &eID)
+	cID := int64(1)
+	n1, _ := svc.Create(context.Background(), 1, "CHAIN", "T1", "Text", &cID, nil)
+	n2, _ := svc.Create(context.Background(), 1, "CHAIN", "T2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1848,17 +1848,17 @@ func TestMarkNotificationsRead_MarkSelected(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if list.UnreadCount != 1 {
-		t.Errorf("expected 1 unread after marking one, got %d", list.UnreadCount)
+	if list.TotalUnread != 1 {
+		t.Errorf("expected 1 unread after marking one, got %d", list.TotalUnread)
 	}
 }
 
 func TestListNotifications_CursorPagination(t *testing.T) {
 	svc := newTestNotificationService()
-	eID := int64(1)
+	cID := int64(1)
 	for i := 0; i < 5; i++ {
-		svc.Create(context.Background(), 1, "chain",
-			fmt.Sprintf("T%d", i), "Text", "/c/1", &eID)
+		svc.Create(context.Background(), 1, "CHAIN",
+			fmt.Sprintf("T%d", i), "Text", &cID, nil)
 	}
 
 	server := newTestServerWithNotifications(t, svc)
@@ -1876,8 +1876,8 @@ func TestListNotifications_CursorPagination(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&page1); err != nil {
 		t.Fatalf("decode page1: %v", err)
 	}
-	if len(page1.Items) != 3 {
-		t.Fatalf("expected 3 items on page 1, got %d", len(page1.Items))
+	if len(page1.Notifications) != 3 {
+		t.Fatalf("expected 3 items on page 1, got %d", len(page1.Notifications))
 	}
 	if page1.NextCursor == nil {
 		t.Fatal("expected nextCursor on page 1")
@@ -1893,8 +1893,8 @@ func TestListNotifications_CursorPagination(t *testing.T) {
 	if err := json.NewDecoder(resp2.Body).Decode(&page2); err != nil {
 		t.Fatalf("decode page2: %v", err)
 	}
-	if len(page2.Items) != 2 {
-		t.Fatalf("expected 2 items on page 2, got %d", len(page2.Items))
+	if len(page2.Notifications) != 2 {
+		t.Fatalf("expected 2 items on page 2, got %d", len(page2.Notifications))
 	}
 	if page2.NextCursor != nil {
 		t.Errorf("expected nil nextCursor on last page, got %s", *page2.NextCursor)
@@ -1919,9 +1919,9 @@ func TestListNotifications_InvalidCursor(t *testing.T) {
 
 func TestNotifications_CrossUserIsolation(t *testing.T) {
 	svc := newTestNotificationService()
-	eID := int64(1)
-	svc.Create(context.Background(), 1, "chain", "User 1", "Text", "/c/1", &eID)
-	svc.Create(context.Background(), 2, "chain", "User 2", "Text", "/c/2", &eID)
+	cID := int64(1)
+	svc.Create(context.Background(), 1, "CHAIN", "User 1", "Text", &cID, nil)
+	svc.Create(context.Background(), 2, "CHAIN", "User 2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1937,10 +1937,10 @@ func TestNotifications_CrossUserIsolation(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(list.Items) != 1 {
-		t.Fatalf("user 1 should see 1 notification, got %d", len(list.Items))
+	if len(list.Notifications) != 1 {
+		t.Fatalf("user 1 should see 1 notification, got %d", len(list.Notifications))
 	}
-	if list.Items[0].Title != "User 1" {
+	if list.Notifications[0].Title != "User 1" {
 		t.Errorf("user 1 should see their own notification")
 	}
 }

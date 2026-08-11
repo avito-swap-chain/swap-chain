@@ -13,6 +13,8 @@ type Repository interface {
 	ConfirmReceipt(ctx context.Context, actorID, chainID int64) (model.Receipt, error)
 }
 
+type OnDeliveryTransition func(ctx context.Context, delivery model.Delivery)
+
 type Service interface {
 	ListDeliveries(ctx context.Context, actorID int64, status string, afterID int64, limit int) ([]model.Delivery, *int64, error)
 	TransitionDelivery(ctx context.Context, actorID, deliveryID int64, targetStatus string) (model.Delivery, error)
@@ -21,6 +23,7 @@ type Service interface {
 
 type Admin struct {
 	repository Repository
+	onDelivery OnDeliveryTransition
 }
 
 func New(repository Repository) (*Admin, error) {
@@ -28,6 +31,13 @@ func New(repository Repository) (*Admin, error) {
 		return nil, fmt.Errorf("admin init: repository is required")
 	}
 	return &Admin{repository: repository}, nil
+}
+
+func NewWithCallback(repository Repository, onDelivery OnDeliveryTransition) (*Admin, error) {
+	if repository == nil {
+		return nil, fmt.Errorf("admin init: repository is required")
+	}
+	return &Admin{repository: repository, onDelivery: onDelivery}, nil
 }
 
 func (s *Admin) ListDeliveries(ctx context.Context, actorID int64, status string, afterID int64, limit int) ([]model.Delivery, *int64, error) {
@@ -67,5 +77,12 @@ func (s *Admin) TransitionDelivery(ctx context.Context, actorID, deliveryID int6
 	if err := model.ValidateTargetStatus(targetStatus); err != nil {
 		return model.Delivery{}, err
 	}
-	return s.repository.TransitionDelivery(ctx, actorID, deliveryID, targetStatus)
+	delivery, err := s.repository.TransitionDelivery(ctx, actorID, deliveryID, targetStatus)
+	if err != nil {
+		return delivery, err
+	}
+	if s.onDelivery != nil {
+		s.onDelivery(ctx, delivery)
+	}
+	return delivery, nil
 }

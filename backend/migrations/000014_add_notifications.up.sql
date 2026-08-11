@@ -5,10 +5,10 @@ CREATE TABLE notifications (
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     kind TEXT NOT NULL,
     title TEXT NOT NULL,
-    text TEXT NOT NULL DEFAULT '',
-    target_url TEXT NOT NULL DEFAULT '',
-    entity_id BIGINT,
-    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    text TEXT NOT NULL,
+    chain_id BIGINT,
+    item_id BIGINT,
+    read BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -17,6 +17,6 @@ CREATE INDEX notifications_user_created_idx
 
 CREATE INDEX notifications_user_unread_idx
     ON notifications (user_id, created_at DESC)
-    WHERE NOT is_read;
+    WHERE NOT read;
 
 COMMIT;

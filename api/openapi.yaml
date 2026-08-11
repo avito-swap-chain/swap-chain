@@ -1739,11 +1739,11 @@ components:
 
     NotificationKind:
       type: string
-      enum: [chain, message, offer]
+      enum: [CHAIN, OFFER, MESSAGE, DELIVERY]
 
     AppNotification:
       type: object
-      required: [id, kind, title, text, targetUrl, isRead, createdAt]
+      required: [id, kind, title, text, createdAt, read]
       properties:
         id:
           type: integer
@@ -1754,30 +1754,32 @@ components:
           type: string
         text:
           type: string
-        targetUrl:
-          type: string
-        entityId:
+        chainId:
           type: integer
           format: int64
           nullable: true
-        isRead:
-          type: boolean
+        itemId:
+          type: integer
+          format: int64
+          nullable: true
         createdAt:
           type: string
           format: date-time
+        read:
+          type: boolean
 
     NotificationList:
       type: object
-      required: [items, unreadCount]
+      required: [notifications, totalUnread]
       properties:
-        items:
+        notifications:
           type: array
           items:
             $ref: "#/components/schemas/AppNotification"
         nextCursor:
           type: string
           nullable: true
-        unreadCount:
+        totalUnread:
           type: integer
           format: int64
           minimum: 0
@@ -1791,7 +1793,6 @@ components:
             type: integer
             format: int64
             minimum: 1
-          description: Empty or absent means mark all as read
 
     PipelineEvent:
       type: object

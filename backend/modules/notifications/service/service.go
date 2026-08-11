@@ -10,10 +10,11 @@ type Repository interface {
 	Create(ctx context.Context, notification model.Notification) (model.Notification, error)
 	List(ctx context.Context, userID int64, cursor int64, limit int) (model.ListResult, error)
 	MarkRead(ctx context.Context, userID int64, ids []int64) error
+	CountUnread(ctx context.Context, userID int64) (int64, error)
 }
 
 type Service interface {
-	Create(ctx context.Context, userID int64, kind, title, text, targetURL string, entityID *int64) (model.Notification, error)
+	Create(ctx context.Context, userID int64, kind, title, text string, chainID, itemID *int64) (model.Notification, error)
 	List(ctx context.Context, userID int64, cursor int64, limit int) (model.ListResult, error)
 	MarkRead(ctx context.Context, userID int64, ids []int64) error
 }
@@ -29,24 +30,27 @@ func New(repo Repository) (*NotificationService, error) {
 	return &NotificationService{repo: repo}, nil
 }
 
-func (s *NotificationService) Create(ctx context.Context, userID int64, kind, title, text, targetURL string, entityID *int64) (model.Notification, error) {
+func (s *NotificationService) Create(ctx context.Context, userID int64, kind, title, text string, chainID, itemID *int64) (model.Notification, error) {
 	if userID <= 0 {
 		return model.Notification{}, &model.ValidationError{Field: "userId", Message: "must be positive"}
 	}
-	if kind != model.KindChain && kind != model.KindMessage && kind != model.KindOffer {
-		return model.Notification{}, &model.ValidationError{Field: "kind", Message: "must be chain, message, or offer"}
+	if !model.ValidKinds()[kind] {
+		return model.Notification{}, &model.ValidationError{Field: "kind", Message: "must be CHAIN, OFFER, MESSAGE, or DELIVERY"}
 	}
 	if title == "" {
 		return model.Notification{}, &model.ValidationError{Field: "title", Message: "must not be empty"}
 	}
+	if text == "" {
+		return model.Notification{}, &model.ValidationError{Field: "text", Message: "must not be empty"}
+	}
 
 	return s.repo.Create(ctx, model.Notification{
-		UserID:    userID,
-		Kind:      kind,
-		Title:     title,
-		Text:      text,
-		TargetURL: targetURL,
-		EntityID:  entityID,
+		UserID:  userID,
+		Kind:    kind,
+		Title:   title,
+		Text:    text,
+		ChainID: chainID,
+		ItemID:  itemID,
 	})
 }
 

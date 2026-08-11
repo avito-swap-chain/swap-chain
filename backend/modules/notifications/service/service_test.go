@@ -27,6 +27,10 @@ func (m *mockRepository) MarkRead(ctx context.Context, userID int64, ids []int64
 	return m.markReadFunc(ctx, userID, ids)
 }
 
+func (m *mockRepository) CountUnread(ctx context.Context, userID int64) (int64, error) {
+	return 0, nil
+}
+
 func TestCreate_ValidatesRequiredFields(t *testing.T) {
 	repo := &mockRepository{}
 	svc, err := service.New(repo)
@@ -41,16 +45,18 @@ func TestCreate_ValidatesRequiredFields(t *testing.T) {
 		userID  int64
 		kind    string
 		title   string
+		text    string
 		wantErr string
 	}{
-		{name: "negative userID", userID: 0, kind: "chain", title: "Test", wantErr: "must be positive"},
-		{name: "invalid kind", userID: 1, kind: "invalid", title: "Test", wantErr: "must be chain, message, or offer"},
-		{name: "empty title", userID: 1, kind: "chain", title: "", wantErr: "must not be empty"},
+		{name: "negative userID", userID: 0, kind: "CHAIN", title: "Test", text: "Body", wantErr: "must be positive"},
+		{name: "invalid kind", userID: 1, kind: "invalid", title: "Test", text: "Body", wantErr: "must be CHAIN, OFFER, MESSAGE, or DELIVERY"},
+		{name: "empty title", userID: 1, kind: "CHAIN", title: "", text: "Body", wantErr: "must not be empty"},
+		{name: "empty text", userID: 1, kind: "CHAIN", title: "Test", text: "", wantErr: "must not be empty"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := svc.Create(ctx, tt.userID, tt.kind, tt.title, "", "", nil)
+			_, err := svc.Create(ctx, tt.userID, tt.kind, tt.title, tt.text, nil, nil)
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -66,6 +72,8 @@ func TestCreate_Success(t *testing.T) {
 	repo := &mockRepository{
 		createFunc: func(ctx context.Context, n model.Notification) (model.Notification, error) {
 			n.ID = 1
+			n.Kind = "CHAIN"
+			n.Read = false
 			return n, nil
 		},
 	}
@@ -74,16 +82,49 @@ func TestCreate_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	entityID := int64(42)
-	result, err := svc.Create(context.Background(), 1, "chain", "Title", "Text", "/chains/1", &entityID)
+	chainID := int64(42)
+	result, err := svc.Create(context.Background(), 1, "CHAIN", "Title", "Text", &chainID, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.ID != 1 {
 		t.Errorf("expected ID 1, got %d", result.ID)
 	}
-	if result.Kind != "chain" {
-		t.Errorf("expected kind chain, got %s", result.Kind)
+	if result.Kind != "CHAIN" {
+		t.Errorf("expected kind CHAIN, got %s", result.Kind)
+	}
+	if result.Read {
+		t.Error("expected read=false")
+	}
+	if result.ChainID == nil || *result.ChainID != 42 {
+		t.Errorf("expected chainId=42, got %v", result.ChainID)
+	}
+}
+
+func TestCreate_UpperCaseKindsOnly(t *testing.T) {
+	repo := &mockRepository{
+		createFunc: func(ctx context.Context, n model.Notification) (model.Notification, error) {
+			n.ID = 1
+			return n, nil
+		},
+	}
+	svc, err := service.New(repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, kind := range []string{"CHAIN", "OFFER", "MESSAGE", "DELIVERY"} {
+		t.Run(kind, func(t *testing.T) {
+			_, err := svc.Create(context.Background(), 1, kind, "T", "B", nil, nil)
+			if err != nil {
+				t.Errorf("kind %s should be valid, got: %v", kind, err)
+			}
+		})
+	}
+
+	_, err = svc.Create(context.Background(), 1, "chain", "T", "B", nil, nil)
+	if err == nil {
+		t.Error("lowercase 'chain' should be invalid")
 	}
 }
 
@@ -114,6 +155,41 @@ func TestList_Validation(t *testing.T) {
 	_, err = svc.List(ctx, 1, 0, 200)
 	if err == nil {
 		t.Fatal("expected error for limit > 100")
+	}
+}
+
+func TestList_ReturnsCorrectFieldNames(t *testing.T) {
+	repo := &mockRepository{
+		listFunc: func(ctx context.Context, userID int64, cursor int64, limit int) (model.ListResult, error) {
+			return model.ListResult{
+				Notifications: []model.Notification{
+					{ID: 1, Kind: "CHAIN", Title: "T", Text: "B"},
+				},
+				TotalUnread: 1,
+				NextCursor:  nil,
+			}, nil
+		},
+	}
+	svc, err := service.New(repo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result, err := svc.List(context.Background(), 1, 0, 20)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Notifications) != 1 {
+		t.Errorf("expected 1 notification, got %d", len(result.Notifications))
+	}
+	if result.TotalUnread != 1 {
+		t.Errorf("expected totalUnread=1, got %d", result.TotalUnread)
+	}
+	if result.Notifications[0].ID != 1 {
+		t.Errorf("expected notification id=1, got %d", result.Notifications[0].ID)
+	}
+	if result.Notifications[0].Kind != "CHAIN" {
+		t.Errorf("expected kind=CHAIN, got %s", result.Notifications[0].Kind)
 	}
 }
 

@@ -1078,11 +1078,11 @@ func (h *Handler) ListNotifications(ctx context.Context, request api.ListNotific
 	}
 
 	response := api.NotificationList{
-		Items:       make([]api.AppNotification, 0, len(result.Items)),
-		UnreadCount: result.UnreadCount,
+		Notifications: make([]api.AppNotification, 0, len(result.Notifications)),
+		TotalUnread:   result.TotalUnread,
 	}
-	for _, n := range result.Items {
-		response.Items = append(response.Items, notificationModel(n))
+	for _, n := range result.Notifications {
+		response.Notifications = append(response.Notifications, notificationModel(n))
 	}
 	if result.NextCursor != nil {
 		c := strconv.FormatInt(*result.NextCursor, 10)
@@ -1128,11 +1128,11 @@ func (h *Handler) MarkNotificationsRead(ctx context.Context, request api.MarkNot
 	}
 
 	response := api.NotificationList{
-		Items:       make([]api.AppNotification, 0, len(result.Items)),
-		UnreadCount: result.UnreadCount,
+		Notifications: make([]api.AppNotification, 0, len(result.Notifications)),
+		TotalUnread:   result.TotalUnread,
 	}
-	for _, n := range result.Items {
-		response.Items = append(response.Items, notificationModel(n))
+	for _, n := range result.Notifications {
+		response.Notifications = append(response.Notifications, notificationModel(n))
 	}
 	if result.NextCursor != nil {
 		c := strconv.FormatInt(*result.NextCursor, 10)
@@ -1163,20 +1163,21 @@ func (h *Handler) SubscribeEvents(ctx context.Context, _ api.SubscribeEventsRequ
 }
 
 func notificationModel(n notificationmodel.Notification) api.AppNotification {
-	var entityID *int64
-	if n.EntityID != nil {
-		entityID = n.EntityID
-	}
-	return api.AppNotification{
+	model := api.AppNotification{
 		Id:        n.ID,
 		Kind:      api.NotificationKind(n.Kind),
 		Title:     n.Title,
 		Text:      n.Text,
-		TargetUrl: n.TargetURL,
-		EntityId:  entityID,
-		IsRead:    n.IsRead,
 		CreatedAt: n.CreatedAt,
+		Read:      n.Read,
 	}
+	if n.ChainID != nil {
+		model.ChainId = n.ChainID
+	}
+	if n.ItemID != nil {
+		model.ItemId = n.ItemID
+	}
+	return model
 }
 
 func itemModel(item items.Item) api.Item {

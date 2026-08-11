@@ -23,6 +23,7 @@ import (
 	"swap-chain/internal/media"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
+	adminmodel "swap-chain/modules/admin/model"
 	adminrepository "swap-chain/modules/admin/repository"
 	adminservice "swap-chain/modules/admin/service"
 	"swap-chain/modules/analyze/adapters"
@@ -252,7 +253,14 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create admin repository: %w", err)
 	}
-	adminModule, err := adminservice.New(adminRepo)
+	adminModule, err := adminservice.NewWithCallback(adminRepo, func(ctx context.Context, delivery adminmodel.Delivery) {
+		switch delivery.Status {
+		case adminmodel.DeliveryAtPVZ:
+			notificationProducer.NotifyDeliveryAtPVZ(ctx, delivery.RecipientID, delivery.ItemTitle, delivery.ItemID)
+		case adminmodel.DeliveryInTransit:
+			notificationProducer.NotifyDeliveryInTransit(ctx, delivery.RecipientID, delivery.ItemTitle, delivery.ItemID)
+		}
+	})
 	if err != nil {
 		return fmt.Errorf("create admin service: %w", err)
 	}
@@ -262,7 +270,7 @@ func run(logger *zap.Logger) error {
 	}
 	chatModule, err := chatservice.NewWithCallback(chatRepo, func(ctx context.Context, message chatmodel.Message) {
 		eventHub.PublishToUser(message.Recipient.ID, "chat.message.created", strconv.FormatInt(message.ChainID, 10), nil)
-		notificationProducer.NotifyChatMessage(ctx, message.Recipient.ID, message.Sender.Username, message.ChainID, message.Sender.ID)
+		notificationProducer.NotifyChatMessage(ctx, message.Recipient.ID, message.Sender.Username, message.ChainID)
 	})
 	if err != nil {
 		return fmt.Errorf("create chat service: %w", err)

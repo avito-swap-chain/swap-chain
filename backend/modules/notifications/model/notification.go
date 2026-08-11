@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	KindChain   = "chain"
-	KindMessage = "message"
-	KindOffer   = "offer"
+	KindChain    = "CHAIN"
+	KindOffer    = "OFFER"
+	KindMessage  = "MESSAGE"
+	KindDelivery = "DELIVERY"
 )
 
 const (
@@ -21,16 +22,16 @@ type Notification struct {
 	Kind      string
 	Title     string
 	Text      string
-	TargetURL string
-	EntityID  *int64
-	IsRead    bool
+	ChainID   *int64
+	ItemID    *int64
+	Read      bool
 	CreatedAt time.Time
 }
 
 type ListResult struct {
-	Items       []Notification
-	NextCursor  *int64
-	UnreadCount int64
+	Notifications []Notification
+	NextCursor    *int64
+	TotalUnread   int64
 }
 
 type ValidationError struct {
@@ -62,8 +63,9 @@ func ValidateListParams(cursor int64, limit int) error {
 
 func ValidKinds() map[string]bool {
 	return map[string]bool{
-		KindChain:   true,
-		KindMessage: true,
-		KindOffer:   true,
+		KindChain:    true,
+		KindMessage:  true,
+		KindOffer:    true,
+		KindDelivery: true,
 	}
 }

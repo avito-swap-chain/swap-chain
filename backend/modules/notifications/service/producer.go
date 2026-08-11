@@ -22,8 +22,8 @@ func NewProducer(service Service, logger *zap.Logger, sse SSEPublisher) *Produce
 	return &Producer{service: service, logger: logger, sse: sse}
 }
 
-func (p *Producer) notifyUser(ctx context.Context, userID int64, kind, title, text, targetURL string, entityID *int64) {
-	notification, err := p.service.Create(ctx, userID, kind, title, text, targetURL, entityID)
+func (p *Producer) notifyUser(ctx context.Context, userID int64, kind, title, text string, chainID, itemID *int64) {
+	notification, err := p.service.Create(ctx, userID, kind, title, text, chainID, itemID)
 	if err != nil {
 		p.logger.Error("create notification",
 			zap.Int64("user_id", userID),
@@ -34,82 +34,86 @@ func (p *Producer) notifyUser(ctx context.Context, userID int64, kind, title, te
 	}
 
 	if p.sse != nil {
-		data := map[string]any{
-			"id":       strconv.FormatInt(notification.ID, 10),
-			"kind":     notification.Kind,
-			"title":    notification.Title,
-			"text":     notification.Text,
-			"targetUrl": notification.TargetURL,
-			"isRead":   notification.IsRead,
-		}
-		if notification.EntityID != nil {
-			data["entityId"] = strconv.FormatInt(*notification.EntityID, 10)
-		}
-		p.sse(userID, "notification.created", strconv.FormatInt(notification.ID, 10), data)
+		p.sse(userID, "notification.created", strconv.FormatInt(notification.ID, 10), nil)
 	}
 }
 
 func (p *Producer) NotifyChainCreated(ctx context.Context, userIDs []int64, chainID int64) {
-	targetURL := fmt.Sprintf("/chains/%d", chainID)
-	eID := chainID
+	cID := chainID
 	for _, uid := range userIDs {
 		p.notifyUser(ctx, uid, model.KindChain,
 			"Новая цепочка обмена",
 			"Создано новое предложение обмена с вашим участием",
-			targetURL, &eID)
+			&cID, nil)
 	}
 }
 
 func (p *Producer) NotifyChainUpdated(ctx context.Context, userIDs []int64, chainID int64) {
-	targetURL := fmt.Sprintf("/chains/%d", chainID)
-	eID := chainID
+	cID := chainID
 	for _, uid := range userIDs {
 		p.notifyUser(ctx, uid, model.KindChain,
 			"Обновление цепочки обмена",
 			"Один из участников подтвердил участие в цепочке",
-			targetURL, &eID)
+			&cID, nil)
 	}
 }
 
 func (p *Producer) NotifyChainAccepted(ctx context.Context, userIDs []int64, chainID int64) {
-	targetURL := fmt.Sprintf("/chains/%d", chainID)
-	eID := chainID
+	cID := chainID
 	for _, uid := range userIDs {
 		p.notifyUser(ctx, uid, model.KindChain,
-			"Цепочка принята",
-			"Все участники подтвердили обмен. Вещи зарезервированы",
-			targetURL, &eID)
+			"Цепочка собралась",
+			"Цепочка собралась. Сдайте вещь в пункт выдачи",
+			&cID, nil)
 	}
 }
 
 func (p *Producer) NotifyChainRejected(ctx context.Context, userIDs []int64, chainID int64, reason string) {
-	targetURL := fmt.Sprintf("/chains/%d", chainID)
-	eID := chainID
-	var title, text string
-	switch reason {
-	case "declined":
-		title = "Цепочка отклонена"
-		text = "Один из участников отклонил предложение обмена"
-	case "expired":
-		title = "Цепочка истекла"
-		text = "Время на принятие решения истекло"
-	case "item_unavailable":
-		title = "Цепочка недоступна"
-		text = "Одна из вещей стала недоступна для обмена"
-	default:
-		title = "Цепочка отменена"
-		text = fmt.Sprintf("Цепочка обмена отменена: %s", reason)
+	cID := chainID
+	var text string
+	if reason != "" {
+		text = fmt.Sprintf("Вариант обмена отменён: %s", reason)
+	} else {
+		text = "Вариант обмена отменён"
 	}
 	for _, uid := range userIDs {
-		p.notifyUser(ctx, uid, model.KindChain, title, text, targetURL, &eID)
+		p.notifyUser(ctx, uid, model.KindChain,
+			"Вариант обмена отменён",
+			text,
+			&cID, nil)
 	}
 }
 
-func (p *Producer) NotifyChatMessage(ctx context.Context, recipientID int64, senderUsername string, chainID int64, counterpartID int64) {
-	targetURL := fmt.Sprintf("/chains/%d/chat/%d", chainID, counterpartID)
-	eID := chainID
+func (p *Producer) NotifyItemUnavailable(ctx context.Context, userIDs []int64, itemTitle string, itemID int64) {
+	iID := itemID
+	for _, uid := range userIDs {
+		p.notifyUser(ctx, uid, model.KindOffer,
+			"Вещь недоступна",
+			fmt.Sprintf("«%s» ушла в другую цепочку, остальные варианты в силе", itemTitle),
+			nil, &iID)
+	}
+}
+
+func (p *Producer) NotifyChatMessage(ctx context.Context, recipientID int64, senderUsername string, chainID int64) {
+	cID := chainID
 	p.notifyUser(ctx, recipientID, model.KindMessage,
 		fmt.Sprintf("Новое сообщение от %s", senderUsername),
-		fmt.Sprintf("У вас новое сообщение в чате от %s", senderUsername),
-		targetURL, &eID)
+		fmt.Sprintf("Новое сообщение от %s", senderUsername),
+		&cID, nil)
+}
+
+func (p *Producer) NotifyDeliveryAtPVZ(ctx context.Context, userID int64, itemTitle string, itemID int64) {
+	iID := itemID
+	p.notifyUser(ctx, userID, model.KindDelivery,
+		"Вещь в пункте выдачи",
+		fmt.Sprintf("Ваша вещь «%s» в пункте выдачи", itemTitle),
+		nil, &iID)
+}
+
+func (p *Producer) NotifyDeliveryInTransit(ctx context.Context, userID int64, itemTitle string, itemID int64) {
+	iID := itemID
+	p.notifyUser(ctx, userID, model.KindDelivery,
+		"Вещь едет получателю",
+		fmt.Sprintf("Вещь «%s» едет получателю", itemTitle),
+		nil, &iID)
 }
