@@ -33,6 +33,7 @@ type GigaChatConfig struct {
 	EmbeddingsModel string
 	CABundleFile    string
 	Timeout         time.Duration
+	OnCleanupError  func(error)
 }
 
 func DefaultGigaChatConfig(authKey string) GigaChatConfig {
@@ -239,6 +240,15 @@ func (g *GigaChat) AnalyzePhoto(ctx context.Context, photoBytes []byte, prompt s
 	if err != nil {
 		return "", err
 	}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if err := g.deleteFile(cleanupCtx, token, fileID); err != nil {
+			if g.cfg.OnCleanupError != nil {
+				g.cfg.OnCleanupError(fmt.Errorf("delete uploaded photo: %w", err))
+			}
+		}
+	}()
 
 	requestBody := map[string]interface{}{
 		"model": g.cfg.ChatModel,
@@ -286,8 +296,13 @@ func (g *GigaChat) uploadPhoto(ctx context.Context, token string, photoBytes []b
 	_ = writer.WriteField("purpose", "general")
 
 	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition", `form-data; name="file"; filename="image.jpg"`)
-	h.Set("Content-Type", http.DetectContentType(photoBytes))
+	contentType := http.DetectContentType(photoBytes)
+	filename := "image.jpg"
+	if contentType == "image/png" {
+		filename = "image.png"
+	}
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
+	h.Set("Content-Type", contentType)
 
 	part, err := writer.CreatePart(h)
 	if err != nil {
@@ -325,6 +340,27 @@ func (g *GigaChat) uploadPhoto(ctx context.Context, token string, photoBytes []b
 	}
 
 	return fileResp.ID, nil
+}
+
+func (g *GigaChat) deleteFile(ctx context.Context, token, fileID string) error {
+	endpoint := strings.TrimRight(g.cfg.FilesURL, "/") + "/" + url.PathEscape(fileID) + "/delete"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		respBytes, _ := io.ReadAll(resp.Body)
+		return &model.APIError{StatusCode: resp.StatusCode, Message: string(respBytes)}
+	}
+	return nil
 }
 
 func (g *GigaChat) doJSONRequest(ctx context.Context, url string, token string, reqBody interface{}, respBody interface{}) error {

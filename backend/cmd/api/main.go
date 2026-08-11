@@ -104,8 +104,13 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("create ollama client: %w", err)
 	}
 	var enricher adapters.Enricher = ollamaClient
+	var visionService httpapi.VisionService
 	if cfg.GigaChatAuthKey != "" {
-		gigaChatClient, err := adapters.NewGigaChat(adapters.DefaultGigaChatConfig(cfg.GigaChatAuthKey))
+		gigaChatConfig := adapters.DefaultGigaChatConfig(cfg.GigaChatAuthKey)
+		gigaChatConfig.OnCleanupError = func(err error) {
+			logger.Warn("failed to remove temporary GigaChat file", zap.Error(err))
+		}
+		gigaChatClient, err := adapters.NewGigaChat(gigaChatConfig)
 		if err != nil {
 			return fmt.Errorf("create gigachat client: %w", err)
 		}
@@ -115,6 +120,14 @@ func run(logger *zap.Logger) error {
 		if err != nil {
 			return fmt.Errorf("create LLM fallback client: %w", err)
 		}
+		vision, vsErr := analyzeservice.NewVision(gigaChatClient)
+		if vsErr != nil {
+			return fmt.Errorf("create vision service: %w", vsErr)
+		}
+		visionService = vision
+		logger.Info("vision photo recognition enabled")
+	} else {
+		logger.Info("vision photo recognition disabled (GIGACHAT_AUTH_KEY not set)")
 	}
 	vectorizer, err := analyzeservice.NewVectorizer(enricher, ollamaClient)
 	if err != nil {
@@ -230,6 +243,7 @@ func run(logger *zap.Logger) error {
 		userService,
 		adminModule,
 		chatModule,
+		visionService,
 		ollamaClient,
 		categoryBootstrap,
 	)

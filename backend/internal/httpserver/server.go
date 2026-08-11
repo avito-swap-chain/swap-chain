@@ -2,8 +2,10 @@ package httpserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
@@ -29,6 +31,17 @@ func New(logger *zap.Logger, handler api.StrictServerInterface, sessions *sessio
 	router.Use(sessions.Middleware)
 	router.Use(nethttpmiddleware.OapiRequestValidatorWithOptions(specification, &nethttpmiddleware.Options{
 		DoNotValidateServers: true,
+		Options: openapi3filter.Options{
+			AuthenticationFunc: func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+				if input.SecuritySchemeName != "cookieAuth" {
+					return errors.New("unsupported authentication scheme")
+				}
+				if _, ok := session.Current(ctx); !ok {
+					return errors.New("session is required")
+				}
+				return nil
+			},
+		},
 		Skipper: func(request *http.Request) bool {
 			return request.Method == http.MethodOptions
 		},

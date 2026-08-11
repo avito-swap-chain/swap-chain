@@ -46,18 +46,20 @@ type mediaService interface {
 
 // Handler connects generated HTTP operations to application services.
 type Handler struct {
-	database  databasePinger
-	finder    cycleFinder
-	logger    *zap.Logger
-	items     items.Service
-	media     mediaService
-	chains    chains.Service
-	events    *events.Hub
-	sessions  *session.Manager
-	users     users.Service
-	admin     adminservice.Service
-	chat      chatservice.Service
-	readiness []readinessChecker
+	database   databasePinger
+	finder     cycleFinder
+	logger     *zap.Logger
+	items      items.Service
+	media      mediaService
+	chains     chains.Service
+	events     *events.Hub
+	sessions   *session.Manager
+	users      users.Service
+	admin      adminservice.Service
+	chat       chatservice.Service
+	vision     VisionService
+	visionJobs chan struct{}
+	readiness  []readinessChecker
 }
 
 // NewHandler creates the integrated API handler.
@@ -73,9 +75,10 @@ func NewHandler(
 	userService users.Service,
 	adminService adminservice.Service,
 	chatService chatservice.Service,
+	visionService VisionService,
 	readiness ...readinessChecker,
 ) *Handler {
-	return &Handler{
+	handler := &Handler{
 		database:  database,
 		finder:    finder,
 		logger:    logger,
@@ -87,8 +90,13 @@ func NewHandler(
 		users:     userService,
 		admin:     adminService,
 		chat:      chatService,
+		vision:    visionService,
 		readiness: readiness,
 	}
+	if visionService != nil {
+		handler.visionJobs = make(chan struct{}, maxPendingVisionJobs)
+	}
+	return handler
 }
 
 // UploadMedia stores one image for the current session user.

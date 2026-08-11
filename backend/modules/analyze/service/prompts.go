@@ -26,24 +26,33 @@ func BuildEnrichmentPrompt(input string) string {
 }
 
 const VisionAnalysisPrompt = `You are an expert appraiser and e-commerce copywriter.
-Analyze the provided image of an item and return a JSON object with three fields. 
+Analyze the provided image of an item and return a JSON object with four fields.
 The fields MUST be exactly as follows and output must be in Russian:
 
 1. "marketplace_description": A professional, selling description of the item as it would appear on a marketplace like Avito. Do not write "I see a..." or "This is a picture of...". Write it directly as a product listing. 
    IMPORTANT: If you cannot confidently determine the EXACT model, use a completely generic name describing what the object is (e.g., "Смартфон", "Ноутбук", "Кроссовки"). DO NOT guess or hallucinate specific brands or models if visual evidence is insufficient.
-2. "visual_quality": The physical state of the item. You MUST choose exactly ONE of the following 5 values:
+2. "suggested_category": The most appropriate marketplace category for this item. You MUST choose exactly ONE from the following list:
+   - "Электроника" (Electronics: phones, computers, cameras, consoles, monitors, etc.)
+   - "Аудио" (Audio: headphones, speakers, music equipment)
+   - "Спорт и отдых" (Sports & recreation: bikes, fitness equipment, outdoor gear)
+   - "Транспорт" (Transport: scooters, vehicles, vehicle parts)
+   - "Одежда и обувь" (Clothing & shoes)
+   - "Дом и дача" (Home & garden: furniture, appliances, tools)
+   - "Хобби и творчество" (Hobbies: musical instruments, art supplies, collectibles)
+3. "visual_quality": The physical state of the item. You MUST choose exactly ONE of the following 5 values:
    - "NEW" (Brand new, in box, with tags)
    - "EXCELLENT" (Looks almost new, no visible scratches or wear)
    - "GOOD" (Used but well maintained, minor signs of wear)
    - "FAIR" (Noticeable wear, scratches, or cosmetic defects, but fully functional)
    - "POOR" (Broken, heavily damaged, or for parts)
-3. "quality_score": A float between 0.0 and 1.0 representing the physical condition of the item. 1.0 means perfectly new, flawless. 0.0 means completely destroyed or garbage. 0.8 means minor wear, etc.
+4. "quality_score": A float between 0.0 and 1.0 representing the physical condition of the item. 1.0 means perfectly new, flawless. 0.0 means completely destroyed or garbage. 0.8 means minor wear, etc.
 
 Respond ONLY with a valid JSON object matching this schema. Do not include markdown formatting or extra text.
 
 Schema:
 {
   "marketplace_description": "string",
+  "suggested_category": "string", // STRICTLY one of the listed categories above
   "visual_quality": "string", // STRICTLY one of: "NEW", "EXCELLENT", "GOOD", "FAIR", "POOR"
   "quality_score": 0.0 // Float from 0.0 to 1.0
 }`

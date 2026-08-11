@@ -192,7 +192,7 @@ func (s visionStub) AnalyzePhoto(context.Context, []byte, string) (string, error
 }
 
 func TestVisionValidatesModelResponse(t *testing.T) {
-	vision, err := NewVision(visionStub{response: `{"marketplace_description":"Новый велосипед","visual_quality":"NEW","quality_score":0.9}`})
+	vision, err := NewVision(visionStub{response: `{"marketplace_description":"Новый велосипед","suggested_category":"Спорт и отдых","visual_quality":"NEW","quality_score":0.9}`})
 	if err != nil {
 		t.Fatalf("NewVision() error = %v", err)
 	}
@@ -206,12 +206,37 @@ func TestVisionValidatesModelResponse(t *testing.T) {
 }
 
 func TestVisionRejectsOutOfRangeScore(t *testing.T) {
-	vision, err := NewVision(visionStub{response: `{"marketplace_description":"Вещь","visual_quality":"GOOD","quality_score":1.5}`})
+	vision, err := NewVision(visionStub{response: `{"marketplace_description":"Вещь","suggested_category":"Дом и дача","visual_quality":"GOOD","quality_score":1.5}`})
 	if err != nil {
 		t.Fatalf("NewVision() error = %v", err)
 	}
 	if _, err := vision.DescribeImage(context.Background(), []byte("image")); err == nil {
 		t.Fatal("DescribeImage() error = nil, want range error")
+	}
+}
+
+func TestVisionRejectsIncompleteOrUnexpectedResponse(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+	}{
+		{name: "empty description", response: `{"marketplace_description":"","suggested_category":"Электроника","visual_quality":"GOOD","quality_score":0.8}`},
+		{name: "missing score", response: `{"marketplace_description":"Телефон","suggested_category":"Электроника","visual_quality":"GOOD"}`},
+		{name: "unknown category", response: `{"marketplace_description":"Телефон","suggested_category":"Другое","visual_quality":"GOOD","quality_score":0.8}`},
+		{name: "unknown field", response: `{"marketplace_description":"Телефон","suggested_category":"Электроника","visual_quality":"GOOD","quality_score":0.8,"brand":"unknown"}`},
+		{name: "trailing json", response: `{"marketplace_description":"Телефон","suggested_category":"Электроника","visual_quality":"GOOD","quality_score":0.8}{}`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			vision, err := NewVision(visionStub{response: test.response})
+			if err != nil {
+				t.Fatalf("NewVision() error = %v", err)
+			}
+			if _, err := vision.DescribeImage(context.Background(), []byte("image")); err == nil {
+				t.Fatal("DescribeImage() error = nil, want validation error")
+			}
+		})
 	}
 }
 

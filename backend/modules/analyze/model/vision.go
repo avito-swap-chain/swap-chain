@@ -23,6 +23,7 @@ func ParseQuality(s string) (Quality, error) {
 
 type VisualAnalysis struct {
 	MarketplaceDescription string
+	SuggestedCategory      string
 	VisualQuality          Quality
 	QualityScore           float64
 }

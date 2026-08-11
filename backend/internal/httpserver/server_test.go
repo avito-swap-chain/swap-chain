@@ -29,6 +29,7 @@ import (
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
 	adminmodel "swap-chain/modules/admin/model"
+	analyzemodel "swap-chain/modules/analyze/model"
 	chatmodel "swap-chain/modules/chat/model"
 	"swap-chain/modules/matching/model"
 )
@@ -99,6 +100,7 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		users.NewMemoryService(testUser(1)),
 		&testAdminService{},
 		newTestChatService(),
+		nil,
 		testReadiness{err: errors.New("ollama model is missing")},
 	)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
@@ -747,6 +749,122 @@ func TestMediaUploadRejectsUnsupportedAndOversizedFiles(t *testing.T) {
 	}
 }
 
+func TestVisionAnalysisDeliversTargetedSSE(t *testing.T) {
+	vision := &testVisionService{result: &analyzemodel.VisualAnalysis{
+		MarketplaceDescription: "Горный велосипед в хорошем состоянии",
+		SuggestedCategory:      "Спорт и отдых",
+		VisualQuality:          analyzemodel.Good,
+		QualityScore:           0.8,
+	}}
+	server := newTestServerWithVision(t, vision)
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+
+	eventsResponse, scanner := subscribe(t, client, server.URL)
+	defer closeBody(t, eventsResponse.Body)
+	waitForEvent(t, scanner, "stream.connected", time.Second)
+
+	image := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52}
+	uploaded := postMultipart(t, client, server.URL+"/api/v1/media", "bike.png", image) //nolint:bodyclose // Closed below.
+	var mediaResult api.MediaUpload
+	if err := json.NewDecoder(uploaded.Body).Decode(&mediaResult); err != nil {
+		closeBody(t, uploaded.Body)
+		t.Fatalf("decode upload response: %v", err)
+	}
+	closeBody(t, uploaded.Body)
+
+	accepted := postJSON(t, client, server.URL+"/api/v1/vision/analyze", fmt.Sprintf(`{"imageUrl":%q}`, mediaResult.Url))
+	defer closeBody(t, accepted.Body)
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("analyze status = %d, want %d; body=%s", accepted.StatusCode, http.StatusAccepted, readBody(t, accepted.Body))
+	}
+	waitForEvent(t, scanner, "vision.analysis.completed", time.Second)
+}
+
+func TestVisionAnalysisHTTPFailures(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+
+	unauthorized := postJSON(t, http.DefaultClient, server.URL+"/api/v1/vision/analyze", `{"imageUrl":"/api/v1/media/00000000-0000-0000-0000-000000000000.jpg"}`)
+	defer closeBody(t, unauthorized.Body)
+	if unauthorized.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d", unauthorized.StatusCode)
+	}
+
+	unavailable := postJSON(t, client, server.URL+"/api/v1/vision/analyze", `{"imageUrl":"/api/v1/media/00000000-0000-0000-0000-000000000000.jpg"}`)
+	defer closeBody(t, unavailable.Body)
+	if unavailable.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("unavailable status = %d", unavailable.StatusCode)
+	}
+
+	visionServer := newTestServerWithVision(t, &testVisionService{result: &analyzemodel.VisualAnalysis{}})
+	defer visionServer.Close()
+	visionClient := newSessionClient(t, visionServer.URL, 1)
+	notFound := postJSON(t, visionClient, visionServer.URL+"/api/v1/vision/analyze", `{"imageUrl":"/api/v1/media/00000000-0000-0000-0000-000000000000.jpg"}`)
+	defer closeBody(t, notFound.Body)
+	if notFound.StatusCode != http.StatusNotFound {
+		t.Fatalf("not found status = %d, want %d", notFound.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestVisionAnalysisRejectsWebP(t *testing.T) {
+	server := newTestServerWithVision(t, &testVisionService{result: &analyzemodel.VisualAnalysis{}})
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+	webp := []byte{'R', 'I', 'F', 'F', 0x0c, 0, 0, 0, 'W', 'E', 'B', 'P', 'V', 'P', '8', ' ', 0, 0, 0, 0}
+	uploaded := postMultipart(t, client, server.URL+"/api/v1/media", "image.webp", webp)
+	if uploaded.StatusCode != http.StatusCreated {
+		defer closeBody(t, uploaded.Body)
+		t.Fatalf("upload webp status = %d; body=%s", uploaded.StatusCode, readBody(t, uploaded.Body))
+	}
+	var mediaResult api.MediaUpload
+	if err := json.NewDecoder(uploaded.Body).Decode(&mediaResult); err != nil {
+		closeBody(t, uploaded.Body)
+		t.Fatalf("decode upload response: %v", err)
+	}
+	closeBody(t, uploaded.Body)
+
+	response := postJSON(t, client, server.URL+"/api/v1/vision/analyze", fmt.Sprintf(`{"imageUrl":%q}`, mediaResult.Url))
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("webp status = %d, want %d; body=%s", response.StatusCode, http.StatusUnsupportedMediaType, readBody(t, response.Body))
+	}
+}
+
+func TestVisionAnalysisQueueIsBounded(t *testing.T) {
+	release := make(chan struct{})
+	vision := &testVisionService{wait: release, result: &analyzemodel.VisualAnalysis{}}
+	server := newTestServerWithVision(t, vision)
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+	image := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52}
+	uploaded := postMultipart(t, client, server.URL+"/api/v1/media", "image.png", image) //nolint:bodyclose // Closed below.
+	var mediaResult api.MediaUpload
+	if err := json.NewDecoder(uploaded.Body).Decode(&mediaResult); err != nil {
+		closeBody(t, uploaded.Body)
+		t.Fatalf("decode upload response: %v", err)
+	}
+	closeBody(t, uploaded.Body)
+	payload := fmt.Sprintf(`{"imageUrl":%q}`, mediaResult.Url)
+
+	for i := 0; i < 4; i++ {
+		response := postJSON(t, client, server.URL+"/api/v1/vision/analyze", payload) //nolint:bodyclose // Closed on every branch below.
+		if response.StatusCode != http.StatusAccepted {
+			closeBody(t, response.Body)
+			close(release)
+			t.Fatalf("request %d status = %d, want %d", i, response.StatusCode, http.StatusAccepted)
+		}
+		closeBody(t, response.Body)
+	}
+	overflow := postJSON(t, client, server.URL+"/api/v1/vision/analyze", payload)
+	defer closeBody(t, overflow.Body)
+	close(release)
+	if overflow.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("overflow status = %d, want %d", overflow.StatusCode, http.StatusTooManyRequests)
+	}
+}
+
 func newTestServer(t *testing.T) *httptest.Server {
 	return newTestServerWithChainService(t, &testChainService{chain: testChain()})
 }
@@ -764,6 +882,14 @@ func newTestServerWithMedia(t *testing.T, mediaService *media.Service) *httptest
 }
 
 func newTestServerWithAllServices(t *testing.T, chainService chains.Service, itemService items.Service, mediaService *media.Service) *httptest.Server {
+	return newTestServerWithAllServicesAndVision(t, chainService, itemService, mediaService, nil)
+}
+
+func newTestServerWithVision(t *testing.T, vision httpapi.VisionService) *httptest.Server {
+	return newTestServerWithAllServicesAndVision(t, &testChainService{chain: testChain()}, nil, media.NewService(newTestMediaStorage(), 10<<20), vision)
+}
+
+func newTestServerWithAllServicesAndVision(t *testing.T, chainService chains.Service, itemService items.Service, mediaService *media.Service, vision httpapi.VisionService) *httptest.Server {
 	t.Helper()
 	logger := zap.NewNop()
 	eventHub := events.NewHub()
@@ -778,12 +904,29 @@ func newTestServerWithAllServices(t *testing.T, chainService chains.Service, ite
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, eventHub, sessions, userService, &testAdminService{}, newTestChatService())
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), vision)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
 	}
 	return httptest.NewServer(router)
+}
+
+type testVisionService struct {
+	result *analyzemodel.VisualAnalysis
+	err    error
+	wait   <-chan struct{}
+}
+
+func (s *testVisionService) DescribeImage(ctx context.Context, _ []byte) (*analyzemodel.VisualAnalysis, error) {
+	if s.wait != nil {
+		select {
+		case <-s.wait:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return s.result, s.err
 }
 
 func postMultipart(t *testing.T, client *http.Client, url, filename string, data []byte) *http.Response {
