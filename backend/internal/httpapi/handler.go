@@ -496,6 +496,7 @@ func (h *Handler) UpdateItem(ctx context.Context, request api.UpdateItemRequestO
 
 	withdraw := request.Body.Withdraw != nil && *request.Body.Withdraw
 	item, err := h.items.Update(ctx, current.UserID, request.ItemId, items.UpdateInput{
+		OfferTitle:       request.Body.OfferTitle,
 		OfferDescription: request.Body.OfferDescription,
 		WantDescription:  request.Body.WantDescription,
 		Withdraw:         withdraw,

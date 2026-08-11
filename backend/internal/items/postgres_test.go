@@ -68,7 +68,10 @@ func (r *fakeRepository) Create(_ context.Context, userID int64, input CreateInp
 }
 
 func (r *fakeRepository) Update(_ context.Context, userID, itemID int64, input UpdateInput) (updateResult, error) {
-	item := Item{ID: itemID, UserID: userID, Status: "ANALYZING"}
+	item := Item{ID: itemID, UserID: userID, OfferTitle: "Велосипед", Status: "ANALYZING"}
+	if input.OfferTitle != nil {
+		item.OfferTitle = *input.OfferTitle
+	}
 	if input.Withdraw {
 		item.Status = "WITHDRAWN"
 	}
@@ -89,4 +92,54 @@ type fakeAnalyzer struct {
 
 func (a fakeAnalyzer) AnalyzeItem(ctx context.Context, itemID int64) error {
 	return a.analyze(ctx, itemID)
+}
+
+func TestPostgresServiceUpdatesTitleTriggersAnalysis(t *testing.T) {
+	repo := &fakeRepository{analyzed: make(chan int64, 1)}
+	analyzer := fakeAnalyzer{analyze: func(_ context.Context, itemID int64) error {
+		repo.analyzed <- itemID
+		return nil
+	}}
+	events := make(chan string, 3)
+	service := newPostgresService(repo, analyzer, func(_ int64, eventType, _ string, _ map[string]any) {
+		events <- eventType
+	}, zap.NewNop(), time.Minute)
+	t.Cleanup(service.Close)
+
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Городской",
+		WantDescription:  "Сноуборд",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if event := <-events; event != "item.created" {
+		t.Fatalf("first event = %q, want item.created", event)
+	}
+
+	select {
+	case <-repo.analyzed:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for analysis")
+	}
+	if event := <-events; event != "item.status.updated" {
+		t.Fatalf("second event = %q, want item.status.updated", event)
+	}
+
+	title := "Самокат"
+	updated, err := service.Update(context.Background(), 7, created.ID, UpdateInput{OfferTitle: &title})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if updated.OfferTitle != title {
+		t.Fatalf("updated OfferTitle = %q, want %q", updated.OfferTitle, title)
+	}
+	if updated.Status != "ANALYZING" {
+		t.Fatalf("updated status = %q, want ANALYZING", updated.Status)
+	}
+	if event := <-events; event != "item.status.updated" {
+		t.Fatalf("third event = %q, want item.status.updated", event)
+	}
 }

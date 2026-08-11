@@ -1232,6 +1232,10 @@ components:
       type: object
       minProperties: 1
       properties:
+        offerTitle:
+          type: string
+          minLength: 1
+          maxLength: 255
         offerDescription:
           type: string
           minLength: 1

@@ -3,6 +3,7 @@ package items
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -76,5 +77,133 @@ func TestMemoryServiceRefusesLockedOrForeignItemUpdate(t *testing.T) {
 	service.mu.Unlock()
 	if _, err := service.Update(context.Background(), 7, created.ID, UpdateInput{OfferDescription: &description}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("locked Update() error = %v, want ErrConflict", err)
+	}
+}
+
+func TestMemoryServiceUpdatesOfferTitle(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Горный велосипед",
+		WantDescription:  "Телефон",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	service.items[created.ID] = Item{ID: created.ID, UserID: 7, OfferTitle: "Велосипед", Status: "MATCHING"}
+
+	title := "Самокат"
+	updated, err := service.Update(context.Background(), 7, created.ID, UpdateInput{OfferTitle: &title})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if updated.OfferTitle != title {
+		t.Fatalf("updated OfferTitle = %q, want %q", updated.OfferTitle, title)
+	}
+	if updated.Status != "ANALYZING" {
+		t.Fatalf("updated status = %q, want ANALYZING", updated.Status)
+	}
+}
+
+func TestMemoryServiceRejectsBlankOfferTitle(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Горный велосипед",
+		WantDescription:  "Телефон",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	title := ""
+	_, err = service.Update(context.Background(), 7, created.ID, UpdateInput{OfferTitle: &title})
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("Update() error = %v, want ValidationError", err)
+	}
+	if validationError.Fields["offerTitle"] == "" {
+		t.Fatalf("expected validation error for offerTitle, got fields = %v", validationError.Fields)
+	}
+}
+
+func TestMemoryServiceRejectsLongOfferTitle(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Горный велосипед",
+		WantDescription:  "Телефон",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	title := strings.Repeat("д", 256)
+	_, err = service.Update(context.Background(), 7, created.ID, UpdateInput{OfferTitle: &title})
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("Update() error = %v, want ValidationError", err)
+	}
+	if validationError.Fields["offerTitle"] == "" {
+		t.Fatalf("expected validation error for offerTitle, got fields = %v", validationError.Fields)
+	}
+}
+
+func TestMemoryServiceNoOpOnSameOfferTitle(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Горный велосипед",
+		WantDescription:  "Телефон",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	service.items[created.ID] = Item{ID: created.ID, UserID: 7, OfferTitle: "Велосипед", Status: "MATCHING"}
+
+	title := "Велосипед"
+	updated, err := service.Update(context.Background(), 7, created.ID, UpdateInput{OfferTitle: &title})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if updated.Status != "MATCHING" {
+		t.Fatalf("no-op update changed status to %q, want MATCHING", updated.Status)
+	}
+}
+
+func TestMemoryServiceForeignOwnerTitleUpdate(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Горный велосипед",
+		WantDescription:  "Телефон",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	title := "Чужой"
+	_, err = service.Update(context.Background(), 8, created.ID, UpdateInput{OfferTitle: &title})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("Update() error = %v, want ErrForbidden", err)
+	}
+}
+
+func TestMemoryServiceLockedItemTitleUpdate(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Горный велосипед",
+		WantDescription:  "Телефон",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	service.mu.Lock()
+	item := service.items[created.ID]
+	item.Status = "LOCKED"
+	service.items[created.ID] = item
+	service.mu.Unlock()
+	title := "Самокат"
+	_, err = service.Update(context.Background(), 7, created.ID, UpdateInput{OfferTitle: &title})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("Update() error = %v, want ErrConflict", err)
 	}
 }

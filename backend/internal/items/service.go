@@ -55,6 +55,7 @@ type CreateInput struct {
 // UpdateInput contains a partial item change. Withdraw removes the wish and
 // makes the item unavailable for matching without deleting its history.
 type UpdateInput struct {
+	OfferTitle       *string
 	OfferDescription *string
 	WantDescription  *string
 	Withdraw         bool
@@ -69,6 +70,10 @@ type Service interface {
 }
 
 func normalizeUpdate(input UpdateInput) UpdateInput {
+	if input.OfferTitle != nil {
+		value := strings.TrimSpace(*input.OfferTitle)
+		input.OfferTitle = &value
+	}
 	if input.OfferDescription != nil {
 		value := strings.TrimSpace(*input.OfferDescription)
 		input.OfferDescription = &value
@@ -82,11 +87,14 @@ func normalizeUpdate(input UpdateInput) UpdateInput {
 
 func validateUpdate(input UpdateInput) error {
 	fields := make(map[string]string)
-	if input.OfferDescription == nil && input.WantDescription == nil && !input.Withdraw {
-		fields["request"] = "must change a description or withdraw the item"
+	if input.OfferDescription == nil && input.WantDescription == nil && input.OfferTitle == nil && !input.Withdraw {
+		fields["request"] = "must change a description, title or withdraw the item"
 	}
 	if input.Withdraw && input.WantDescription != nil {
 		fields["wantDescription"] = "cannot be changed while withdrawing the item"
+	}
+	if input.OfferTitle != nil {
+		validateText(fields, "offerTitle", *input.OfferTitle, 255)
 	}
 	if input.OfferDescription != nil {
 		validateText(fields, "offerDescription", *input.OfferDescription, 4000)

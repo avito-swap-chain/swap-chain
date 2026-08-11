@@ -240,7 +240,15 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		return updateResult{}, ErrConflict
 	}
 
+	offerTitle := current.OfferTitle
+	titleChanged := false
 	offerDescription := current.OfferDescription
+	if input.OfferTitle != nil {
+		offerTitle = *input.OfferTitle
+		if offerTitle != current.OfferTitle {
+			titleChanged = true
+		}
+	}
 	if input.OfferDescription != nil {
 		offerDescription = *input.OfferDescription
 	}
@@ -259,6 +267,9 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	case input.OfferDescription != nil && current.Status != "WITHDRAWN":
 		status = "ANALYZING"
 		matchingChanged = true
+	case input.OfferTitle != nil && titleChanged && current.Status != "WITHDRAWN":
+		status = "ANALYZING"
+		matchingChanged = true
 	}
 
 	rejections := make([]chainRejection, 0)
@@ -271,7 +282,8 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 
 	row := tx.QueryRowContext(ctx, `
 		UPDATE items
-		SET offer_description = $2,
+		SET offer_title = $6,
+		    offer_description = $2,
 		    want_description = $3,
 		    status = $4::item_status,
 		    offer_category_id = CASE WHEN $5 THEN NULL ELSE offer_category_id END,
@@ -285,7 +297,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		WHERE id = $1
 		RETURNING id, user_id, offer_title, offer_description, want_description,
 		          image_urls, status::text, created_at, updated_at`,
-		itemID, offerDescription, wantDescription, status, matchingChanged,
+		itemID, offerDescription, wantDescription, status, matchingChanged, offerTitle,
 	)
 	item, err := scanItem(row)
 	if err != nil {

@@ -76,6 +76,10 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 		s.mu.Unlock()
 		return Item{}, ErrConflict
 	}
+	oldTitle := item.OfferTitle
+	if input.OfferTitle != nil {
+		item.OfferTitle = *input.OfferTitle
+	}
 	if input.OfferDescription != nil {
 		item.OfferDescription = *input.OfferDescription
 	}
@@ -87,6 +91,8 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 		item.WantDescription = *input.WantDescription
 		item.Status = "ANALYZING"
 	case input.OfferDescription != nil && item.Status != "WITHDRAWN":
+		item.Status = "ANALYZING"
+	case input.OfferTitle != nil && item.OfferTitle != oldTitle && item.Status != "WITHDRAWN":
 		item.Status = "ANALYZING"
 	}
 	item.UpdatedAt = time.Now().UTC()
