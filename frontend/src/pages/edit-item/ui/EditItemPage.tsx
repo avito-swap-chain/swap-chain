@@ -3,14 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { DescriptionField, editItem, getMyItems, itemKeys, type Item } from '@/entities/item'
 import { DescribeWishForm } from '@/features/describe-wish'
-import { Notice, Screen, ScreenHeader } from '@/shared/ui'
+import { Field, Input, Notice, Screen, ScreenHeader } from '@/shared/ui'
 
 /**
- * Правка размещённого объявления: описание и желание. Отдельный экран нужен потому, что
- * иначе поправить формулировку можно было только снятием с обмена и повторным включением —
+ * Правка размещённого объявления: название, описание и желание. Отдельный экран нужен потому,
+ * что иначе поправить формулировку можно было только снятием с обмена и повторным включением —
  * а снятие отменяет предложения с этой вещью у других людей.
  *
- * Название и фото здесь не меняются: `UpdateItemRequest` (0.6.0) таких полей не принимает.
+ * Фото здесь пока не меняется: `imageUrls` в `UpdateItemRequest` не принимается.
  */
 export function EditItemPage() {
   const { id = '' } = useParams()
@@ -40,18 +40,30 @@ export function EditItemPage() {
  * значения формы застыли бы пустыми, какими были на первом рендере.
  */
 function EditItemFields({ item, onDone }: { item: Item; onDone: () => void }) {
+  const [title, setTitle] = useState(item.title)
   const [description, setDescription] = useState(item.description ?? '')
 
   return (
     <div className="flex flex-1 flex-col gap-3.5">
+      {/* Название правится с тех пор, как бэкенд принял `offerTitle`: до этого объявление
+          можно было переписать наполовину, и именно на это указал ментор. */}
+      <Field label="Название">
+        <Input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="Например, горный велосипед"
+          required
+        />
+      </Field>
+
       <DescriptionField value={description} onChange={setDescription} />
 
       <DescribeWishForm
-        give={item}
+        give={{ ...item, title }}
         initial={item.wish}
         submitLabel="Сохранить"
         pendingLabel="Сохраняем…"
-        onSubmit={(wish) => editItem(item.id, { wish, description })}
+        onSubmit={(wish) => editItem(item.id, { wish, description, title })}
         onDone={onDone}
       />
     </div>

@@ -9,5 +9,7 @@
 export interface UserProfile {
   id: number;
   username: string;
+  /** @nullable */
+  avatarUrl?: string | null;
   createdAt: string;
 }

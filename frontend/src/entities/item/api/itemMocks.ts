@@ -181,7 +181,12 @@ export async function create(draft: ItemDraft, wish: Wish[]): Promise<Item> {
   return item
 }
 
-export async function edit(id: string, wish: Wish[], description?: string): Promise<Item> {
+export async function edit(
+  id: string,
+  wish: Wish[],
+  description?: string,
+  title?: string,
+): Promise<Item> {
   await delay(400)
 
   const item = find(id)
@@ -190,6 +195,7 @@ export async function edit(id: string, wish: Wish[], description?: string): Prom
   return save({
     ...item,
     wish,
+    title: title || item.title,
     description: description || item.description,
     // Снятая вещь возвращается в подбор так же, как никогда не включённая.
     status: item.status === 'idle' || item.status === 'withdrawn' ? 'searching' : item.status,

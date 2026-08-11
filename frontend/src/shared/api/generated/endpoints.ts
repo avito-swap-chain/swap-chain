@@ -46,6 +46,7 @@ import type {
   SubmitChainDecisionRequest,
   UnauthorizedResponse,
   UpdateItemRequest,
+  UpdateUserRequest,
   UploadMediaBody,
   UserProfile,
   ValidationErrorResponse,
@@ -352,15 +353,10 @@ export type getUserResponse500 = {
   status: 500
 }
 
-export type getUserResponse501 = {
-  data: NotImplementedResponse
-  status: 501
-}
-
 export type getUserResponseSuccess = (getUserResponse200) & {
   headers: Headers;
 };
-export type getUserResponseError = (getUserResponse400 | getUserResponse404 | getUserResponse500 | getUserResponse501) & {
+export type getUserResponseError = (getUserResponse400 | getUserResponse404 | getUserResponse500) & {
   headers: Headers;
 };
 
@@ -385,6 +381,76 @@ export const getUser = async (userId: number, options?: Parameters<typeof apiFet
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export type updateUserResponse200 = {
+  data: UserProfile
+  status: 200
+}
+
+export type updateUserResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type updateUserResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type updateUserResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type updateUserResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type updateUserResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type updateUserResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type updateUserResponseSuccess = (updateUserResponse200) & {
+  headers: Headers;
+};
+export type updateUserResponseError = (updateUserResponse400 | updateUserResponse401 | updateUserResponse403 | updateUserResponse404 | updateUserResponse409 | updateUserResponse500) & {
+  headers: Headers;
+};
+
+export type updateUserResponse = (updateUserResponseSuccess | updateUserResponseError)
+
+export const getUpdateUserUrl = (userId: number,) => {
+
+
+
+
+  return `/api/v1/users/${userId}`
+}
+
+/**
+ * Only the authenticated user can update their own profile.
+ * @summary Update the current user's profile
+ */
+export const updateUser = async (userId: number,
+    updateUserRequest: UpdateUserRequest, options?: Parameters<typeof apiFetch>[1]): Promise<updateUserResponse> => {
+
+  return apiFetch<updateUserResponse>(getUpdateUserUrl(userId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateUserRequest)
   }
 );}
 

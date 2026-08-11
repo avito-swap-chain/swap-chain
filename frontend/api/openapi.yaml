@@ -165,8 +165,36 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
-        "501":
-          $ref: "#/components/responses/NotImplemented"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update the current user's profile
+      description: Only the authenticated user can update their own profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1123,6 +1151,19 @@ components:
           minLength: 10
           maxLength: 32
 
+    UpdateUserRequest:
+      type: object
+      minProperties: 1
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 100
+        avatarUrl:
+          type: string
+          format: uri-reference
+          description: Set a profile photo URL (upload via POST /api/v1/media first). Pass an empty string to remove.
+
     LoginRequest:
       type: object
       required: [phone]
@@ -1191,6 +1232,10 @@ components:
       type: object
       minProperties: 1
       properties:
+        offerTitle:
+          type: string
+          minLength: 1
+          maxLength: 255
         offerDescription:
           type: string
           minLength: 1
@@ -1304,13 +1349,17 @@ components:
           format: int64
         username:
           type: string
+        avatarUrl:
+          type: string
+          format: uri-reference
+          nullable: true
         createdAt:
           type: string
           format: date-time
 
     ChainParticipant:
       type: object
-      required: [user, giveItem, receiveItem, status]
+      required: [user, giveItem, receiveItem, status, receiptConfirmed]
       properties:
         user:
           $ref: "#/components/schemas/UserSummary"
@@ -1320,6 +1369,14 @@ components:
           $ref: "#/components/schemas/Item"
         status:
           $ref: "#/components/schemas/ParticipantStatus"
+        receiptConfirmed:
+          type: boolean
+          description: Whether the participant has confirmed receipt of their incoming item.
+        receiptConfirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the participant confirmed receipt. Null until confirmed.
 
     Chain:
       type: object

@@ -9,6 +9,11 @@
 export interface UpdateItemRequest {
   /**
      * @minLength 1
+     * @maxLength 255
+     */
+  offerTitle?: string;
+  /**
+     * @minLength 1
      * @maxLength 4000
      */
   offerDescription?: string;
