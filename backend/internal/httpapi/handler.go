@@ -14,6 +14,7 @@ import (
 
 	"swap-chain/internal/api"
 	applicationmatching "swap-chain/internal/application/matching"
+	"swap-chain/internal/categories"
 	"swap-chain/internal/chains"
 	"swap-chain/internal/events"
 	"swap-chain/internal/items"
@@ -54,6 +55,7 @@ type Handler struct {
 	items         items.Service
 	media         mediaService
 	chains        chains.Service
+	categories    categories.Service
 	events        *events.Hub
 	sessions      *session.Manager
 	users         users.Service
@@ -73,6 +75,7 @@ func NewHandler(
 	itemService items.Service,
 	mediaService mediaService,
 	chainService chains.Service,
+	categoriesService categories.Service,
 	eventHub *events.Hub,
 	sessions *session.Manager,
 	userService users.Service,
@@ -89,6 +92,7 @@ func NewHandler(
 		items:         itemService,
 		media:         mediaService,
 		chains:        chainService,
+		categories:    categoriesService,
 		events:        eventHub,
 		sessions:      sessions,
 		users:         userService,
@@ -395,6 +399,25 @@ func (h *Handler) ListUserItems(ctx context.Context, _ api.ListUserItemsRequestO
 	return api.ListUserItems501JSONResponse{
 		NotImplementedJSONResponse: api.NotImplementedJSONResponse(errorModel(ctx, "USER_SERVICE_NOT_IMPLEMENTED", "user business service is not connected", nil)),
 	}, nil
+}
+
+// ListCategories returns all user-facing item categories.
+func (h *Handler) ListCategories(ctx context.Context, _ api.ListCategoriesRequestObject) (api.ListCategoriesResponseObject, error) {
+	categories, err := h.categories.List(ctx)
+	if err != nil {
+		return api.ListCategories500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to list categories", nil)),
+		}, nil
+	}
+	result := make([]api.Category, 0, len(categories))
+	for _, c := range categories {
+		result = append(result, api.Category{
+			Id:       c.ID,
+			Name:     c.Name,
+			IsSystem: c.IsSystem,
+		})
+	}
+	return api.ListCategories200JSONResponse(api.CategoryList{Categories: result}), nil
 }
 
 // ListItems returns a cursor-paginated item list.
@@ -1189,6 +1212,8 @@ func itemModel(item items.Item) api.Item {
 		WantDescription:  item.WantDescription,
 		ImageUrls:        append([]string(nil), item.ImageURLs...),
 		Status:           api.ItemStatus(item.Status),
+		OfferCategoryId:  item.OfferCategoryID,
+		WantCategoryId:   item.WantCategoryID,
 		CreatedAt:        item.CreatedAt,
 		UpdatedAt:        item.UpdatedAt,
 	}

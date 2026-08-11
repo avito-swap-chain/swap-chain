@@ -28,3 +28,9 @@ WHERE embedding_local IS NULL;
 -- name: CountCategories :one
 SELECT count(*)
 FROM categories;
+
+-- name: ListCategories :many
+SELECT id, name, is_system
+FROM categories
+WHERE id != sqlc.arg(undefined_category_id)
+ORDER BY id;

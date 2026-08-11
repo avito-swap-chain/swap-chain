@@ -21,6 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	"swap-chain/internal/api"
+	"swap-chain/internal/categories"
 	"swap-chain/internal/chains"
 	"swap-chain/internal/events"
 	"swap-chain/internal/httpapi"
@@ -97,6 +98,7 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		items.NewMemoryService(),
 		media.NewService(newTestMediaStorage(), 10<<20),
 		&testChainService{chain: testChain()},
+		&testCategoriesService{},
 		eventHub,
 		sessions,
 		users.NewMemoryService(testUser(1)),
@@ -1106,7 +1108,7 @@ func newTestServerWithAllServicesAndVision(t *testing.T, chainService chains.Ser
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, vision)
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, vision)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1324,6 +1326,15 @@ func (testFinder) Execute(_ context.Context, itemID int64) ([][]model.Edge, erro
 		{SourceID: itemID, TargetID: itemID + 1, Score: 0.8},
 		{SourceID: itemID + 1, TargetID: itemID, Score: 0.9},
 	}}, nil
+}
+
+type testCategoriesService struct{}
+
+func (s *testCategoriesService) List(_ context.Context) ([]categories.Category, error) {
+	return []categories.Category{
+		{ID: 1, Name: "Электроника", IsSystem: true},
+		{ID: 2, Name: "Бытовая техника", IsSystem: true},
+	}, nil
 }
 
 type testChainService struct {
@@ -1942,5 +1953,59 @@ func TestNotifications_CrossUserIsolation(t *testing.T) {
 	}
 	if list.Notifications[0].Title != "User 1" {
 		t.Errorf("user 1 should see their own notification")
+	}
+}
+
+func TestCategoriesListReturnsOnlyUserFacingCategories(t *testing.T) {
+	server := newTestServerWithServices(t, &testChainService{chain: testChain()}, items.NewMemoryService())
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	response, err := client.Get(server.URL + "/api/v1/categories")
+	if err != nil {
+		t.Fatalf("GET categories: %v", err)
+	}
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET categories status = %d, want %d", response.StatusCode, http.StatusOK)
+	}
+	var body api.CategoryList
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode categories: %v", err)
+	}
+	if len(body.Categories) == 0 {
+		t.Fatal("expected at least one category")
+	}
+	for _, c := range body.Categories {
+		if c.Id == 47 {
+			t.Fatalf("undefined category id=47 was returned to user: %+v", c)
+		}
+		if c.Name == "" {
+			t.Fatalf("category with empty name: %+v", c)
+		}
+	}
+	found := false
+	for _, c := range body.Categories {
+		if c.IsSystem {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected at least one system category")
+	}
+}
+
+func TestCategoriesListRequiresSession(t *testing.T) {
+	server := newTestServerWithServices(t, &testChainService{chain: testChain()}, items.NewMemoryService())
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/api/v1/categories")
+	if err != nil {
+		t.Fatalf("GET categories: %v", err)
+	}
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET categories status = %d, want %d", response.StatusCode, http.StatusUnauthorized)
 	}
 }

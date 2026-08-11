@@ -200,7 +200,7 @@ func (r *postgresRepository) Create(ctx context.Context, userID int64, input Cre
 		INSERT INTO items (user_id, offer_title, offer_description, want_description, image_urls)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, user_id, offer_title, offer_description, want_description,
-		          image_urls, status::text, created_at, updated_at`,
+		          image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at`,
 		userID, input.OfferTitle, input.OfferDescription, input.WantDescription, pq.Array(input.ImageURLs),
 	)
 	item, err := scanItem(row)
@@ -225,7 +225,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	}
 	current, err := scanItem(tx.QueryRowContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description, want_description,
-		       image_urls, status::text, created_at, updated_at
+		       image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at
 		FROM items WHERE id = $1 FOR UPDATE`, itemID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -296,7 +296,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		    updated_at = now()
 		WHERE id = $1
 		RETURNING id, user_id, offer_title, offer_description, want_description,
-		          image_urls, status::text, created_at, updated_at`,
+		          image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at`,
 		itemID, offerDescription, wantDescription, status, matchingChanged, offerTitle,
 	)
 	item, err := scanItem(row)
@@ -370,7 +370,7 @@ func rejectPendingChainsForItem(ctx context.Context, tx *sql.Tx, itemID int64) (
 func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error) {
 	item, err := scanItem(r.database.QueryRowContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description, want_description,
-		       image_urls, status::text, created_at, updated_at
+		       image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at
 		FROM items WHERE id = $1`, itemID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Item{}, ErrNotFound
@@ -384,7 +384,7 @@ func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error
 func (r *postgresRepository) ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error) {
 	rows, err := r.database.QueryContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description, want_description,
-		       image_urls, status::text, created_at, updated_at
+		       image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at
 		FROM items
 		WHERE user_id = $1 AND id > $2
 		ORDER BY id LIMIT $3`, userID, afterID, limit+1)
@@ -420,6 +420,7 @@ type rowScanner interface {
 
 func scanItem(row rowScanner) (Item, error) {
 	var item Item
+	var offerCategoryID, wantCategoryID sql.NullInt32
 	var imageURLs pq.StringArray
 	err := row.Scan(
 		&item.ID,
@@ -429,9 +430,17 @@ func scanItem(row rowScanner) (Item, error) {
 		&item.WantDescription,
 		&imageURLs,
 		&item.Status,
+		&offerCategoryID,
+		&wantCategoryID,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
+	if offerCategoryID.Valid {
+		item.OfferCategoryID = &offerCategoryID.Int32
+	}
+	if wantCategoryID.Valid {
+		item.WantCategoryID = &wantCategoryID.Int32
+	}
 	if imageURLs == nil {
 		item.ImageURLs = []string{}
 	} else {

@@ -40,6 +40,8 @@ type Item struct {
 	WantDescription  string
 	ImageURLs        []string
 	Status           string
+	OfferCategoryID  *int32
+	WantCategoryID   *int32
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }

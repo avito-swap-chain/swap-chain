@@ -13,6 +13,7 @@ import (
 	"time"
 
 	applicationmatching "swap-chain/internal/application/matching"
+	"swap-chain/internal/categories"
 	"swap-chain/internal/chains"
 	"swap-chain/internal/config"
 	"swap-chain/internal/events"
@@ -275,6 +276,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create chat service: %w", err)
 	}
+	categoriesService := categories.NewPostgresService(queries, cfg.UndefinedCategoryID)
 	handler := httpapi.NewHandler(
 		database,
 		finder,
@@ -282,6 +284,7 @@ func run(logger *zap.Logger) error {
 		itemService,
 		mediaService,
 		chainService,
+		categoriesService,
 		eventHub,
 		sessions,
 		userService,
