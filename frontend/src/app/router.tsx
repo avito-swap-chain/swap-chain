@@ -8,6 +8,7 @@ import { ExchangePage } from '@/pages/exchange'
 import { ItemsPage } from '@/pages/items'
 import { MessagesPage } from '@/pages/messages'
 import { NotificationsPage } from '@/pages/notifications'
+import { ProfilePage } from '@/pages/profile'
 import { ThreadPage } from '@/pages/thread'
 import { AvitoShell } from '@/widgets/avito-shell'
 import { RouteError } from './RouteError'
@@ -38,6 +39,10 @@ export const router = createBrowserRouter(
         { path: '/items/new', element: <CreateOfferPage /> },
         { path: '/items/:id/barter', element: <EnableBarterPage /> },
         { path: '/items/:id/edit', element: <EditItemPage /> },
+        // Свой профиль и чужой — один экран: у своего есть правка, у чужого только просмотр.
+        // Идентификатор своего в адресе не нужен, он приходит из сессии.
+        { path: '/profile', element: <ProfilePage mine /> },
+        { path: '/users/:id', element: <ProfilePage /> },
         { path: '/exchange/:id', element: <ChainPage /> },
         // Переписка адресуется парой «цепочка + собеседник»: она привязана к ребру круга
         // обмена, а не к вещи — с одним человеком в двух цепочках это два разных разговора.

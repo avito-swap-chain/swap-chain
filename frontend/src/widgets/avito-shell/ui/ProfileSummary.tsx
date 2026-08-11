@@ -1,25 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { getCurrentUser, sessionKeys } from '@/shared/model/session'
-import { asset, cx } from '@/shared/lib'
+import { asset, cx, reviewsLabel } from '@/shared/lib'
 import { IconStar } from '@/shared/ui'
 
 const STARS = [1, 2, 3, 4, 5]
-
-/** «24 отзыва», «41 отзыв», «17 отзывов» — без склонения подпись выглядит машинной. */
-const reviewsLabel = (count: number): string => {
-  const tail = count % 100
-  if (tail > 4 && tail < 21) return `${count} отзывов`
-  switch (count % 10) {
-    case 1:
-      return `${count} отзыв`
-    case 2:
-    case 3:
-    case 4:
-      return `${count} отзыва`
-    default:
-      return `${count} отзывов`
-  }
-}
 
 /**
  * Шапка кабинета Авито: крупный аватар, имя, рейтинг со звёздами и отзывы — и только
@@ -55,7 +40,13 @@ export function ProfileSummary({ className }: { className?: string }) {
         </span>
       )}
 
-      <p className="mt-4 text-[24px] leading-7 font-bold">{user.name}</p>
+      {/* Имя ведёт в профиль: там его правят и загружают фотографию. */}
+      <Link
+        to="/profile"
+        className="mt-4 block rounded-sm text-[24px] leading-7 font-bold outline-offset-4 hover:text-brand focus-visible:outline-2 focus-visible:outline-brand"
+      >
+        {user.name}
+      </Link>
 
       {user.rating !== undefined && (
         <div className="mt-1.5 flex items-center gap-1.5">

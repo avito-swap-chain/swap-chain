@@ -7,7 +7,7 @@ import {
 } from '@/shared/api/generated/endpoints'
 import type { Session } from '@/shared/api/generated/model'
 import { isBackendConnected } from '@/shared/config/backend'
-import { currentPersonaId, PERSONAS } from './persona'
+import { currentPersonaId, personaById, PERSONAS } from './persona'
 
 /**
  * Кто сейчас в кабинете. На моках это выбранная персона, с бэкендом — владелец сессии.
@@ -115,7 +115,7 @@ const fromSession = (session: Session): CurrentUser => {
 }
 
 const fromPersona = (): CurrentUser => {
-  const persona = PERSONAS.find((item) => item.id === currentPersonaId()) ?? PERSONAS[0]
+  const persona = personaById(currentPersonaId()) ?? PERSONAS[0]
 
   return {
     id: persona.id,

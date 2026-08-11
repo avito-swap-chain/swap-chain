@@ -53,6 +53,37 @@ export const PERSONAS: Persona[] = [
   },
 ]
 
+/**
+ * Что персона поменяла у себя в профиле. Держим рядом с реестром, а не в моках профиля:
+ * имя и фотографию читают и кабинет, и шапка, и участники цепочки — если правка осядет
+ * в одном месте, человек поменяет имя и не увидит его на остальных экранах.
+ */
+let edited: Record<string, { name?: string; avatarUrl?: string }> = {}
+
+export function editPersona(id: string, patch: { name?: string; avatarUrl?: string }): void {
+  edited = { ...edited, [id]: { ...edited[id], ...patch } }
+}
+
+/** Персона с учётом её правок. Пустая строка у фотографии — «убрал», а не «не менял». */
+export function personaById(id: string): Persona | undefined {
+  const persona = PERSONAS.find((candidate) => candidate.id === id)
+  if (!persona) return undefined
+
+  const patch = edited[id]
+  if (!patch) return persona
+
+  return {
+    ...persona,
+    name: patch.name ?? persona.name,
+    avatarUrl: patch.avatarUrl === undefined ? persona.avatarUrl : patch.avatarUrl,
+  }
+}
+
+/** Сброс правок — для тестов. */
+export const resetPersonaEdits = (): void => {
+  edited = {}
+}
+
 interface PersonaState {
   personaId: string
   setPersonaId: (id: string) => void

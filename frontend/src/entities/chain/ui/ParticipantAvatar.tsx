@@ -1,10 +1,10 @@
-import { asset, cx } from '@/shared/lib'
+import { Avatar } from '@/shared/ui'
 import type { ChainParticipant } from '../model/types'
 
 /**
- * Лицо участника: фото профиля, а если его нет — инициал, как в аккаунтах Авито.
- * Размер, фон и обводку задаёт место, где аватар стоит: в кольце он крупный
- * с обводкой, в списке — мелкий.
+ * Лицо участника цепочки. Размер, фон и обводку задаёт место, где аватар стоит: в кольце он
+ * крупный с обводкой, в списке — мелкий. Само «фото или инициал» живёт в `shared/ui/Avatar`:
+ * так же выглядят аккаунт в шапке и профиль.
  */
 export function ParticipantAvatar({
   participant,
@@ -13,22 +13,5 @@ export function ParticipantAvatar({
   participant: ChainParticipant
   className?: string
 }) {
-  const shape = cx('shrink-0 rounded-full', className)
-
-  if (!participant.avatarUrl) {
-    return (
-      <span className={cx('grid place-items-center', shape)} aria-hidden="true">
-        {participant.name.slice(0, 1)}
-      </span>
-    )
-  }
-
-  return (
-    <img
-      src={asset(participant.avatarUrl)}
-      alt=""
-      loading="lazy"
-      className={cx('object-cover', shape)}
-    />
-  )
+  return <Avatar name={participant.name} src={participant.avatarUrl} className={className} />
 }

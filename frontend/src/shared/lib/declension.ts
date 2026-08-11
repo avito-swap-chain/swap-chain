@@ -26,3 +26,20 @@ export function genitive(name: string): string {
   if (CONSONANT.test(name)) return `${name}а`
   return name
 }
+
+/** «24 отзыва», «41 отзыв», «17 отзывов» — без склонения подпись выглядит машинной. */
+export function reviewsLabel(count: number): string {
+  const tail = count % 100
+  if (tail > 4 && tail < 21) return `${count} отзывов`
+
+  switch (count % 10) {
+    case 1:
+      return `${count} отзыв`
+    case 2:
+    case 3:
+    case 4:
+      return `${count} отзыва`
+    default:
+      return `${count} отзывов`
+  }
+}
