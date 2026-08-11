@@ -9,6 +9,7 @@ import {
 } from '@/entities/chain'
 import { AskAboutItem } from '@/features/ask-about-item'
 import { RespondToExchange } from '@/features/respond-to-exchange'
+import { MessageComposer } from '@/features/send-message'
 import { cx } from '@/shared/lib'
 import { Card } from '@/shared/ui'
 
@@ -29,6 +30,17 @@ export function OfferCard({ chain, variants }: OfferCardProps) {
 
   const total = chain.participants.length
   const cancelled = chain.status === 'cancelled'
+
+  // Собеседник — тот, кто отдаёт вещь мне: переписка привязана к ребру круга обмена,
+  // и спрашивают о состоянии именно того, что получаешь.
+  const askThread = {
+    chainId: chain.id,
+    counterpartId: neighbours.giver.userId,
+    peerName: neighbours.giver.name,
+    peerAvatarUrl: neighbours.giver.avatarUrl,
+    itemTitle: neighbours.giver.givesItem.title,
+    itemPhotoUrl: neighbours.giver.givesItem.photoUrl,
+  }
 
   return (
     <Card className="flex flex-col gap-3 p-3.5">
@@ -57,16 +69,9 @@ export function OfferCard({ chain, variants }: OfferCardProps) {
       {/* Спросить о вещи можно, пока решение не принято: после отмены собеседник уже неактуален. */}
       {!cancelled && (
         <AskAboutItem
-          thread={{
-            chainId: chain.id,
-            // Собеседник — тот, кто отдаёт вещь мне: переписка привязана к ребру круга обмена,
-            // и спрашивают о состоянии именно того, что получаешь.
-            counterpartId: neighbours.giver.userId,
-            peerName: neighbours.giver.name,
-            peerAvatarUrl: neighbours.giver.avatarUrl,
-            itemTitle: neighbours.giver.givesItem.title,
-            itemPhotoUrl: neighbours.giver.givesItem.photoUrl,
-          }}
+          thread={askThread}
+          // Обе фичи сводит виджет: сами они друг о друге не знают.
+          composer={(empty) => <MessageComposer thread={askThread} empty={empty} />}
         />
       )}
 

@@ -1,7 +1,17 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { MessageList, threadPath, useThreadMessages, type ThreadRef } from '@/entities/message'
-import { MessageComposer } from '@/features/send-message'
 import { Link } from 'react-router-dom'
+
+interface AskAboutItemProps {
+  thread: ThreadRef
+  /**
+   * Поле ввода ответа — слотом, как кнопка в `ItemCard`: фича не может знать про соседнюю
+   * фичу, а composer живёт в `send-message`. Собирает их виджет, которому можно обе.
+   * Слот принимает функцию, потому что «разговор ещё не начат» видно только отсюда:
+   * от этого зависят заготовки вопросов.
+   */
+  composer: (empty: boolean) => ReactNode
+}
 
 /**
  * Разговор о вещи прямо у предложения. Согласие даётся по конкретному экземпляру, а не по
@@ -10,7 +20,7 @@ import { Link } from 'react-router-dom'
  *
  * Переписка та же самая, что в разделе «Сообщения», — начатая здесь, она видна и там.
  */
-export function AskAboutItem({ thread }: { thread: ThreadRef }) {
+export function AskAboutItem({ thread, composer }: AskAboutItemProps) {
   const [open, setOpen] = useState(false)
 
   // Свёрнутая панель не подписывается на ленту: держать long-poll на каждой карточке
@@ -52,7 +62,7 @@ export function AskAboutItem({ thread }: { thread: ThreadRef }) {
         <MessageList messages={messages} className="max-h-64 overflow-y-auto" />
       )}
 
-      <MessageComposer thread={thread} empty={messages.length === 0} />
+      {composer(messages.length === 0)}
 
       {/* Длинный разговор дочитывают целиком — для этого есть отдельный экран. */}
       {messages.length > 0 && (
