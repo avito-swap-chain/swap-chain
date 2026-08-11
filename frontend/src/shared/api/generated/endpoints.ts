@@ -9,6 +9,7 @@ import type {
   AdminDelivery,
   AdminDeliveryList,
   AdminDeliveryTransitionRequest,
+  AnalyzePhotoBody,
   BadRequestResponse,
   Chain,
   ChainList,
@@ -47,7 +48,8 @@ import type {
   UpdateItemRequest,
   UploadMediaBody,
   UserProfile,
-  ValidationErrorResponse
+  ValidationErrorResponse,
+  VisionAnalysisAccepted
 } from './model';
 
 import { apiFetch } from '../fetcher';
@@ -692,6 +694,80 @@ export const getMedia = async (objectKey: string, options?: Parameters<typeof ap
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export type analyzePhotoResponse202 = {
+  data: VisionAnalysisAccepted
+  status: 202
+}
+
+export type analyzePhotoResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type analyzePhotoResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type analyzePhotoResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type analyzePhotoResponse415 = {
+  data: Error
+  status: 415
+}
+
+export type analyzePhotoResponse429 = {
+  data: Error
+  status: 429
+}
+
+export type analyzePhotoResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type analyzePhotoResponse503 = {
+  data: Error
+  status: 503
+}
+
+export type analyzePhotoResponseSuccess = (analyzePhotoResponse202) & {
+  headers: Headers;
+};
+export type analyzePhotoResponseError = (analyzePhotoResponse400 | analyzePhotoResponse401 | analyzePhotoResponse404 | analyzePhotoResponse415 | analyzePhotoResponse429 | analyzePhotoResponse500 | analyzePhotoResponse503) & {
+  headers: Headers;
+};
+
+export type analyzePhotoResponse = (analyzePhotoResponseSuccess | analyzePhotoResponseError)
+
+export const getAnalyzePhotoUrl = () => {
+
+
+
+
+  return `/api/v1/vision/analyze`
+}
+
+/**
+ * Accepts previously uploaded media URL, downloads the photo from the internal store, and starts background vision analysis via the configured AI model. Analysis results are delivered asynchronously through the SSE stream at /api/v1/events as `vision.analysis.completed` events. The frontend must establish the authenticated SSE stream and receive `stream.connected` before triggering analysis. Results are not replayed; if the stream is interrupted, the user can retry analysis.
+ * @summary Trigger async AI photo analysis
+ */
+export const analyzePhoto = async (analyzePhotoBody: AnalyzePhotoBody, options?: Parameters<typeof apiFetch>[1]): Promise<analyzePhotoResponse> => {
+
+  return apiFetch<analyzePhotoResponse>(getAnalyzePhotoUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(analyzePhotoBody)
   }
 );}
 

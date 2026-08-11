@@ -1,5 +1,5 @@
 import { currentPersonaId, PERSONAS } from '@/shared/model/persona'
-import type { Item, ItemDraft, Wish } from '../model/types'
+import type { Item, ItemDraft, RecognizedItem, Wish } from '../model/types'
 
 /**
  * Демо-объявления и операции над ними: то, что делал бы бэкенд, если бы он был подключён.
@@ -200,4 +200,50 @@ export async function withdraw(id: string): Promise<Item> {
   await delay(400)
 
   return save({ ...find(id), wish: [], status: 'withdrawn' })
+}
+
+/**
+ * Распознавание вещи по фото на моках: фрагмент имени файла → правдоподобный результат.
+ * Ключи покрывают демо-фотографии из `public/mock/items`; на остальных функция честно
+ * отказывается, а не выдумывает вещь.
+ *
+ * В отличие от бэкенда, здесь есть и название: демо должно показывать сценарий целиком,
+ * а модель названий не даёт (см. `recognizeItem`).
+ */
+const RECOGNIZED: Record<string, RecognizedItem> = {
+  bike: { title: 'Горный велосипед', category: 'Спорт и отдых', condition: 'good' },
+  dumbbells: { title: 'Гантели 20 кг', category: 'Спорт и отдых', condition: 'used' },
+  scooter: { title: 'Электросамокат', category: 'Транспорт', condition: 'good' },
+  monitor24: { title: 'Монитор 24"', category: 'Электроника', condition: 'good' },
+  monitor: { title: 'Монитор LG 27" IPS', category: 'Электроника', condition: 'good' },
+  console: { title: 'Игровая приставка PlayStation 4', category: 'Электроника', condition: 'used' },
+  camera: { title: 'Плёночный фотоаппарат', category: 'Электроника', condition: 'used' },
+  keyboard: { title: 'Механическая клавиатура', category: 'Электроника', condition: 'new' },
+  watch: { title: 'Умные часы Amazfit GTR', category: 'Электроника', condition: 'good' },
+  phone: { title: 'Смартфон', category: 'Электроника', condition: 'good' },
+  headphones: { title: 'Наушники', category: 'Аудио', condition: 'good' },
+  guitar: { title: 'Акустическая гитара', category: 'Хобби и творчество', condition: 'good' },
+  coffee: { title: 'Кофеварка', category: 'Дом и дача', condition: 'good' },
+  grinder: { title: 'Кофемолка', category: 'Дом и дача', condition: 'good' },
+  lamp: { title: 'Настольная лампа', category: 'Дом и дача', condition: 'good' },
+  blanket: { title: 'Плед', category: 'Дом и дача', condition: 'new' },
+  beanbag: { title: 'Кресло-мешок', category: 'Дом и дача', condition: 'good' },
+}
+
+/** Пауза перед ответом: за неё состояние «распознаём» успевает стать видимым. */
+const RECOGNIZE_MS = 1700
+
+export async function recognize(file: File, delayMs = RECOGNIZE_MS): Promise<RecognizedItem> {
+  await delay(delayMs)
+
+  const name = file.name.toLowerCase()
+
+  // Длинные ключи проверяем первыми: `monitor24.jpg` подходит и под `monitor`.
+  const key = Object.keys(RECOGNIZED)
+    .sort((a, b) => b.length - a.length)
+    .find((candidate) => name.includes(candidate))
+
+  if (!key) throw new Error('Не удалось распознать вещь на фото')
+
+  return RECOGNIZED[key]
 }

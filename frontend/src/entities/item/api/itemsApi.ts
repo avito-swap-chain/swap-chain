@@ -68,10 +68,13 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
   if (!isBackendConnected) return mock.create(draft, wish)
 
   // Фото сначала уезжает в хранилище бэкенда: в вещь идёт выданный им адрес, а не
-  // локальная `blob:`-ссылка — на ней создание вещи отваливалось с 422.
-  const uploaded = draft.photoFile
-    ? unwrap<MediaUpload>(await uploadMedia({ file: draft.photoFile }))
-    : undefined
+  // локальная `blob:`-ссылка — на ней создание вещи отваливалось с 422. Если фото уже
+  // загружали ради распознавания, берём тот же адрес и не грузим второй раз.
+  const imageUrl =
+    draft.uploadedUrl ??
+    (draft.photoFile
+      ? unwrap<MediaUpload>(await uploadMedia({ file: draft.photoFile })).url
+      : undefined)
 
   const created = unwrap<ApiItem>(
     await createItemRequest({
@@ -80,7 +83,7 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
       // по нему ищет обмен — служебным словам вроде «good» не место ни там, ни там.
       offerDescription: draft.description?.trim() || draft.title,
       wantDescription: asWantDescription(wish),
-      imageUrls: uploaded ? [uploaded.url] : [],
+      imageUrls: imageUrl ? [imageUrl] : [],
     }),
   )
   return mapItem(created)

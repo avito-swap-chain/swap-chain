@@ -9,7 +9,8 @@ import {
   type ItemCondition,
   type ItemDraft,
 } from '@/entities/item'
-import { Button, Field, IconImage, Input, Select, Status } from '@/shared/ui'
+import { isBackendConnected } from '@/shared/config/backend'
+import { ActionError, Button, Field, IconImage, Input, Select, Status } from '@/shared/ui'
 import { recognitionPatch, type RecognizedField } from '../lib/recognitionPatch'
 
 /** Первый шаг публикации: сама вещь, без желания. */
@@ -36,11 +37,29 @@ export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
     patch(part)
   }
 
-  // Распознавание — подсказка: не удалось, значит форма обычная и заполняется руками.
+  /**
+   * Распознавание — подсказка: не удалось, значит форма обычная и заполняется руками.
+   *
+   * На моках ответ мгновенный, и поля заполняются сами — человек ещё не начал печатать.
+   * С бэкендом модель думает несколько секунд, за которые он уже что-то ввёл: там результат
+   * показывается предложением рядом с полями, а не переписывает набранное.
+   */
   const recognition = useMutation({
     mutationFn: (file: File) => recognizeItem(file),
-    onSuccess: (recognized) => patch(recognitionPatch(recognized, edited.current)),
+    onSuccess: (recognized) => {
+      // Фото уже в хранилище бэкенда — при публикации его не надо грузить второй раз.
+      if (recognized.imageUrl) patch({ uploadedUrl: recognized.imageUrl })
+      if (!isBackendConnected) patch(recognitionPatch(recognized, edited.current))
+    },
   })
+
+  /** Принять подсказку модели: то, что человек уже написал сам, остаётся как есть. */
+  const applyRecognition = () => {
+    if (!recognition.data) return
+
+    patch(recognitionPatch(recognition.data, edited.current))
+    recognition.reset()
+  }
 
   const pickPhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -74,10 +93,48 @@ export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
       </label>
 
       {recognition.isPending && <Status>Распознаём вещь на фото…</Status>}
-      {recognition.isSuccess && (
+
+      {/* На моках поля заполнены сразу — остаётся сказать об этом. */}
+      {recognition.isSuccess && !isBackendConnected && (
         <Status tone="muted">Заполнили по фото — проверьте и поправьте</Status>
       )}
-      {recognition.isError && <Status tone="muted">Не узнали вещь на фото — заполните сами</Status>}
+
+      {/* С бэкендом ответ приходит через несколько секунд: показываем предложением,
+          а не переписываем то, что человек успел ввести. Решает он. */}
+      {recognition.isSuccess && isBackendConnected && recognition.data && (
+        <div className="flex flex-col gap-2 rounded-card border border-line bg-card p-3">
+          <span className="font-sans text-xs font-semibold text-ink-2">Распознали по фото</span>
+
+          <p className="text-[13.5px] leading-5 text-ink">
+            {recognition.data.description ?? 'Описание подобрать не удалось'}
+          </p>
+
+          <p className="text-[12.5px] text-ink-3">
+            {[
+              recognition.data.category,
+              recognition.data.condition && CONDITION_LABEL[recognition.data.condition],
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+
+          <Button
+            variant="ghost"
+            onClick={applyRecognition}
+            className="self-start px-3 py-2 text-[13.5px]"
+          >
+            Заполнить этим
+          </Button>
+
+          <span className="text-[12px] text-ink-3">
+            Название модель не придумывает — впишите сами
+          </span>
+        </div>
+      )}
+
+      {recognition.isError && (
+        <ActionError error={recognition.error} conflict="Это фото распознать не получилось" />
+      )}
 
       <Field label="Название">
         <Input
