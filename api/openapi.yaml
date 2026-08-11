@@ -1307,6 +1307,10 @@ components:
           items:
             type: string
             format: uri-reference
+        categoryId:
+          type: integer
+          format: int32
+          description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
 
     UpdateItemRequest:
       type: object
@@ -1327,6 +1331,10 @@ components:
         withdraw:
           type: boolean
           description: Remove the wish and stop matching this item. Cannot be combined with wantDescription.
+        categoryId:
+          type: integer
+          format: int32
+          description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
 
     MediaUpload:
       type: object
@@ -1375,6 +1383,11 @@ components:
             format: uri-reference
         status:
           $ref: "#/components/schemas/ItemStatus"
+        categoryId:
+          type: integer
+          format: int32
+          nullable: true
+          description: User-selected offer category; null when not explicitly set. Maps to offer_category_id.
         offerCategoryId:
           type: integer
           format: int32

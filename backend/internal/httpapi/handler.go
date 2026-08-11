@@ -482,11 +482,24 @@ func (h *Handler) CreateItem(ctx context.Context, request api.CreateItemRequestO
 		imageURLs = append(imageURLs, (*request.Body.ImageUrls)...)
 	}
 
+	var offerCategoryID *int32
+	if request.Body.CategoryId != nil {
+		if err := h.categories.ValidateCategory(ctx, *request.Body.CategoryId); err != nil {
+			return api.CreateItem422JSONResponse{
+				ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "category validation failed", map[string]any{
+					"categoryId": err.Error(),
+				})),
+			}, nil
+		}
+		offerCategoryID = request.Body.CategoryId
+	}
+
 	item, err := h.items.Create(ctx, current.UserID, items.CreateInput{
 		OfferTitle:       request.Body.OfferTitle,
 		OfferDescription: request.Body.OfferDescription,
 		WantDescription:  request.Body.WantDescription,
 		ImageURLs:        imageURLs,
+		OfferCategoryID:  offerCategoryID,
 	})
 	if err != nil {
 		var validationError *items.ValidationError
@@ -523,10 +536,24 @@ func (h *Handler) UpdateItem(ctx context.Context, request api.UpdateItemRequestO
 	}
 
 	withdraw := request.Body.Withdraw != nil && *request.Body.Withdraw
+
+	var offerCategoryID *int32
+	if request.Body.CategoryId != nil {
+		if err := h.categories.ValidateCategory(ctx, *request.Body.CategoryId); err != nil {
+			return api.UpdateItem422JSONResponse{
+				ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "category validation failed", map[string]any{
+					"categoryId": err.Error(),
+				})),
+			}, nil
+		}
+		offerCategoryID = request.Body.CategoryId
+	}
+
 	item, err := h.items.Update(ctx, current.UserID, request.ItemId, items.UpdateInput{
 		OfferTitle:       request.Body.OfferTitle,
 		OfferDescription: request.Body.OfferDescription,
 		WantDescription:  request.Body.WantDescription,
+		OfferCategoryID:  offerCategoryID,
 		Withdraw:         withdraw,
 	})
 	if err != nil {
@@ -1212,6 +1239,7 @@ func itemModel(item items.Item) api.Item {
 		WantDescription:  item.WantDescription,
 		ImageUrls:        append([]string(nil), item.ImageURLs...),
 		Status:           api.ItemStatus(item.Status),
+		CategoryId:       item.OfferCategoryID,
 		OfferCategoryId:  item.OfferCategoryID,
 		WantCategoryId:   item.WantCategoryID,
 		CreatedAt:        item.CreatedAt,

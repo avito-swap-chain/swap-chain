@@ -2,6 +2,7 @@ package categories
 
 import (
 	"context"
+	"fmt"
 	"sort"
 )
 
@@ -27,4 +28,16 @@ func (s *MemoryService) List(_ context.Context) ([]Category, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result, nil
+}
+
+func (s *MemoryService) ValidateCategory(_ context.Context, categoryID int32) error {
+	if categoryID == s.undefinedCategoryID {
+		return fmt.Errorf("%w: id=%d", ErrUndefinedCategory, categoryID)
+	}
+	for _, c := range s.categories {
+		if c.ID == categoryID {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: id=%d", ErrCategoryNotFound, categoryID)
 }

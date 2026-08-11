@@ -41,6 +41,7 @@ func (s *MemoryService) Create(_ context.Context, userID int64, input CreateInpu
 		WantDescription:  input.WantDescription,
 		ImageURLs:        append([]string(nil), input.ImageURLs...),
 		Status:           "ANALYZING",
+		OfferCategoryID:  copyInt32Ptr(input.OfferCategoryID),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -83,6 +84,9 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 	if input.OfferDescription != nil {
 		item.OfferDescription = *input.OfferDescription
 	}
+	if input.OfferCategoryID != nil {
+		item.OfferCategoryID = input.OfferCategoryID
+	}
 	switch {
 	case input.Withdraw:
 		item.WantDescription = ""
@@ -92,7 +96,7 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 		item.Status = "ANALYZING"
 	case input.OfferDescription != nil && item.Status != "WITHDRAWN":
 		item.Status = "ANALYZING"
-	case input.OfferTitle != nil && item.OfferTitle != oldTitle && item.Status != "WITHDRAWN":
+	case (input.OfferTitle != nil && item.OfferTitle != oldTitle || input.OfferCategoryID != nil) && item.Status != "WITHDRAWN":
 		item.Status = "ANALYZING"
 	}
 	item.UpdatedAt = time.Now().UTC()
@@ -144,5 +148,21 @@ func (s *MemoryService) ListByUser(_ context.Context, userID, afterID int64, lim
 
 func clone(item Item) Item {
 	item.ImageURLs = append([]string(nil), item.ImageURLs...)
+	if item.OfferCategoryID != nil {
+		id := *item.OfferCategoryID
+		item.OfferCategoryID = &id
+	}
+	if item.WantCategoryID != nil {
+		id := *item.WantCategoryID
+		item.WantCategoryID = &id
+	}
 	return item
+}
+
+func copyInt32Ptr(src *int32) *int32 {
+	if src == nil {
+		return nil
+	}
+	value := *src
+	return &value
 }

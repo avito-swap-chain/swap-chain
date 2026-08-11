@@ -197,11 +197,11 @@ func (r *postgresRepository) Create(ctx context.Context, userID int64, input Cre
 	defer func() { _ = tx.Rollback() }()
 
 	row := tx.QueryRowContext(ctx, `
-		INSERT INTO items (user_id, offer_title, offer_description, want_description, image_urls)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO items (user_id, offer_title, offer_description, want_description, image_urls, offer_category_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, user_id, offer_title, offer_description, want_description,
 		          image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at`,
-		userID, input.OfferTitle, input.OfferDescription, input.WantDescription, pq.Array(input.ImageURLs),
+		userID, input.OfferTitle, input.OfferDescription, input.WantDescription, pq.Array(input.ImageURLs), input.OfferCategoryID,
 	)
 	item, err := scanItem(row)
 	if err != nil {
@@ -255,6 +255,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	wantDescription := current.WantDescription
 	status := current.Status
 	matchingChanged := false
+	offerCategoryChanged := input.OfferCategoryID != nil
 	switch {
 	case input.Withdraw:
 		wantDescription = ""
@@ -268,6 +269,10 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		status = "ANALYZING"
 		matchingChanged = true
 	case input.OfferTitle != nil && titleChanged && current.Status != "WITHDRAWN":
+		status = "ANALYZING"
+		matchingChanged = true
+	}
+	if offerCategoryChanged && current.Status != "WITHDRAWN" {
 		status = "ANALYZING"
 		matchingChanged = true
 	}
@@ -286,7 +291,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		    offer_description = $2,
 		    want_description = $3,
 		    status = $4::item_status,
-		    offer_category_id = CASE WHEN $5 THEN NULL ELSE offer_category_id END,
+		    offer_category_id = CASE WHEN $7::int IS NOT NULL THEN $7::int WHEN $5 THEN NULL ELSE offer_category_id END,
 		    want_category_id = CASE WHEN $5 THEN NULL ELSE want_category_id END,
 		    param_richness = CASE WHEN $5 THEN NULL ELSE param_richness END,
 		    offer_embedding_local = CASE WHEN $5 THEN NULL ELSE offer_embedding_local END,
@@ -297,7 +302,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		WHERE id = $1
 		RETURNING id, user_id, offer_title, offer_description, want_description,
 		          image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at`,
-		itemID, offerDescription, wantDescription, status, matchingChanged, offerTitle,
+		itemID, offerDescription, wantDescription, status, matchingChanged, offerTitle, input.OfferCategoryID,
 	)
 	item, err := scanItem(row)
 	if err != nil {

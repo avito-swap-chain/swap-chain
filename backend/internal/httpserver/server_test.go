@@ -1328,13 +1328,31 @@ func (testFinder) Execute(_ context.Context, itemID int64) ([][]model.Edge, erro
 	}}, nil
 }
 
-type testCategoriesService struct{}
+type testCategoriesService struct {
+	validateErr error
+}
 
 func (s *testCategoriesService) List(_ context.Context) ([]categories.Category, error) {
 	return []categories.Category{
 		{ID: 1, Name: "Электроника", IsSystem: true},
 		{ID: 2, Name: "Бытовая техника", IsSystem: true},
+		{ID: 46, Name: "Прочее", IsSystem: false},
 	}, nil
+}
+
+func (s *testCategoriesService) ValidateCategory(_ context.Context, categoryID int32) error {
+	if s.validateErr != nil {
+		return s.validateErr
+	}
+	if categoryID == 47 {
+		return categories.ErrUndefinedCategory
+	}
+	for _, c := range []int32{1, 2, 46} {
+		if c == categoryID {
+			return nil
+		}
+	}
+	return categories.ErrCategoryNotFound
 }
 
 type testChainService struct {
@@ -2007,5 +2025,95 @@ func TestCategoriesListRequiresSession(t *testing.T) {
 	defer closeBody(t, response.Body)
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("GET categories status = %d, want %d", response.StatusCode, http.StatusUnauthorized)
+	}
+}
+
+func TestCreateItemWithCategoryIdStoresAndReturnsIt(t *testing.T) {
+	server := newTestServerWithServices(t, &testChainService{chain: testChain()}, items.NewMemoryService())
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+
+	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wantDescription":"Laptop","categoryId":1}`
+	resp := postJSON(t, client, server.URL+"/api/v1/items", payload)
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d", resp.StatusCode, http.StatusCreated)
+	}
+	var created api.Item
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode item: %v", err)
+	}
+	if created.CategoryId == nil || *created.CategoryId != 1 {
+		t.Fatalf("categoryId = %v, want 1", created.CategoryId)
+	}
+	if created.OfferCategoryId == nil || *created.OfferCategoryId != 1 {
+		t.Fatalf("offerCategoryId = %v, want 1", created.OfferCategoryId)
+	}
+}
+
+func TestCreateItemRejectsUndefinedCategory47(t *testing.T) {
+	server := newTestServerWithServices(t, &testChainService{chain: testChain()}, items.NewMemoryService())
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+
+	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wantDescription":"Laptop","categoryId":47}`
+	resp := postJSON(t, client, server.URL+"/api/v1/items", payload)
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("create status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestCreateItemRejectsInvalidCategoryId(t *testing.T) {
+	server := newTestServerWithServices(t, &testChainService{chain: testChain()}, items.NewMemoryService())
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+
+	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wantDescription":"Laptop","categoryId":999}`
+	resp := postJSON(t, client, server.URL+"/api/v1/items", payload)
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("create status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+}
+
+func TestUpdateItemChangesCategoryId(t *testing.T) {
+	server := newTestServerWithServices(t, &testChainService{chain: testChain()}, items.NewMemoryService())
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+
+	createPayload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wantDescription":"Laptop","categoryId":1}`
+	createResp := postJSON(t, client, server.URL+"/api/v1/items", createPayload)
+	defer closeBody(t, createResp.Body)
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d", createResp.StatusCode)
+	}
+	var created api.Item
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode item: %v", err)
+	}
+
+	updatePayload := `{"categoryId":2}`
+	url := fmt.Sprintf("%s/api/v1/items/%d", server.URL, created.Id)
+	req, err := http.NewRequest(http.MethodPatch, url, strings.NewReader(updatePayload))
+	if err != nil {
+		t.Fatalf("create PATCH request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	updateResp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH item: %v", err)
+	}
+	defer closeBody(t, updateResp.Body)
+	if updateResp.StatusCode != http.StatusOK {
+		body := readBody(t, updateResp.Body)
+		t.Fatalf("PATCH status = %d, want %d; body=%s", updateResp.StatusCode, http.StatusOK, body)
+	}
+	var updated api.Item
+	if err := json.NewDecoder(updateResp.Body).Decode(&updated); err != nil {
+		t.Fatalf("decode updated item: %v", err)
+	}
+	if updated.CategoryId == nil || *updated.CategoryId != 2 {
+		t.Fatalf("categoryId = %v, want 2", updated.CategoryId)
 	}
 }

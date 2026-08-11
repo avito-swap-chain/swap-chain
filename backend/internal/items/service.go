@@ -52,6 +52,7 @@ type CreateInput struct {
 	OfferDescription string
 	WantDescription  string
 	ImageURLs        []string
+	OfferCategoryID  *int32
 }
 
 // UpdateInput contains a partial item change. Withdraw removes the wish and
@@ -60,6 +61,7 @@ type UpdateInput struct {
 	OfferTitle       *string
 	OfferDescription *string
 	WantDescription  *string
+	OfferCategoryID  *int32
 	Withdraw         bool
 }
 
@@ -89,8 +91,9 @@ func normalizeUpdate(input UpdateInput) UpdateInput {
 
 func validateUpdate(input UpdateInput) error {
 	fields := make(map[string]string)
-	if input.OfferDescription == nil && input.WantDescription == nil && input.OfferTitle == nil && !input.Withdraw {
-		fields["request"] = "must change a description, title or withdraw the item"
+	hasChange := input.OfferDescription != nil || input.WantDescription != nil || input.OfferTitle != nil || input.OfferCategoryID != nil || input.Withdraw
+	if !hasChange {
+		fields["request"] = "must change a description, title, category, or withdraw the item"
 	}
 	if input.Withdraw && input.WantDescription != nil {
 		fields["wantDescription"] = "cannot be changed while withdrawing the item"

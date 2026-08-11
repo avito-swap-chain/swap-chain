@@ -2,10 +2,14 @@ package categories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"swap-chain/shared/db"
 )
+
+var ErrCategoryNotFound = errors.New("category not found")
+var ErrUndefinedCategory = errors.New("undefined category is not allowed")
 
 type Category struct {
 	ID       int32
@@ -15,6 +19,7 @@ type Category struct {
 
 type Service interface {
 	List(ctx context.Context) ([]Category, error)
+	ValidateCategory(ctx context.Context, categoryID int32) error
 }
 
 type PostgresService struct {
@@ -43,4 +48,20 @@ func (s *PostgresService) List(ctx context.Context) ([]Category, error) {
 		})
 	}
 	return result, nil
+}
+
+func (s *PostgresService) ValidateCategory(ctx context.Context, categoryID int32) error {
+	if categoryID == s.undefinedCategoryID {
+		return fmt.Errorf("%w: id=%d", ErrUndefinedCategory, categoryID)
+	}
+	cats, err := s.queries.ListCategories(ctx, s.undefinedCategoryID)
+	if err != nil {
+		return fmt.Errorf("validate category: %w", err)
+	}
+	for _, c := range cats {
+		if c.ID == categoryID {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: id=%d", ErrCategoryNotFound, categoryID)
 }
