@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { cx } from '@/shared/lib'
 import { Status, type StatusTone } from '@/shared/ui'
 import { displayName, isNeighbour, type Neighbours } from '../lib/participants'
@@ -67,7 +68,18 @@ export function ParticipantStatusList({ participants, neighbours }: ParticipantS
 
             <div className="min-w-0 flex-1">
               <b className={cx('block truncate text-[13.5px] font-bold', !near && 'text-ink-2')}>
-                {displayName(p)}
+                {/* На соседа по кругу можно посмотреть: вещь отдают ему, и «кто он такой»
+                    — вопрос, который возникает до согласия. Себя открывать незачем. */}
+                {p.isMe ? (
+                  displayName(p)
+                ) : (
+                  <Link
+                    to={`/users/${p.userId}`}
+                    className="rounded-sm outline-offset-2 hover:text-brand focus-visible:outline-2 focus-visible:outline-brand"
+                  >
+                    {displayName(p)}
+                  </Link>
+                )}
                 {near && p.rating != null && (
                   <span className="font-normal text-ink-3"> · {p.rating.toFixed(1)} ★</span>
                 )}
