@@ -28,6 +28,8 @@ import (
 	"swap-chain/modules/matching/model"
 	notificationmodel "swap-chain/modules/notifications/model"
 	notificationservice "swap-chain/modules/notifications/service"
+	reputationmodel "swap-chain/modules/reputation/model"
+	reputationservice "swap-chain/modules/reputation/service"
 )
 
 type databasePinger interface {
@@ -62,6 +64,7 @@ type Handler struct {
 	admin         adminservice.Service
 	chat          chatservice.Service
 	notifications notificationservice.Service
+	reputation    reputationservice.Service
 	vision        VisionService
 	visionJobs    chan struct{}
 	readiness     []readinessChecker
@@ -82,6 +85,7 @@ func NewHandler(
 	adminService adminservice.Service,
 	chatService chatservice.Service,
 	notificationService notificationservice.Service,
+	reputationService reputationservice.Service,
 	visionService VisionService,
 	readiness ...readinessChecker,
 ) *Handler {
@@ -99,6 +103,7 @@ func NewHandler(
 		admin:         adminService,
 		chat:          chatService,
 		notifications: notificationService,
+		reputation:    reputationService,
 		vision:        visionService,
 		readiness:     readiness,
 	}
@@ -346,7 +351,14 @@ func (h *Handler) GetUser(ctx context.Context, request api.GetUserRequestObject)
 			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to load user profile", nil)),
 		}, nil
 	}
-	return api.GetUser200JSONResponse(userProfileModel(user)), nil
+	stats, err := h.reputation.Stats(ctx, user.ID)
+	if err != nil {
+		h.logger.Error("get user reputation", zap.Int64("user_id", user.ID), zap.Error(err))
+		return api.GetUser500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to load user profile", nil)),
+		}, nil
+	}
+	return api.GetUser200JSONResponse(userProfileModel(user, stats)), nil
 }
 
 // UpdateUser updates the profile of the currently authenticated user.
@@ -391,7 +403,114 @@ func (h *Handler) UpdateUser(ctx context.Context, request api.UpdateUserRequestO
 			}, nil
 		}
 	}
-	return api.UpdateUser200JSONResponse(userProfileModel(user)), nil
+	stats, err := h.reputation.Stats(ctx, user.ID)
+	if err != nil {
+		h.logger.Error("get updated user reputation", zap.Int64("user_id", user.ID), zap.Error(err))
+		return api.UpdateUser500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to load updated user profile", nil)),
+		}, nil
+	}
+	return api.UpdateUser200JSONResponse(userProfileModel(user, stats)), nil
+}
+
+// ListUserReviews returns reviews received by the requested user.
+func (h *Handler) ListUserReviews(ctx context.Context, request api.ListUserReviewsRequestObject) (api.ListUserReviewsResponseObject, error) {
+	limit := 20
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	cursor := int64(0)
+	if request.Params.Cursor != nil {
+		parsed, err := strconv.ParseInt(*request.Params.Cursor, 10, 64)
+		if err != nil || parsed < 0 {
+			return api.ListUserReviews400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_CURSOR", "cursor must be a non-negative integer", nil)),
+			}, nil
+		}
+		cursor = parsed
+	}
+
+	result, err := h.reputation.ListReviews(ctx, request.UserId, cursor, limit)
+	if err != nil {
+		var validationError *reputationmodel.ValidationError
+		switch {
+		case errors.As(err, &validationError):
+			return api.ListUserReviews400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "VALIDATION_ERROR", validationError.Error(), map[string]any{validationError.Field: validationError.Message})),
+			}, nil
+		case errors.Is(err, reputationmodel.ErrUserNotFound):
+			return api.ListUserReviews404JSONResponse{
+				NotFoundJSONResponse: api.NotFoundJSONResponse(errorModel(ctx, "USER_NOT_FOUND", "user not found", nil)),
+			}, nil
+		default:
+			h.logger.Error("list user reviews", zap.Int64("user_id", request.UserId), zap.Error(err))
+			return api.ListUserReviews500JSONResponse{
+				InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to list user reviews", nil)),
+			}, nil
+		}
+	}
+
+	response := api.UserReviewList{Reviews: make([]api.UserReview, 0, len(result.Reviews))}
+	for _, review := range result.Reviews {
+		response.Reviews = append(response.Reviews, userReviewModel(review))
+	}
+	if result.NextCursor != nil {
+		next := strconv.FormatInt(*result.NextCursor, 10)
+		response.NextCursor = &next
+	}
+	return api.ListUserReviews200JSONResponse(response), nil
+}
+
+// CreateChainReview creates one immutable review for a direct neighbour in a completed chain.
+func (h *Handler) CreateChainReview(ctx context.Context, request api.CreateChainReviewRequestObject) (api.CreateChainReviewResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.CreateChainReview401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateChainReview400JSONResponse{
+			ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	review, err := h.reputation.CreateReview(ctx, current.UserID, request.ChainId, reputationmodel.CreateInput{
+		TargetUserID: request.Body.TargetUserId,
+		Rating:       request.Body.Rating,
+		Text:         request.Body.Text,
+	})
+	if err != nil {
+		var validationError *reputationmodel.ValidationError
+		switch {
+		case errors.As(err, &validationError):
+			return api.CreateChainReview400JSONResponse{
+				ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", validationError.Error(), map[string]any{validationError.Field: validationError.Message})),
+			}, nil
+		case errors.Is(err, reputationmodel.ErrForbidden):
+			return api.CreateChainReview403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(errorModel(ctx, "REVIEW_FORBIDDEN", "only a direct exchange neighbour can be reviewed", nil)),
+			}, nil
+		case errors.Is(err, reputationmodel.ErrChainNotFound), errors.Is(err, reputationmodel.ErrUserNotFound):
+			return api.CreateChainReview404JSONResponse{
+				NotFoundJSONResponse: api.NotFoundJSONResponse(errorModel(ctx, "REVIEW_TARGET_NOT_FOUND", "chain or review target not found", nil)),
+			}, nil
+		case errors.Is(err, reputationmodel.ErrChainNotCompleted):
+			return api.CreateChainReview409JSONResponse{
+				ConflictJSONResponse: api.ConflictJSONResponse(errorModel(ctx, "CHAIN_NOT_COMPLETED", "reviews are available only after the exchange is completed", nil)),
+			}, nil
+		case errors.Is(err, reputationmodel.ErrAlreadyExists):
+			return api.CreateChainReview409JSONResponse{
+				ConflictJSONResponse: api.ConflictJSONResponse(errorModel(ctx, "REVIEW_ALREADY_EXISTS", "this participant was already reviewed for the chain", nil)),
+			}, nil
+		default:
+			h.logger.Error("create chain review", zap.Int64("chain_id", request.ChainId), zap.Int64("author_user_id", current.UserID), zap.Error(err))
+			return api.CreateChainReview500JSONResponse{
+				InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to create review", nil)),
+			}, nil
+		}
+	}
+	return api.CreateChainReview201JSONResponse(userReviewModel(review)), nil
 }
 
 // ListUserItems exposes the generated contract until the user service is connected.
@@ -1366,16 +1485,34 @@ func sessionModel(current session.Session, user users.User) api.Session {
 	}
 }
 
-func userProfileModel(user users.User) api.UserProfile {
+func userProfileModel(user users.User, stats reputationmodel.Stats) api.UserProfile {
 	profile := api.UserProfile{
-		Id:        user.ID,
-		Username:  user.Username,
-		CreatedAt: user.CreatedAt,
+		Id:                 user.ID,
+		Username:           user.Username,
+		CreatedAt:          user.CreatedAt,
+		CompletedExchanges: stats.CompletedExchanges,
+		Rating:             stats.Rating,
+		ReviewsCount:       stats.ReviewsCount,
 	}
 	if user.AvatarURL != "" {
 		profile.AvatarUrl = &user.AvatarURL
 	}
 	return profile
+}
+
+func userReviewModel(review reputationmodel.Review) api.UserReview {
+	return api.UserReview{
+		Id:      review.ID,
+		ChainId: review.ChainID,
+		Author: api.UserSummary{
+			Id:       review.Author.ID,
+			Username: review.Author.Username,
+		},
+		TargetUserId: review.TargetUserID,
+		Rating:       review.Rating,
+		Text:         review.Text,
+		CreatedAt:    review.CreatedAt,
+	}
 }
 
 func errorModel(ctx context.Context, code, message string, details map[string]any) api.Error {

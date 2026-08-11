@@ -14,6 +14,9 @@ sql:
       - "migrations/000010_align_analysis_matching_schema.up.sql"
       - "migrations/000011_add_matching_jobs.up.sql"
       - "migrations/000012_manage_exchange_items.up.sql"
+      - "migrations/000013_add_user_avatar.up.sql"
+      - "migrations/000014_add_notifications.up.sql"
+      - "migrations/000015_add_reputation.up.sql"
     queries: "sql/queries"
     gen:
       go:

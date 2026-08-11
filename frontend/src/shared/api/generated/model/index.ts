@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.6.0
+ * OpenAPI spec version: 0.7.0
  */
 
 export * from './adminDelivery';
@@ -12,7 +12,10 @@ export * from './adminDeliveryStatus';
 export * from './adminDeliveryTransitionRequest';
 export * from './adminDeliveryTransitionStatus';
 export * from './analyzePhotoBody';
+export * from './appNotification';
 export * from './badRequestResponse';
+export * from './category';
+export * from './categoryList';
 export * from './chain';
 export * from './chainDecision';
 export * from './chainEdge';
@@ -30,6 +33,7 @@ export * from './conflictResponse';
 export * from './createChainRequest';
 export * from './createItemRequest';
 export * from './createUserRequest';
+export * from './createUserReviewRequest';
 export * from './currentUser';
 export * from './error';
 export * from './errorDetails';
@@ -46,17 +50,22 @@ export * from './listAdminDeliveriesParams';
 export * from './listChainsParams';
 export * from './listChatMessagesParams';
 export * from './listItemsParams';
+export * from './listNotificationsParams';
 export * from './listUserItemsParams';
+export * from './listUserReviewsParams';
 export * from './livenessResponse';
 export * from './livenessResponseStatus';
 export * from './loginRequest';
 export * from './markChatThreadReadRequest';
+export * from './markNotificationsReadRequest';
 export * from './matchingCycle';
 export * from './matchingEdge';
 export * from './matchingResponse';
 export * from './mediaUpload';
 export * from './mediaUploadContentType';
 export * from './notFoundResponse';
+export * from './notificationKind';
+export * from './notificationList';
 export * from './notImplementedResponse';
 export * from './participantStatus';
 export * from './pipelineEvent';
@@ -70,6 +79,8 @@ export * from './updateItemRequest';
 export * from './updateUserRequest';
 export * from './uploadMediaBody';
 export * from './userProfile';
+export * from './userReview';
+export * from './userReviewList';
 export * from './userRole';
 export * from './userSummary';
 export * from './validationErrorResponse';

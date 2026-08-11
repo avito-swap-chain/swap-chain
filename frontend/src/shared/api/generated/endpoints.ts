@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.6.0
+ * OpenAPI spec version: 0.7.0
  */
 import type {
   AdminDelivery,
@@ -11,6 +11,7 @@ import type {
   AdminDeliveryTransitionRequest,
   AnalyzePhotoBody,
   BadRequestResponse,
+  CategoryList,
   Chain,
   ChainList,
   ChainReceipt,
@@ -22,6 +23,7 @@ import type {
   CreateChainRequest,
   CreateItemRequest,
   CreateUserRequest,
+  CreateUserReviewRequest,
   Error,
   ForbiddenResponse,
   HealthResponse,
@@ -32,14 +34,18 @@ import type {
   ListChainsParams,
   ListChatMessagesParams,
   ListItemsParams,
+  ListNotificationsParams,
   ListUserItemsParams,
+  ListUserReviewsParams,
   LivenessResponse,
   LoginRequest,
   MarkChatThreadReadRequest,
+  MarkNotificationsReadRequest,
   MatchingResponse,
   MediaUpload,
   NotFoundResponse,
   NotImplementedResponse,
+  NotificationList,
   SendChatMessageRequest,
   ServiceUnavailableResponse,
   Session,
@@ -49,6 +55,8 @@ import type {
   UpdateUserRequest,
   UploadMediaBody,
   UserProfile,
+  UserReview,
+  UserReviewList,
   ValidationErrorResponse,
   VisionAnalysisAccepted
 } from './model';
@@ -451,6 +459,68 @@ export const updateUser = async (userId: number,
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(updateUserRequest)
+  }
+);}
+
+
+
+export type listUserReviewsResponse200 = {
+  data: UserReviewList
+  status: 200
+}
+
+export type listUserReviewsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listUserReviewsResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listUserReviewsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listUserReviewsResponseSuccess = (listUserReviewsResponse200) & {
+  headers: Headers;
+};
+export type listUserReviewsResponseError = (listUserReviewsResponse400 | listUserReviewsResponse404 | listUserReviewsResponse500) & {
+  headers: Headers;
+};
+
+export type listUserReviewsResponse = (listUserReviewsResponseSuccess | listUserReviewsResponseError)
+
+export const getListUserReviewsUrl = (userId: number,
+    params?: ListUserReviewsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/users/${userId}/reviews?${stringifiedParams}` : `/api/v1/users/${userId}/reviews`
+}
+
+/**
+ * @summary List reviews received by a user
+ */
+export const listUserReviews = async (userId: number,
+    params?: ListUserReviewsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listUserReviewsResponse> => {
+
+  return apiFetch<listUserReviewsResponse>(getListUserReviewsUrl(userId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 
@@ -1029,6 +1099,54 @@ export const findMatchingCycles = async (itemId: number, options?: Parameters<ty
 
 
 
+export type listCategoriesResponse200 = {
+  data: CategoryList
+  status: 200
+}
+
+export type listCategoriesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listCategoriesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listCategoriesResponseSuccess = (listCategoriesResponse200) & {
+  headers: Headers;
+};
+export type listCategoriesResponseError = (listCategoriesResponse401 | listCategoriesResponse500) & {
+  headers: Headers;
+};
+
+export type listCategoriesResponse = (listCategoriesResponseSuccess | listCategoriesResponseError)
+
+export const getListCategoriesUrl = () => {
+
+
+
+
+  return `/api/v1/categories`
+}
+
+/**
+ * @summary List all available item categories
+ */
+export const listCategories = async ( options?: Parameters<typeof apiFetch>[1]): Promise<listCategoriesResponse> => {
+
+  return apiFetch<listCategoriesResponse>(getListCategoriesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export type createChainResponse201 = {
   data: Chain
   status: 201
@@ -1353,6 +1471,76 @@ export const confirmChainReceipt = async (chainId: number, options?: Parameters<
     method: 'POST'
 
 
+  }
+);}
+
+
+
+export type createChainReviewResponse201 = {
+  data: UserReview
+  status: 201
+}
+
+export type createChainReviewResponse400 = {
+  data: ValidationErrorResponse
+  status: 400
+}
+
+export type createChainReviewResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createChainReviewResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type createChainReviewResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createChainReviewResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type createChainReviewResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createChainReviewResponseSuccess = (createChainReviewResponse201) & {
+  headers: Headers;
+};
+export type createChainReviewResponseError = (createChainReviewResponse400 | createChainReviewResponse401 | createChainReviewResponse403 | createChainReviewResponse404 | createChainReviewResponse409 | createChainReviewResponse500) & {
+  headers: Headers;
+};
+
+export type createChainReviewResponse = (createChainReviewResponseSuccess | createChainReviewResponseError)
+
+export const getCreateChainReviewUrl = (chainId: number,) => {
+
+
+
+
+  return `/api/v1/chains/${chainId}/reviews`
+}
+
+/**
+ * Only an authenticated participant of a COMPLETED chain may review a direct neighbour in that exchange ring. One review per author, target, and chain is allowed.
+ * @summary Review a neighbour after a completed exchange
+ */
+export const createChainReview = async (chainId: number,
+    createUserReviewRequest: CreateUserReviewRequest, options?: Parameters<typeof apiFetch>[1]): Promise<createChainReviewResponse> => {
+
+  return apiFetch<createChainReviewResponse>(getCreateChainReviewUrl(chainId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createUserReviewRequest)
   }
 );}
 
@@ -1757,6 +1945,120 @@ export const transitionAdminDelivery = async (deliveryId: number,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(adminDeliveryTransitionRequest)
+  }
+);}
+
+
+
+export type listNotificationsResponse200 = {
+  data: NotificationList
+  status: 200
+}
+
+export type listNotificationsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listNotificationsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listNotificationsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listNotificationsResponseSuccess = (listNotificationsResponse200) & {
+  headers: Headers;
+};
+export type listNotificationsResponseError = (listNotificationsResponse400 | listNotificationsResponse401 | listNotificationsResponse500) & {
+  headers: Headers;
+};
+
+export type listNotificationsResponse = (listNotificationsResponseSuccess | listNotificationsResponseError)
+
+export const getListNotificationsUrl = (params?: ListNotificationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/notifications?${stringifiedParams}` : `/api/v1/notifications`
+}
+
+/**
+ * @summary List the current user's notifications with unread count
+ */
+export const listNotifications = async (params?: ListNotificationsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listNotificationsResponse> => {
+
+  return apiFetch<listNotificationsResponse>(getListNotificationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type markNotificationsReadResponse200 = {
+  data: NotificationList
+  status: 200
+}
+
+export type markNotificationsReadResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type markNotificationsReadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type markNotificationsReadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type markNotificationsReadResponseSuccess = (markNotificationsReadResponse200) & {
+  headers: Headers;
+};
+export type markNotificationsReadResponseError = (markNotificationsReadResponse400 | markNotificationsReadResponse401 | markNotificationsReadResponse500) & {
+  headers: Headers;
+};
+
+export type markNotificationsReadResponse = (markNotificationsReadResponseSuccess | markNotificationsReadResponseError)
+
+export const getMarkNotificationsReadUrl = () => {
+
+
+
+
+  return `/api/v1/notifications/read`
+}
+
+/**
+ * Empty or absent IDs array marks all unread notifications as read. IDs that do not belong to the current user are silently ignored.
+ * @summary Mark selected or all notifications as read
+ */
+export const markNotificationsRead = async (markNotificationsReadRequest?: MarkNotificationsReadRequest, options?: Parameters<typeof apiFetch>[1]): Promise<markNotificationsReadResponse> => {
+
+  return apiFetch<markNotificationsReadResponse>(getMarkNotificationsReadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(markNotificationsReadRequest)
   }
 );}
 

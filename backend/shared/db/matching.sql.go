@@ -25,7 +25,7 @@ SELECT candidate_item.id,
        candidate_item.param_richness,
        candidate_item.is_category_manual,
        candidate_item.image_amount,
-       candidate_owner.rating AS user_rating,
+       COALESCE(candidate_reputation.rating, candidate_owner.rating) AS user_rating,
        candidate_owner.success_rate AS user_success_rate,
        candidate_item.offer_embedding_local::vector AS offer_embedding_local,
        candidate_item.want_embedding_local::vector AS want_embedding_local,
@@ -34,6 +34,7 @@ SELECT candidate_item.id,
        (1.0 - (candidate_item.offer_embedding_local <=> source_item.want_embedding_local))::float8 AS similarity
 FROM items AS candidate_item
 JOIN users AS candidate_owner ON candidate_owner.id = candidate_item.user_id
+LEFT JOIN user_reputation AS candidate_reputation ON candidate_reputation.user_id = candidate_owner.id
 JOIN items AS source_item ON source_item.id = $1
 WHERE candidate_item.id != source_item.id
   AND candidate_item.user_id != source_item.user_id

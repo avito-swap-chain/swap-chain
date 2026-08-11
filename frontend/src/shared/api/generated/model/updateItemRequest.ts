@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.6.0
+ * OpenAPI spec version: 0.7.0
  */
 
 export interface UpdateItemRequest {
@@ -24,4 +24,6 @@ export interface UpdateItemRequest {
   wantDescription?: string;
   /** Remove the wish and stop matching this item. Cannot be combined with wantDescription. */
   withdraw?: boolean;
+  /** User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. */
+  categoryId?: number;
 }

@@ -3,6 +3,7 @@ package integration_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -20,14 +21,23 @@ import (
 
 	applicationmatching "swap-chain/internal/application/matching"
 	"swap-chain/internal/chains"
+	"swap-chain/internal/events"
+	"swap-chain/internal/outbox"
+	adminmodel "swap-chain/modules/admin/model"
+	adminrepository "swap-chain/modules/admin/repository"
 	analyzemodel "swap-chain/modules/analyze/model"
 	analyzerepository "swap-chain/modules/analyze/repository"
 	matchingrepository "swap-chain/modules/matching/repository"
 	matchingservice "swap-chain/modules/matching/service"
+	reputationmodel "swap-chain/modules/reputation/model"
+	reputationrepository "swap-chain/modules/reputation/repository"
+	reputationservice "swap-chain/modules/reputation/service"
 	"swap-chain/shared/db"
 )
 
 const migrationBeforeSchemaAlignment = 9
+
+const migrationBeforeReputation = 14
 
 func TestMigrationsCreateAnalyzeAndMatchingSchema(t *testing.T) {
 	database := newMigratedDatabase(t, 0)
@@ -157,6 +167,72 @@ func TestMatchingJobsMigrationBackfillsExistingMatchingItems(t *testing.T) {
 	}
 }
 
+func TestReputationAndOutboxRollbackPreservesExistingUsers(t *testing.T) {
+	databaseURL, cleanup := newTestDatabase(t)
+	t.Cleanup(cleanup)
+
+	migrator := newMigrator(t, databaseURL)
+	if err := migrator.Steps(migrationBeforeReputation); err != nil {
+		t.Fatalf("apply migrations through version 14: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database := openDatabase(t, databaseURL)
+	var userID int64
+	if err := database.QueryRow(`
+		INSERT INTO users (username, phone)
+		VALUES ('reputation-upgrade-user', '+79990006666')
+		RETURNING id`).Scan(&userID); err != nil {
+		t.Fatalf("create pre-reputation user: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 14 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Steps(2); err != nil {
+		t.Fatalf("apply reputation and outbox migrations: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	var aggregateCount int
+	if err := database.QueryRow(`SELECT count(*) FROM user_reputation WHERE user_id = $1`, userID).Scan(&aggregateCount); err != nil {
+		t.Fatalf("load backfilled reputation: %v", err)
+	}
+	if aggregateCount != 1 {
+		t.Fatalf("backfilled reputation rows = %d, want 1", aggregateCount)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close upgraded database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Migrate(migrationBeforeReputation); err != nil {
+		t.Fatalf("roll back reputation and outbox migrations: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	t.Cleanup(func() { _ = database.Close() })
+	var username string
+	if err := database.QueryRow(`SELECT username FROM users WHERE id = $1`, userID).Scan(&username); err != nil {
+		t.Fatalf("load user after rollback: %v", err)
+	}
+	if username != "reputation-upgrade-user" {
+		t.Fatalf("username after rollback = %q", username)
+	}
+	for _, table := range []string{"user_reviews", "user_reputation", "outbox_events"} {
+		var exists bool
+		if err := database.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, table).Scan(&exists); err != nil {
+			t.Fatalf("check table %s after rollback: %v", table, err)
+		}
+		if exists {
+			t.Fatalf("table %s still exists after rollback", table)
+		}
+	}
+}
+
 func TestCompletingAnalysisAtomicallyEnqueuesMatchingJob(t *testing.T) {
 	database := newMigratedDatabase(t, 0)
 	ctx := context.Background()
@@ -266,7 +342,11 @@ func TestThreeItemsProduceExpectedExchangeChain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create matcher: %v", err)
 	}
-	chainService := chains.NewPostgresService(database, nil)
+	eventStore, err := outbox.NewStore(database)
+	if err != nil {
+		t.Fatalf("create chain outbox store: %v", err)
+	}
+	chainService := chains.NewPostgresServiceWithOutbox(database, nil, eventStore)
 	finder := applicationmatching.NewFindCycles(matcher, chainService)
 	cycles, err := finder.Execute(ctx, itemIDs[0])
 	if err != nil {
@@ -292,6 +372,218 @@ func TestThreeItemsProduceExpectedExchangeChain(t *testing.T) {
 	if chain.Status != chains.StatusPending || len(chain.Participants) != 3 {
 		t.Fatalf("created chain = %#v", chain)
 	}
+	outboxEvents, err := eventStore.Claim(ctx, "chain-test-worker", 10, time.Minute)
+	if err != nil {
+		t.Fatalf("claim chain outbox event: %v", err)
+	}
+	if len(outboxEvents) != 1 || outboxEvents[0].Type != "chain.created" || outboxEvents[0].EntityID != strconv.FormatInt(chain.ID, 10) {
+		t.Fatalf("chain outbox events = %#v", outboxEvents)
+	}
+}
+
+func TestCompletedChainReviewsUpdateReputation(t *testing.T) {
+	database := newMigratedDatabase(t, 0)
+	ctx := context.Background()
+	chainID, userIDs, _ := seedDeliveryChain(t, database, adminmodel.ChainCompleted)
+
+	repository, err := reputationrepository.NewPostgreSQL(database)
+	if err != nil {
+		t.Fatalf("create reputation repository: %v", err)
+	}
+	service, err := reputationservice.New(repository)
+	if err != nil {
+		t.Fatalf("create reputation service: %v", err)
+	}
+
+	results := make(chan error, 2)
+	for _, input := range []struct {
+		authorID int64
+		rating   int
+	}{
+		{authorID: userIDs[0], rating: 5},
+		{authorID: userIDs[2], rating: 3},
+	} {
+		go func() {
+			_, createErr := service.CreateReview(ctx, input.authorID, chainID, reputationmodel.CreateInput{
+				TargetUserID: userIDs[1],
+				Rating:       input.rating,
+			})
+			results <- createErr
+		}()
+	}
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatalf("create concurrent review: %v", err)
+		}
+	}
+	if _, err := service.CreateReview(ctx, userIDs[0], chainID, reputationmodel.CreateInput{TargetUserID: userIDs[1], Rating: 4}); !errors.Is(err, reputationmodel.ErrAlreadyExists) {
+		t.Fatalf("duplicate review error = %v, want ErrAlreadyExists", err)
+	}
+
+	stats, err := service.Stats(ctx, userIDs[1])
+	if err != nil {
+		t.Fatalf("load reputation stats: %v", err)
+	}
+	if stats.Rating == nil || *stats.Rating != 4 || stats.ReviewsCount != 2 || stats.CompletedExchanges != 1 {
+		t.Fatalf("reputation stats = %#v, want rating=4 reviews=2 completed=1", stats)
+	}
+	reviews, err := service.ListReviews(ctx, userIDs[1], 0, 20)
+	if err != nil {
+		t.Fatalf("list reviews: %v", err)
+	}
+	if len(reviews.Reviews) != 2 {
+		t.Fatalf("review count = %d, want 2", len(reviews.Reviews))
+	}
+}
+
+func TestDeliveryTransitionCreatesClaimableOutboxEvent(t *testing.T) {
+	database := newMigratedDatabase(t, 0)
+	ctx := context.Background()
+	chainID, _, deliveryIDs := seedDeliveryChain(t, database, adminmodel.ChainAccepted)
+
+	store, err := outbox.NewStore(database)
+	if err != nil {
+		t.Fatalf("create outbox store: %v", err)
+	}
+	repository, err := adminrepository.NewPostgreSQLWithOutbox(database, store)
+	if err != nil {
+		t.Fatalf("create admin repository: %v", err)
+	}
+	var adminID int64
+	if err := database.QueryRowContext(ctx, `SELECT id FROM users WHERE role = 'ADMIN' ORDER BY id LIMIT 1`).Scan(&adminID); err != nil {
+		t.Fatalf("load admin: %v", err)
+	}
+
+	if _, err := repository.TransitionDelivery(ctx, adminID, deliveryIDs[0], adminmodel.DeliveryAtPVZ); err != nil {
+		t.Fatalf("transition delivery: %v", err)
+	}
+	if _, err := repository.TransitionDelivery(ctx, adminID, deliveryIDs[0], adminmodel.DeliveryAtPVZ); err != nil {
+		t.Fatalf("repeat delivery transition: %v", err)
+	}
+
+	firstClaim, err := store.Claim(ctx, "worker-1", 10, time.Minute)
+	if err != nil {
+		t.Fatalf("first claim: %v", err)
+	}
+	secondClaim, err := store.Claim(ctx, "worker-2", 10, time.Minute)
+	if err != nil {
+		t.Fatalf("second claim: %v", err)
+	}
+	if len(firstClaim) != 1 || len(secondClaim) != 0 {
+		t.Fatalf("claim sizes = %d/%d, want 1/0", len(firstClaim), len(secondClaim))
+	}
+	event := firstClaim[0]
+	if event.Type != "chain.updated" || event.EntityID != strconv.FormatInt(chainID, 10) || len(event.RecipientIDs) != 3 {
+		t.Fatalf("outbox event = %#v", event)
+	}
+	if err := store.MarkPublished(ctx, event.ID, "worker-1"); err != nil {
+		t.Fatalf("mark published: %v", err)
+	}
+	remaining, err := store.Claim(ctx, "worker-2", 10, time.Minute)
+	if err != nil {
+		t.Fatalf("claim after publication: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("remaining events = %d, want 0", len(remaining))
+	}
+}
+
+func TestPostgreSQLBroadcasterFansOutToBackendInstances(t *testing.T) {
+	databaseURL, cleanup := newTestDatabase(t)
+	t.Cleanup(cleanup)
+	firstDatabase := openDatabase(t, databaseURL)
+	secondDatabase := openDatabase(t, databaseURL)
+	t.Cleanup(func() { _ = firstDatabase.Close() })
+	t.Cleanup(func() { _ = secondDatabase.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	firstHub := events.NewHub()
+	secondHub := events.NewHub()
+	first, err := outbox.NewPostgreSQLBroadcaster(firstDatabase, databaseURL, firstHub, zap.NewNop())
+	if err != nil {
+		t.Fatalf("create first broadcaster: %v", err)
+	}
+	second, err := outbox.NewPostgreSQLBroadcaster(secondDatabase, databaseURL, secondHub, zap.NewNop())
+	if err != nil {
+		_ = first.Close()
+		t.Fatalf("create second broadcaster: %v", err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	t.Cleanup(func() { _ = second.Close() })
+	go first.Run(ctx)
+	go second.Run(ctx)
+
+	firstSubscription := firstHub.Subscribe(ctx, 10)
+	secondSubscription := secondHub.Subscribe(ctx, 10)
+	want := outbox.Event{
+		ID:           77,
+		Type:         "chain.updated",
+		EntityID:     "42",
+		RecipientIDs: []int64{10},
+		OccurredAt:   time.Now().UTC(),
+	}
+	if err := first.Publish(ctx, want); err != nil {
+		t.Fatalf("publish realtime event: %v", err)
+	}
+
+	for instance, subscription := range map[string]<-chan events.Event{
+		"first":  firstSubscription,
+		"second": secondSubscription,
+	} {
+		select {
+		case got := <-subscription:
+			if got.ID != "outbox:77" || got.EntityID != want.EntityID {
+				t.Fatalf("%s backend event = %#v", instance, got)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("%s backend did not receive realtime event", instance)
+		}
+	}
+}
+
+func seedDeliveryChain(t *testing.T, database *sql.DB, status string) (int64, []int64, []int64) {
+	t.Helper()
+	ctx := context.Background()
+	suffix := time.Now().UnixNano()
+	userIDs := make([]int64, 3)
+	itemIDs := make([]int64, 3)
+	for index := range userIDs {
+		if err := database.QueryRowContext(ctx, `
+			INSERT INTO users (username, phone)
+			VALUES ($1, $2)
+			RETURNING id`, fmt.Sprintf("delivery-user-%d-%d", suffix, index), fmt.Sprintf("+78%09d%d", suffix%1_000_000_000, index)).Scan(&userIDs[index]); err != nil {
+			t.Fatalf("create delivery user %d: %v", index, err)
+		}
+		if err := database.QueryRowContext(ctx, `
+			INSERT INTO items (user_id, offer_title, status)
+			VALUES ($1, $2, 'LOCKED')
+			RETURNING id`, userIDs[index], fmt.Sprintf("delivery-item-%d", index)).Scan(&itemIDs[index]); err != nil {
+			t.Fatalf("create delivery item %d: %v", index, err)
+		}
+	}
+
+	var chainID int64
+	if err := database.QueryRowContext(ctx, `
+		INSERT INTO chains (status, cycle_key)
+		VALUES ($1::chain_status, $2)
+		RETURNING id`, status, fmt.Sprintf("integration:%d", suffix)).Scan(&chainID); err != nil {
+		t.Fatalf("create delivery chain: %v", err)
+	}
+	deliveryIDs := make([]int64, 3)
+	for index := range userIDs {
+		deliveryStatus := adminmodel.DeliveryAwaitingPVZ
+		if status == adminmodel.ChainCompleted {
+			deliveryStatus = adminmodel.DeliveryReceived
+		}
+		if err := database.QueryRowContext(ctx, `
+			INSERT INTO chain_items (chain_id, item_id, user_id, next_item_id, status, delivery_status)
+			VALUES ($1, $2, $3, $4, 'APPROVED', $5::delivery_status)
+			RETURNING id`, chainID, itemIDs[index], userIDs[index], itemIDs[(index+1)%3], deliveryStatus).Scan(&deliveryIDs[index]); err != nil {
+			t.Fatalf("create delivery leg %d: %v", index, err)
+		}
+	}
+	return chainID, userIDs, deliveryIDs
 }
 
 func newMigratedDatabase(t *testing.T, steps int) *sql.DB {

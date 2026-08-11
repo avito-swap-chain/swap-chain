@@ -53,3 +53,22 @@ func TestHubDeliversOneEventToExplicitRecipients(t *testing.T) {
 		}
 	}
 }
+
+func TestHubPreservesDurableEventIdentity(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	hub := NewHub()
+	subscription := hub.Subscribe(ctx, 1)
+	want := Event{ID: "128", Type: "chain.updated", EntityID: "42", OccurredAt: time.Unix(100, 0).UTC()}
+	hub.Publish([]int64{1}, want)
+
+	select {
+	case got := <-subscription:
+		if got.ID != want.ID || !got.OccurredAt.Equal(want.OccurredAt) {
+			t.Fatalf("event = %#v, want durable identity %#v", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("durable event was not delivered")
+	}
+}

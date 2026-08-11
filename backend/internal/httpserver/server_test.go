@@ -35,6 +35,7 @@ import (
 	"swap-chain/modules/matching/model"
 	notificationmodel "swap-chain/modules/notifications/model"
 	notificationservice "swap-chain/modules/notifications/service"
+	reputationmodel "swap-chain/modules/reputation/model"
 )
 
 func TestHealthAndMatchingRoutesUseIntegratedServices(t *testing.T) {
@@ -105,6 +106,7 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		&testAdminService{},
 		newTestChatService(),
 		nil,
+		&testReputationService{},
 		nil,
 		testReadiness{err: errors.New("ollama model is missing")},
 	)
@@ -527,6 +529,37 @@ func TestGetUserProfile(t *testing.T) {
 	}
 	if profile.Id != 1 || profile.Username != "user-1" {
 		t.Fatalf("user profile = %#v, want id=1 username=user-1", profile)
+	}
+	if profile.Rating == nil || *profile.Rating != 4.5 || profile.ReviewsCount != 3 || profile.CompletedExchanges != 2 {
+		t.Fatalf("user reputation = %#v", profile)
+	}
+}
+
+func TestCreateAndListUserReviews(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+
+	created := postJSON(t, client, server.URL+"/api/v1/chains/42/reviews", `{"targetUserId":2,"rating":5,"text":"Отличный обмен"}`)
+	defer closeBody(t, created.Body)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("create review status = %d, want 201; body=%s", created.StatusCode, readBody(t, created.Body))
+	}
+	var review api.UserReview
+	if err := json.NewDecoder(created.Body).Decode(&review); err != nil {
+		t.Fatalf("decode review: %v", err)
+	}
+	if review.ChainId != 42 || review.TargetUserId != 2 || review.Rating != 5 || review.Author.Id != 1 {
+		t.Fatalf("created review = %#v", review)
+	}
+
+	listed, err := http.Get(server.URL + "/api/v1/users/2/reviews")
+	if err != nil {
+		t.Fatalf("GET user reviews: %v", err)
+	}
+	defer closeBody(t, listed.Body)
+	if listed.StatusCode != http.StatusOK {
+		t.Fatalf("list reviews status = %d, want 200", listed.StatusCode)
 	}
 }
 
@@ -1108,7 +1141,7 @@ func newTestServerWithAllServicesAndVision(t *testing.T, chainService chains.Ser
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, vision)
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, &testReputationService{}, vision)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1363,6 +1396,29 @@ type testChainService struct {
 }
 
 type testAdminService struct{}
+
+type testReputationService struct{}
+
+func (*testReputationService) Stats(_ context.Context, _ int64) (reputationmodel.Stats, error) {
+	rating := 4.5
+	return reputationmodel.Stats{CompletedExchanges: 2, Rating: &rating, ReviewsCount: 3}, nil
+}
+
+func (*testReputationService) CreateReview(_ context.Context, authorID, chainID int64, input reputationmodel.CreateInput) (reputationmodel.Review, error) {
+	return reputationmodel.Review{
+		ID:           1,
+		ChainID:      chainID,
+		Author:       reputationmodel.Author{ID: authorID, Username: fmt.Sprintf("user-%d", authorID)},
+		TargetUserID: input.TargetUserID,
+		Rating:       input.Rating,
+		Text:         input.Text,
+		CreatedAt:    time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC),
+	}, nil
+}
+
+func (*testReputationService) ListReviews(_ context.Context, _ int64, _ int64, _ int) (reputationmodel.ListResult, error) {
+	return reputationmodel.ListResult{Reviews: []reputationmodel.Review{}}, nil
+}
 
 type testChatService struct {
 	mu       sync.Mutex
@@ -1732,6 +1788,7 @@ func newTestServerWithNotifications(t *testing.T, notificationService notificati
 		&testAdminService{},
 		newTestChatService(),
 		notificationService,
+		&testReputationService{},
 		nil,
 	)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)

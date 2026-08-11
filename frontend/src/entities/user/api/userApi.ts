@@ -18,6 +18,9 @@ const mapProfile = (profile: UserProfile): Profile => ({
   // Бэкенд отдаёт `null` у пользователя без фотографии, а интерфейсу нужна её нехватка.
   avatarUrl: profile.avatarUrl ?? undefined,
   registeredAt: profile.createdAt,
+  completedExchanges: profile.completedExchanges,
+  rating: profile.rating ?? undefined,
+  reviews: profile.reviewsCount,
 })
 
 /** Профиль любого пользователя: ручка публичная, за ней и открывают соседа по цепочке. */
