@@ -64,12 +64,14 @@ type User struct {
 
 // Participant contains one user's direction, decision and receipt state in a chain.
 type Participant struct {
-	User               User
-	GiveItem           items.Item
-	ReceiveItem        items.Item
-	Status             string
-	ReceiptConfirmed   bool
-	ReceiptConfirmedAt *time.Time
+	User                      User
+	GiveItem                  items.Item
+	ReceiveItem               items.Item
+	Status                    string
+	ReceiptConfirmed          bool
+	ReceiptConfirmedAt        *time.Time
+	IncomingDeliveryStatus    string
+	IncomingDeliveryUpdatedAt time.Time
 }
 
 // Chain is a complete exchange proposal aggregate.

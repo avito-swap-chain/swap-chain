@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+
+	"swap-chain/internal/outbox"
 )
 
 const proposalLifetime = 24 * time.Hour
@@ -17,16 +19,26 @@ const proposalLifetime = 24 * time.Hour
 // PublishEvent sends an event to explicit users after a database commit.
 type PublishEvent func(userIDs []int64, eventType, entityID string, data map[string]any)
 
+type eventOutbox interface {
+	EnqueueTx(ctx context.Context, tx *sql.Tx, event outbox.PendingEvent) error
+}
+
 // PostgresService persists and transitions exchange-chain aggregates.
 type PostgresService struct {
 	database *sql.DB
 	publish  PublishEvent
+	outbox   eventOutbox
 	now      func() time.Time
 }
 
 // NewPostgresService creates a PostgreSQL-backed chain service.
 func NewPostgresService(database *sql.DB, publish PublishEvent) *PostgresService {
-	return &PostgresService{database: database, publish: publish, now: time.Now}
+	return NewPostgresServiceWithOutbox(database, publish, nil)
+}
+
+// NewPostgresServiceWithOutbox creates a chain service with durable realtime events.
+func NewPostgresServiceWithOutbox(database *sql.DB, publish PublishEvent, eventOutbox eventOutbox) *PostgresService {
+	return &PostgresService{database: database, publish: publish, outbox: eventOutbox, now: time.Now}
 }
 
 // Create validates and persists a pending proposal from a closed matching cycle.
@@ -84,6 +96,9 @@ func (s *PostgresService) Create(ctx context.Context, userID int64, input Create
 
 	chain, err := loadChain(ctx, tx, chainID)
 	if err != nil {
+		return Chain{}, err
+	}
+	if err := s.enqueueChainEvent(ctx, tx, chain, "chain.created", "created", nil); err != nil {
 		return Chain{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -232,7 +247,7 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 	}
 
 	if !expiresAt.After(s.now()) {
-		return s.rejectAndCommit(ctx, tx, chainID, "expired")
+		return s.rejectAndCommit(ctx, tx, chainID, "expired", 0)
 	}
 	if decision == DecisionDeclined {
 		if _, err := tx.ExecContext(ctx, `
@@ -240,10 +255,11 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 			WHERE chain_id = $1 AND user_id = $2`, chainID, userID); err != nil {
 			return Chain{}, fmt.Errorf("decline chain: %w", err)
 		}
-		return s.rejectAndCommit(ctx, tx, chainID, "declined")
+		return s.rejectAndCommit(ctx, tx, chainID, "declined", userID)
 	}
 
-	if participantStatus == ParticipantWaiting {
+	participantChanged := participantStatus == ParticipantWaiting
+	if participantChanged {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE chain_items SET status = 'APPROVED', updated_at = now()
 			WHERE chain_id = $1 AND user_id = $2`, chainID, userID); err != nil {
@@ -258,7 +274,17 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 		return Chain{}, fmt.Errorf("count pending participants: %w", err)
 	}
 	if waiting > 0 {
-		return s.commitUpdated(ctx, tx, chainID, "chain.updated", nil)
+		if !participantChanged {
+			chain, err := loadChain(ctx, tx, chainID)
+			if err != nil {
+				return Chain{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return Chain{}, fmt.Errorf("commit idempotent chain decision: %w", err)
+			}
+			return chain, nil
+		}
+		return s.commitUpdated(ctx, tx, chainID, "chain.updated", fmt.Sprintf("approved:%d", userID), nil)
 	}
 
 	allMatching, err := itemsAreMatching(ctx, tx, itemIDs)
@@ -266,7 +292,7 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 		return Chain{}, err
 	}
 	if !allMatching {
-		return s.rejectAndCommit(ctx, tx, chainID, "item_unavailable")
+		return s.rejectAndCommit(ctx, tx, chainID, "item_unavailable", 0)
 	}
 
 	competing, err := competingRecipients(ctx, tx, chainID, itemIDs)
@@ -288,11 +314,24 @@ func (s *PostgresService) Decide(ctx context.Context, userID, chainID int64, dec
 			WHERE id = ANY($1) AND status = 'PENDING'`, pq.Array(competitorIDs)); err != nil {
 			return Chain{}, fmt.Errorf("reject competing chains: %w", err)
 		}
+		for _, competingID := range competitorIDs {
+			if err := recordChainRejection(ctx, tx, competingID, "item_unavailable", 0, 0); err != nil {
+				return Chain{}, err
+			}
+		}
 	}
 
 	chain, err := loadChain(ctx, tx, chainID)
 	if err != nil {
 		return Chain{}, err
+	}
+	if err := s.enqueueChainEvent(ctx, tx, chain, "chain.accepted", "accepted", nil); err != nil {
+		return Chain{}, err
+	}
+	for competingID, recipients := range competing {
+		if err := s.enqueueToUsers(ctx, tx, competingID, recipients, "chain.rejected", "rejected", map[string]any{"reason": "item_unavailable"}); err != nil {
+			return Chain{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return Chain{}, fmt.Errorf("commit accepted chain: %w", err)
@@ -370,22 +409,44 @@ func (s *PostgresService) expireOne(ctx context.Context, chainID int64) (Chain, 
 	if err != nil {
 		return Chain{}, false, err
 	}
+	if err := recordChainRejection(ctx, tx, chainID, "expired", 0, 0); err != nil {
+		return Chain{}, false, err
+	}
+	if err := s.enqueueChainEvent(ctx, tx, chain, "chain.rejected", "rejected", map[string]any{"reason": "expired"}); err != nil {
+		return Chain{}, false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Chain{}, false, fmt.Errorf("commit expired chain: %w", err)
 	}
 	return chain, true, nil
 }
 
-func (s *PostgresService) rejectAndCommit(ctx context.Context, tx *sql.Tx, chainID int64, reason string) (Chain, error) {
+func (s *PostgresService) rejectAndCommit(ctx context.Context, tx *sql.Tx, chainID int64, reason string, actorID int64) (Chain, error) {
 	if _, err := tx.ExecContext(ctx, `UPDATE chains SET status = 'REJECTED', updated_at = now() WHERE id = $1`, chainID); err != nil {
 		return Chain{}, fmt.Errorf("reject chain: %w", err)
 	}
-	return s.commitUpdated(ctx, tx, chainID, "chain.rejected", map[string]any{"reason": reason})
+	if err := recordChainRejection(ctx, tx, chainID, reason, actorID, 0); err != nil {
+		return Chain{}, err
+	}
+	return s.commitUpdated(ctx, tx, chainID, "chain.rejected", "rejected", map[string]any{"reason": reason})
 }
 
-func (s *PostgresService) commitUpdated(ctx context.Context, tx *sql.Tx, chainID int64, eventType string, data map[string]any) (Chain, error) {
+func recordChainRejection(ctx context.Context, tx *sql.Tx, chainID int64, reason string, actorID, itemID int64) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO chain_rejections (chain_id, reason, actor_user_id, item_id)
+		VALUES ($1, $2, NULLIF($3::bigint, 0), NULLIF($4::bigint, 0))
+		ON CONFLICT (chain_id) DO NOTHING`, chainID, reason, actorID, itemID); err != nil {
+		return fmt.Errorf("record chain %d rejection: %w", chainID, err)
+	}
+	return nil
+}
+
+func (s *PostgresService) commitUpdated(ctx context.Context, tx *sql.Tx, chainID int64, eventType, eventKey string, data map[string]any) (Chain, error) {
 	chain, err := loadChain(ctx, tx, chainID)
 	if err != nil {
+		return Chain{}, err
+	}
+	if err := s.enqueueChainEvent(ctx, tx, chain, eventType, eventKey, data); err != nil {
 		return Chain{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -393,6 +454,43 @@ func (s *PostgresService) commitUpdated(ctx context.Context, tx *sql.Tx, chainID
 	}
 	s.notify(chain, eventType, data)
 	return chain, nil
+}
+
+func (s *PostgresService) enqueueChainEvent(
+	ctx context.Context,
+	tx *sql.Tx,
+	chain Chain,
+	eventType, eventKey string,
+	data map[string]any,
+) error {
+	userIDs := make([]int64, 0, len(chain.Participants))
+	for _, participant := range chain.Participants {
+		userIDs = append(userIDs, participant.User.ID)
+	}
+	return s.enqueueToUsers(ctx, tx, chain.ID, userIDs, eventType, eventKey, data)
+}
+
+func (s *PostgresService) enqueueToUsers(
+	ctx context.Context,
+	tx *sql.Tx,
+	chainID int64,
+	userIDs []int64,
+	eventType, eventKey string,
+	data map[string]any,
+) error {
+	if s.outbox == nil {
+		return nil
+	}
+	if err := s.outbox.EnqueueTx(ctx, tx, outbox.PendingEvent{
+		DeduplicationKey: fmt.Sprintf("chain:%d:%s", chainID, eventKey),
+		Type:             eventType,
+		EntityID:         strconv.FormatInt(chainID, 10),
+		RecipientIDs:     userIDs,
+		Data:             data,
+	}); err != nil {
+		return fmt.Errorf("enqueue %s event for chain %d: %w", eventType, chainID, err)
+	}
+	return nil
 }
 
 func lockItems(ctx context.Context, tx *sql.Tx, itemIDs []int64) error {
@@ -538,8 +636,8 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 	for rows.Next() {
 		var participant Participant
 		var giveImages, receiveImages pq.StringArray
-		var deliveryStatus sql.NullString
-		var deliveryUpdatedAt sql.NullTime
+		var incomingDeliveryStatus sql.NullString
+		var incomingDeliveryUpdatedAt sql.NullTime
 		if err := rows.Scan(
 			&chain.ID, &chain.Status, &chain.CreatedAt, &chain.ExpiresAt, &chain.UpdatedAt,
 			&participant.User.ID, &participant.User.Username, &participant.Status,
@@ -549,15 +647,19 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 			&participant.ReceiveItem.ID, &participant.ReceiveItem.UserID, &participant.ReceiveItem.OfferTitle,
 			&participant.ReceiveItem.OfferDescription, &participant.ReceiveItem.WantDescription,
 			&receiveImages, &participant.ReceiveItem.Status, &participant.ReceiveItem.CreatedAt, &participant.ReceiveItem.UpdatedAt,
-			&deliveryStatus, &deliveryUpdatedAt,
+			&incomingDeliveryStatus, &incomingDeliveryUpdatedAt,
 		); err != nil {
 			return Chain{}, fmt.Errorf("scan chain: %w", err)
 		}
-		if deliveryStatus.Valid && deliveryStatus.String == "RECEIVED" {
+		if !incomingDeliveryStatus.Valid || !incomingDeliveryUpdatedAt.Valid {
+			return Chain{}, fmt.Errorf("load chain %d: participant %d has no incoming delivery", chainID, participant.User.ID)
+		}
+		participant.IncomingDeliveryStatus = incomingDeliveryStatus.String
+		participant.IncomingDeliveryUpdatedAt = incomingDeliveryUpdatedAt.Time
+		if participant.IncomingDeliveryStatus == "RECEIVED" {
 			participant.ReceiptConfirmed = true
-			if deliveryUpdatedAt.Valid {
-				participant.ReceiptConfirmedAt = &deliveryUpdatedAt.Time
-			}
+			confirmedAt := participant.IncomingDeliveryUpdatedAt
+			participant.ReceiptConfirmedAt = &confirmedAt
 		}
 		if giveImages == nil {
 			participant.GiveItem.ImageURLs = []string{}

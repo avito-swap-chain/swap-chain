@@ -68,13 +68,16 @@ function ProfileBody({ profile, mine }: { profile: Profile; mine: boolean }) {
           <p className="truncate text-[22px] leading-7 font-bold">{profile.name}</p>
           <p className="text-[13px] text-ink-2">На Авито с {registered(profile.registeredAt)}</p>
 
-          {/* Рейтинг показываем только там, где он настоящий: у бэкенда его нет, и заведён
-              задачей. Выдуманные звёзды врут ровно в том месте, где на них смотрят. */}
+          <p className="mt-1 text-[13px] text-ink-2">
+            {profile.completedExchanges} завершённых обменов
+          </p>
+
+          {/* До первого отзыва вместо искусственного нуля не показываем звезду. */}
           {profile.rating !== undefined && (
             <p className="mt-1 flex items-center gap-1 text-[13px] text-ink-2">
               <IconStar size={15} />
               <b className="font-bold text-ink">{profile.rating.toFixed(1).replace('.', ',')}</b>
-              {profile.reviews !== undefined && <span>· {reviewsLabel(profile.reviews)}</span>}
+              <span>· {reviewsLabel(profile.reviews)}</span>
             </p>
           )}
         </div>

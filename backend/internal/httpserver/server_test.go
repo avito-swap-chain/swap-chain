@@ -33,8 +33,10 @@ import (
 	analyzemodel "swap-chain/modules/analyze/model"
 	chatmodel "swap-chain/modules/chat/model"
 	"swap-chain/modules/matching/model"
+	metricsmodel "swap-chain/modules/metrics/model"
 	notificationmodel "swap-chain/modules/notifications/model"
 	notificationservice "swap-chain/modules/notifications/service"
+	reputationmodel "swap-chain/modules/reputation/model"
 )
 
 func TestHealthAndMatchingRoutesUseIntegratedServices(t *testing.T) {
@@ -105,6 +107,8 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		&testAdminService{},
 		newTestChatService(),
 		nil,
+		&testReputationService{},
+		&testMetricsService{},
 		nil,
 		testReadiness{err: errors.New("ollama model is missing")},
 	)
@@ -210,6 +214,7 @@ func TestSessionIsRequiredForPersonalRoutes(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/chains/42/chat/2/read", body: `{"lastReadMessageId":1}`},
 		{method: http.MethodPost, path: "/api/v1/items", body: validItemPayload},
 		{method: http.MethodGet, path: "/api/v1/admin/deliveries"},
+		{method: http.MethodGet, path: "/api/v1/admin/metrics/funnel"},
 		{method: http.MethodPost, path: "/api/v1/admin/deliveries/1/transition", body: `{"status":"AT_PVZ"}`},
 	} {
 		request, err := http.NewRequest(test.method, server.URL+test.path, strings.NewReader(test.body))
@@ -392,6 +397,42 @@ func TestAdminDeliveryContractEnforcesRoleAndMapsTransitions(t *testing.T) {
 	}
 }
 
+func TestAdminFunnelMetricsContractEnforcesRoleAndMapsSnapshot(t *testing.T) {
+	server := newTestServerWithServices(t, &testChainService{chain: testChain()}, items.NewMemoryService())
+	defer server.Close()
+
+	regularUser := newSessionClient(t, server.URL, 1)
+	forbidden, err := regularUser.Get(server.URL + "/api/v1/admin/metrics/funnel")
+	if err != nil {
+		t.Fatalf("get metrics as regular user: %v", err)
+	}
+	defer closeBody(t, forbidden.Body)
+	if forbidden.StatusCode != http.StatusForbidden {
+		body := readBody(t, forbidden.Body)
+		t.Fatalf("regular user metrics status = %d, want %d; body=%s", forbidden.StatusCode, http.StatusForbidden, body)
+	}
+
+	admin := newSessionClient(t, server.URL, 7)
+	response, err := admin.Get(server.URL + "/api/v1/admin/metrics/funnel")
+	if err != nil {
+		t.Fatalf("get metrics as admin: %v", err)
+	}
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("admin metrics status = %d, want %d; body=%s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
+	}
+	var snapshot api.FunnelMetrics
+	if err := json.NewDecoder(response.Body).Decode(&snapshot); err != nil {
+		t.Fatalf("decode metrics: %v", err)
+	}
+	if snapshot.EligibleItems != 10 || snapshot.ItemsWithChain != 5 || snapshot.AcceptedChains != 2 || snapshot.CompletedChains != 1 {
+		t.Fatalf("funnel metrics = %#v", snapshot)
+	}
+	if snapshot.ItemsWithChainRate == nil || *snapshot.ItemsWithChainRate != 0.5 || len(snapshot.RejectionReasons) != 1 {
+		t.Fatalf("funnel rates/reasons = %#v", snapshot)
+	}
+}
+
 func TestChainReceiptContractUsesSessionRecipient(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
@@ -527,6 +568,37 @@ func TestGetUserProfile(t *testing.T) {
 	}
 	if profile.Id != 1 || profile.Username != "user-1" {
 		t.Fatalf("user profile = %#v, want id=1 username=user-1", profile)
+	}
+	if profile.Rating == nil || *profile.Rating != 4.5 || profile.ReviewsCount != 3 || profile.CompletedExchanges != 2 {
+		t.Fatalf("user reputation = %#v", profile)
+	}
+}
+
+func TestCreateAndListUserReviews(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+	client := newSessionClient(t, server.URL, 1)
+
+	created := postJSON(t, client, server.URL+"/api/v1/chains/42/reviews", `{"targetUserId":2,"rating":5,"text":"Отличный обмен"}`)
+	defer closeBody(t, created.Body)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("create review status = %d, want 201; body=%s", created.StatusCode, readBody(t, created.Body))
+	}
+	var review api.UserReview
+	if err := json.NewDecoder(created.Body).Decode(&review); err != nil {
+		t.Fatalf("decode review: %v", err)
+	}
+	if review.ChainId != 42 || review.TargetUserId != 2 || review.Rating != 5 || review.Author.Id != 1 {
+		t.Fatalf("created review = %#v", review)
+	}
+
+	listed, err := http.Get(server.URL + "/api/v1/users/2/reviews")
+	if err != nil {
+		t.Fatalf("GET user reviews: %v", err)
+	}
+	defer closeBody(t, listed.Body)
+	if listed.StatusCode != http.StatusOK {
+		t.Fatalf("list reviews status = %d, want 200", listed.StatusCode)
 	}
 }
 
@@ -813,12 +885,24 @@ func TestChainContractReturnsCurrentUsersChains(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
 	}
+	body := readBody(t, response.Body)
+	if strings.Contains(body, `"imageUrls":null`) {
+		t.Fatalf("chain item imageUrls must be an array; body=%s", body)
+	}
 	var result api.ChainList
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal([]byte(body), &result); err != nil {
 		t.Fatalf("decode chains: %v", err)
 	}
 	if len(result.Chains) != 1 || result.Chains[0].Id != 42 {
 		t.Fatalf("chains = %#v, want chain 42", result.Chains)
+	}
+	for _, participant := range result.Chains[0].Participants {
+		if participant.IncomingDeliveryStatus != api.AdminDeliveryStatusAWAITINGPVZ {
+			t.Fatalf("incoming delivery status = %q, want AWAITING_PVZ", participant.IncomingDeliveryStatus)
+		}
+		if participant.IncomingDeliveryUpdatedAt.IsZero() {
+			t.Fatal("incoming delivery updated at is zero")
+		}
 	}
 }
 
@@ -1108,7 +1192,7 @@ func newTestServerWithAllServicesAndVision(t *testing.T, chainService chains.Ser
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, vision)
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, &testReputationService{}, &testMetricsService{}, vision)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1364,6 +1448,51 @@ type testChainService struct {
 
 type testAdminService struct{}
 
+type testReputationService struct{}
+
+type testMetricsService struct{}
+
+func (*testMetricsService) Funnel(_ context.Context, actorID int64) (metricsmodel.Funnel, error) {
+	if actorID != 7 {
+		return metricsmodel.Funnel{}, metricsmodel.ErrForbidden
+	}
+	rate := 0.5
+	return metricsmodel.Funnel{
+		GeneratedAt:                    time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC),
+		EligibleItems:                  10,
+		ItemsWithChain:                 5,
+		ItemsWithChainRate:             &rate,
+		AverageTimeToFirstChainSeconds: &rate,
+		DecidedChains:                  4,
+		AcceptedChains:                 2,
+		AcceptanceRate:                 &rate,
+		CompletedChains:                1,
+		DeliveryCompletionRate:         &rate,
+		RejectionReasons:               []metricsmodel.RejectionReason{{Reason: "declined", Count: 2}},
+	}, nil
+}
+
+func (*testReputationService) Stats(_ context.Context, _ int64) (reputationmodel.Stats, error) {
+	rating := 4.5
+	return reputationmodel.Stats{CompletedExchanges: 2, Rating: &rating, ReviewsCount: 3}, nil
+}
+
+func (*testReputationService) CreateReview(_ context.Context, authorID, chainID int64, input reputationmodel.CreateInput) (reputationmodel.Review, error) {
+	return reputationmodel.Review{
+		ID:           1,
+		ChainID:      chainID,
+		Author:       reputationmodel.Author{ID: authorID, Username: fmt.Sprintf("user-%d", authorID)},
+		TargetUserID: input.TargetUserID,
+		Rating:       input.Rating,
+		Text:         input.Text,
+		CreatedAt:    time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC),
+	}, nil
+}
+
+func (*testReputationService) ListReviews(_ context.Context, _ int64, _ int64, _ int) (reputationmodel.ListResult, error) {
+	return reputationmodel.ListResult{Reviews: []reputationmodel.Review{}}, nil
+}
+
 type testChatService struct {
 	mu       sync.Mutex
 	nextID   int64
@@ -1583,8 +1712,8 @@ func testChain() chains.Chain {
 		CreatedAt: now,
 		ExpiresAt: now.Add(24 * time.Hour),
 		Participants: []chains.Participant{
-			{User: chains.User{ID: 1, Username: "first"}, GiveItem: first, ReceiveItem: second, Status: chains.ParticipantApproved},
-			{User: chains.User{ID: 2, Username: "second"}, GiveItem: second, ReceiveItem: first, Status: chains.ParticipantWaiting},
+			{User: chains.User{ID: 1, Username: "first"}, GiveItem: first, ReceiveItem: second, Status: chains.ParticipantApproved, IncomingDeliveryStatus: adminmodel.DeliveryAwaitingPVZ, IncomingDeliveryUpdatedAt: now},
+			{User: chains.User{ID: 2, Username: "second"}, GiveItem: second, ReceiveItem: first, Status: chains.ParticipantWaiting, IncomingDeliveryStatus: adminmodel.DeliveryAwaitingPVZ, IncomingDeliveryUpdatedAt: now},
 		},
 	}
 }
@@ -1620,7 +1749,22 @@ func newTestNotificationService() *testNotificationService {
 	}
 }
 
-func (s *testNotificationService) Create(ctx context.Context, userID int64, kind, title, text string, chainID, itemID *int64) (notificationmodel.Notification, error) {
+func mustCreateNotification(
+	t *testing.T,
+	svc *testNotificationService,
+	userID int64,
+	kind, title, text string,
+	chainID, itemID *int64,
+) notificationmodel.Notification {
+	t.Helper()
+	notification, err := svc.Create(context.Background(), userID, kind, title, text, chainID, itemID)
+	if err != nil {
+		t.Fatalf("create test notification: %v", err)
+	}
+	return notification
+}
+
+func (s *testNotificationService) Create(_ context.Context, userID int64, kind, title, text string, chainID, itemID *int64) (notificationmodel.Notification, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	n := notificationmodel.Notification{
@@ -1638,7 +1782,7 @@ func (s *testNotificationService) Create(ctx context.Context, userID int64, kind
 	return n, nil
 }
 
-func (s *testNotificationService) List(ctx context.Context, userID int64, cursor int64, limit int) (notificationmodel.ListResult, error) {
+func (s *testNotificationService) List(_ context.Context, userID int64, cursor int64, limit int) (notificationmodel.ListResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1672,7 +1816,7 @@ func (s *testNotificationService) List(ctx context.Context, userID int64, cursor
 	}, nil
 }
 
-func (s *testNotificationService) MarkRead(ctx context.Context, userID int64, ids []int64) error {
+func (s *testNotificationService) MarkRead(_ context.Context, userID int64, ids []int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1732,6 +1876,8 @@ func newTestServerWithNotifications(t *testing.T, notificationService notificati
 		&testAdminService{},
 		newTestChatService(),
 		notificationService,
+		&testReputationService{},
+		&testMetricsService{},
 		nil,
 	)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
@@ -1801,9 +1947,9 @@ func TestListNotifications_Empty(t *testing.T) {
 func TestListNotifications_WithData(t *testing.T) {
 	svc := newTestNotificationService()
 	chainID := int64(42)
-	svc.Create(context.Background(), 1, "CHAIN", "Title 1", "Text 1", &chainID, nil)
-	svc.Create(context.Background(), 1, "MESSAGE", "Title 2", "Text 2", &chainID, nil)
-	svc.Create(context.Background(), 2, "CHAIN", "Other user", "Other", &chainID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "Title 1", "Text 1", &chainID, nil)
+	mustCreateNotification(t, svc, 1, "MESSAGE", "Title 2", "Text 2", &chainID, nil)
+	mustCreateNotification(t, svc, 2, "CHAIN", "Other user", "Other", &chainID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1833,8 +1979,8 @@ func TestListNotifications_WithData(t *testing.T) {
 func TestMarkNotificationsRead_MarkAll(t *testing.T) {
 	svc := newTestNotificationService()
 	cID := int64(1)
-	svc.Create(context.Background(), 1, "CHAIN", "T1", "Text", &cID, nil)
-	svc.Create(context.Background(), 1, "CHAIN", "T2", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "T1", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "T2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1858,8 +2004,8 @@ func TestMarkNotificationsRead_MarkAll(t *testing.T) {
 func TestMarkNotificationsRead_MarkSelected(t *testing.T) {
 	svc := newTestNotificationService()
 	cID := int64(1)
-	n1, _ := svc.Create(context.Background(), 1, "CHAIN", "T1", "Text", &cID, nil)
-	n2, _ := svc.Create(context.Background(), 1, "CHAIN", "T2", "Text", &cID, nil)
+	n1 := mustCreateNotification(t, svc, 1, "CHAIN", "T1", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "T2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()
@@ -1871,8 +2017,6 @@ func TestMarkNotificationsRead_MarkSelected(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-
-	_ = n2
 
 	var list api.NotificationList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
@@ -1887,7 +2031,7 @@ func TestListNotifications_CursorPagination(t *testing.T) {
 	svc := newTestNotificationService()
 	cID := int64(1)
 	for i := 0; i < 5; i++ {
-		svc.Create(context.Background(), 1, "CHAIN",
+		mustCreateNotification(t, svc, 1, "CHAIN",
 			fmt.Sprintf("T%d", i), "Text", &cID, nil)
 	}
 
@@ -1950,8 +2094,8 @@ func TestListNotifications_InvalidCursor(t *testing.T) {
 func TestNotifications_CrossUserIsolation(t *testing.T) {
 	svc := newTestNotificationService()
 	cID := int64(1)
-	svc.Create(context.Background(), 1, "CHAIN", "User 1", "Text", &cID, nil)
-	svc.Create(context.Background(), 2, "CHAIN", "User 2", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 1, "CHAIN", "User 1", "Text", &cID, nil)
+	mustCreateNotification(t, svc, 2, "CHAIN", "User 2", "Text", &cID, nil)
 
 	server := newTestServerWithNotifications(t, svc)
 	defer server.Close()

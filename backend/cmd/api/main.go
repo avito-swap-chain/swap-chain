@@ -22,6 +22,7 @@ import (
 	"swap-chain/internal/infrastructure/postgres"
 	"swap-chain/internal/items"
 	"swap-chain/internal/media"
+	"swap-chain/internal/outbox"
 	"swap-chain/internal/session"
 	"swap-chain/internal/users"
 	adminmodel "swap-chain/modules/admin/model"
@@ -35,8 +36,12 @@ import (
 	chatservice "swap-chain/modules/chat/service"
 	matchingrepository "swap-chain/modules/matching/repository"
 	"swap-chain/modules/matching/service"
+	metricsrepository "swap-chain/modules/metrics/repository"
+	metricsservice "swap-chain/modules/metrics/service"
 	notificationrepository "swap-chain/modules/notifications/repository"
 	notificationservice "swap-chain/modules/notifications/service"
+	reputationrepository "swap-chain/modules/reputation/repository"
+	reputationservice "swap-chain/modules/reputation/service"
 	"swap-chain/shared/db"
 
 	"go.uber.org/zap"
@@ -99,6 +104,23 @@ func run(logger *zap.Logger) error {
 	}
 	mediaService := media.NewService(mediaStorage, cfg.MediaMaxUploadBytes)
 	eventHub := events.NewHub()
+	outboxStore, err := outbox.NewStore(database)
+	if err != nil {
+		return fmt.Errorf("create outbox store: %w", err)
+	}
+	realtimeBroadcaster, err := outbox.NewPostgreSQLBroadcaster(database, cfg.DatabaseURL, eventHub, logger)
+	if err != nil {
+		return fmt.Errorf("create realtime broadcaster: %w", err)
+	}
+	defer func() {
+		if err := realtimeBroadcaster.Close(); err != nil {
+			logger.Warn("close realtime broadcaster", zap.Error(err))
+		}
+	}()
+	outboxWorker, err := outbox.NewWorker(outboxStore, realtimeBroadcaster, logger, outbox.DefaultWorkerConfig())
+	if err != nil {
+		return fmt.Errorf("create outbox worker: %w", err)
+	}
 	sessions := session.NewManager(cfg.SessionTTL, cfg.CookieSecure)
 	ollamaConfig := adapters.DefaultOllamaConfig()
 	ollamaConfig.BaseURL = cfg.OllamaBaseURL
@@ -210,8 +232,7 @@ func run(logger *zap.Logger) error {
 	notificationProducer := notificationservice.NewProducer(notificationService, logger, func(userID int64, eventType, entityID string, data map[string]any) {
 		eventHub.PublishToUser(userID, eventType, entityID, data)
 	})
-	chainService := chains.NewPostgresService(database, func(userIDs []int64, eventType, entityID string, data map[string]any) {
-		eventHub.PublishToUsers(userIDs, eventType, entityID, data)
+	chainService := chains.NewPostgresServiceWithOutbox(database, func(userIDs []int64, eventType, entityID string, data map[string]any) {
 		chainID, _ := strconv.ParseInt(entityID, 10, 64)
 		ctx := context.Background()
 		switch eventType {
@@ -230,7 +251,7 @@ func run(logger *zap.Logger) error {
 			}
 			notificationProducer.NotifyChainRejected(ctx, userIDs, chainID, reason)
 		}
-	})
+	}, outboxStore)
 	finder := applicationmatching.NewFindCycles(matcher, chainService)
 	matchingJobs, err := postgres.NewMatchingJobs(database)
 	if err != nil {
@@ -250,7 +271,23 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("create matching worker: %w", err)
 	}
 	userService := users.NewPostgresService(database)
-	adminRepo, err := adminrepository.NewPostgreSQL(database)
+	reputationRepo, err := reputationrepository.NewPostgreSQL(database)
+	if err != nil {
+		return fmt.Errorf("create reputation repository: %w", err)
+	}
+	reputationModule, err := reputationservice.New(reputationRepo)
+	if err != nil {
+		return fmt.Errorf("create reputation service: %w", err)
+	}
+	metricsRepo, err := metricsrepository.NewPostgreSQL(database)
+	if err != nil {
+		return fmt.Errorf("create metrics repository: %w", err)
+	}
+	metricsModule, err := metricsservice.New(metricsRepo)
+	if err != nil {
+		return fmt.Errorf("create metrics service: %w", err)
+	}
+	adminRepo, err := adminrepository.NewPostgreSQLWithOutbox(database, outboxStore)
 	if err != nil {
 		return fmt.Errorf("create admin repository: %w", err)
 	}
@@ -291,6 +328,8 @@ func run(logger *zap.Logger) error {
 		adminModule,
 		chatModule,
 		notificationService,
+		reputationModule,
+		metricsModule,
 		visionService,
 		ollamaClient,
 		categoryBootstrap,
@@ -319,6 +358,8 @@ func run(logger *zap.Logger) error {
 	}
 	go recoveryWorker.Start(shutdownSignal)
 	go matchingWorker.Start(shutdownSignal)
+	go realtimeBroadcaster.Run(shutdownSignal)
+	go outboxWorker.Run(shutdownSignal)
 	go runChainExpiry(shutdownSignal, chainService, logger)
 
 	serverErrors := make(chan error, 1)

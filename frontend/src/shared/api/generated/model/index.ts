@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.6.0
+ * OpenAPI spec version: 0.8.0
  */
 
 export * from './adminDelivery';
@@ -33,10 +33,14 @@ export * from './conflictResponse';
 export * from './createChainRequest';
 export * from './createItemRequest';
 export * from './createUserRequest';
+export * from './createUserReviewRequest';
 export * from './currentUser';
 export * from './error';
 export * from './errorDetails';
 export * from './forbiddenResponse';
+export * from './funnelMetrics';
+export * from './funnelRejectionReason';
+export * from './funnelRejectionReasonReason';
 export * from './healthResponse';
 export * from './healthResponseAnalysis';
 export * from './healthResponseDatabase';
@@ -51,6 +55,7 @@ export * from './listChatMessagesParams';
 export * from './listItemsParams';
 export * from './listNotificationsParams';
 export * from './listUserItemsParams';
+export * from './listUserReviewsParams';
 export * from './livenessResponse';
 export * from './livenessResponseStatus';
 export * from './loginRequest';
@@ -77,6 +82,8 @@ export * from './updateItemRequest';
 export * from './updateUserRequest';
 export * from './uploadMediaBody';
 export * from './userProfile';
+export * from './userReview';
+export * from './userReviewList';
 export * from './userRole';
 export * from './userSummary';
 export * from './validationErrorResponse';

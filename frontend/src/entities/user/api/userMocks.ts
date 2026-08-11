@@ -21,6 +21,7 @@ function toProfile(id: string): Profile {
     name: persona.name,
     avatarUrl: persona.avatarUrl || undefined,
     registeredAt: REGISTERED_AT,
+    completedExchanges: 3,
     rating: persona.rating,
     reviews: persona.reviews,
   }

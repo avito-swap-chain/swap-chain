@@ -3,8 +3,9 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.6.0
+ * OpenAPI spec version: 0.8.0
  */
+import type { AdminDeliveryStatus } from './adminDeliveryStatus';
 import type { Item } from './item';
 import type { ParticipantStatus } from './participantStatus';
 import type { UserSummary } from './userSummary';
@@ -21,4 +22,7 @@ export interface ChainParticipant {
      * @nullable
      */
   receiptConfirmedAt?: string | null;
+  incomingDeliveryStatus: AdminDeliveryStatus;
+  /** When the incoming delivery last changed status. */
+  incomingDeliveryUpdatedAt: string;
 }

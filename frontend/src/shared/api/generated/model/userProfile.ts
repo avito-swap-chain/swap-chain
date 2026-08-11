@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.6.0
+ * OpenAPI spec version: 0.8.0
  */
 
 export interface UserProfile {
@@ -12,4 +12,15 @@ export interface UserProfile {
   /** @nullable */
   avatarUrl?: string | null;
   createdAt: string;
+  /** @minimum 0 */
+  completedExchanges: number;
+  /**
+     * Average review rating. Null until the first review.
+     * @minimum 1
+     * @maximum 5
+     * @nullable
+     */
+  rating: number | null;
+  /** @minimum 0 */
+  reviewsCount: number;
 }

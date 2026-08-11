@@ -44,7 +44,12 @@ func (h *Hub) PublishToUsers(userIDs []int64, eventType, entityID string, data m
 		OccurredAt: time.Now().UTC(),
 		Data:       data,
 	}
+	h.Publish(userIDs, event)
+	return event
+}
 
+// Publish routes a preconstructed event, preserving a durable outbox ID and timestamp.
+func (h *Hub) Publish(userIDs []int64, event Event) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	delivered := make(map[int64]struct{}, len(userIDs))
@@ -61,8 +66,6 @@ func (h *Hub) PublishToUsers(userIDs []int64, eventType, entityID string, data m
 			}
 		}
 	}
-
-	return event
 }
 
 // Subscribe registers a stream for one user until the context is canceled.

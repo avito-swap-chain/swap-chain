@@ -5,17 +5,30 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 
+	"swap-chain/internal/outbox"
 	"swap-chain/modules/admin/model"
 	"swap-chain/shared/db"
+
+	"github.com/lib/pq"
 )
+
+type outboxEnqueuer interface {
+	EnqueueTx(ctx context.Context, tx *sql.Tx, event outbox.PendingEvent) error
+}
 
 type PostgreSQL struct {
 	database *sql.DB
 	queries  *db.Queries
+	outbox   outboxEnqueuer
 }
 
 func NewPostgreSQL(database *sql.DB) (*PostgreSQL, error) {
+	return NewPostgreSQLWithOutbox(database, nil)
+}
+
+func NewPostgreSQLWithOutbox(database *sql.DB, eventOutbox outboxEnqueuer) (*PostgreSQL, error) {
 	if database == nil {
 		return nil, fmt.Errorf("admin repository init: database is required")
 	}
@@ -23,6 +36,7 @@ func NewPostgreSQL(database *sql.DB) (*PostgreSQL, error) {
 	return &PostgreSQL{
 		database: database,
 		queries:  db.New(database),
+		outbox:   eventOutbox,
 	}, nil
 }
 
@@ -94,13 +108,15 @@ func (r *PostgreSQL) TransitionDelivery(
 		return model.Delivery{}, model.ErrTransitionConflict
 	}
 
-	if currentStatus != targetStatus {
+	changed := currentStatus != targetStatus
+	if changed {
 		if err := updateDelivery(ctx, queries, actorID, deliveryID, currentStatus, targetStatus); err != nil {
 			return model.Delivery{}, err
 		}
 	}
 	if targetStatus == model.DeliveryReceived {
-		if _, err := completeChainIfReceived(ctx, queries, chainID, chainStatus); err != nil {
+		chainStatus, err = completeChainIfReceived(ctx, queries, chainID, chainStatus)
+		if err != nil {
 			return model.Delivery{}, err
 		}
 	}
@@ -108,6 +124,11 @@ func (r *PostgreSQL) TransitionDelivery(
 	delivery, err := loadDelivery(ctx, queries, deliveryID)
 	if err != nil {
 		return model.Delivery{}, err
+	}
+	if changed {
+		if err := r.enqueueDeliveryEvent(ctx, tx, chainStatus, delivery); err != nil {
+			return model.Delivery{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return model.Delivery{}, fmt.Errorf("commit admin delivery transition: %w", err)
@@ -144,7 +165,8 @@ func (r *PostgreSQL) ConfirmReceipt(ctx context.Context, actorID, chainID int64)
 		return model.Receipt{}, model.ErrTransitionConflict
 	}
 
-	if recipientDelivery.DeliveryStatus != model.DeliveryReceived {
+	changed := recipientDelivery.DeliveryStatus != model.DeliveryReceived
+	if changed {
 		if err := updateDelivery(
 			ctx,
 			queries,
@@ -160,16 +182,52 @@ func (r *PostgreSQL) ConfirmReceipt(ctx context.Context, actorID, chainID int64)
 	if err != nil {
 		return model.Receipt{}, err
 	}
-
 	delivery, err := loadDelivery(ctx, queries, recipientDelivery.ID)
 	if err != nil {
 		return model.Receipt{}, err
+	}
+	if changed {
+		if err := r.enqueueDeliveryEvent(ctx, tx, chainStatus, delivery); err != nil {
+			return model.Receipt{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return model.Receipt{}, fmt.Errorf("commit delivery receipt: %w", err)
 	}
 
 	return model.Receipt{Delivery: delivery, ChainStatus: chainStatus}, nil
+}
+
+func (r *PostgreSQL) enqueueDeliveryEvent(ctx context.Context, tx *sql.Tx, chainStatus string, delivery model.Delivery) error {
+	if r.outbox == nil {
+		return nil
+	}
+
+	var recipients pq.Int64Array
+	if err := tx.QueryRowContext(ctx, `
+		SELECT array_agg(DISTINCT user_id ORDER BY user_id)
+		FROM chain_items
+		WHERE chain_id = $1`, delivery.ChainID).Scan(&recipients); err != nil {
+		return fmt.Errorf("load delivery event recipients: %w", err)
+	}
+	if len(recipients) == 0 {
+		return fmt.Errorf("load delivery event recipients: chain has no participants")
+	}
+
+	if err := r.outbox.EnqueueTx(ctx, tx, outbox.PendingEvent{
+		DeduplicationKey: fmt.Sprintf("delivery:%d:%s", delivery.ID, delivery.Status),
+		Type:             "chain.updated",
+		EntityID:         strconv.FormatInt(delivery.ChainID, 10),
+		RecipientIDs:     []int64(recipients),
+		Data: map[string]any{
+			"deliveryId":     delivery.ID,
+			"deliveryStatus": delivery.Status,
+			"chainStatus":    chainStatus,
+		},
+	}); err != nil {
+		return fmt.Errorf("enqueue delivery event: %w", err)
+	}
+	return nil
 }
 
 func findDeliveryChain(ctx context.Context, queries *db.Queries, deliveryID int64) (int64, error) {

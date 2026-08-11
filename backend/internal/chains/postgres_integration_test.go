@@ -169,6 +169,7 @@ func TestPostgresServiceDeclineAndExpiryIntegration(t *testing.T) {
 	if declined.Status != StatusRejected || participantStatus(declined, userIDs[1]) != ParticipantDeclined {
 		t.Fatalf("declined chain status = %q, participant = %q", declined.Status, participantStatus(declined, userIDs[1]))
 	}
+	assertRejectionReason(t, database, declined.ID, "declined", userIDs[1])
 
 	baseTime := time.Now().UTC()
 	service.now = func() time.Time { return baseTime }
@@ -195,6 +196,28 @@ func TestPostgresServiceDeclineAndExpiryIntegration(t *testing.T) {
 	}
 	if expiring.Status != StatusRejected {
 		t.Fatalf("expired chain status = %q, want REJECTED", expiring.Status)
+	}
+	assertRejectionReason(t, database, expiring.ID, "expired", 0)
+}
+
+func assertRejectionReason(t *testing.T, database *sql.DB, chainID int64, wantReason string, wantActorID int64) {
+	t.Helper()
+	var reason string
+	var actorID sql.NullInt64
+	if err := database.QueryRow(`
+		SELECT reason, actor_user_id
+		FROM chain_rejections
+		WHERE chain_id = $1`, chainID).Scan(&reason, &actorID); err != nil {
+		t.Fatalf("load chain %d rejection reason: %v", chainID, err)
+	}
+	if reason != wantReason {
+		t.Fatalf("chain %d rejection reason = %q, want %q", chainID, reason, wantReason)
+	}
+	if wantActorID == 0 && actorID.Valid {
+		t.Fatalf("chain %d rejection actor = %d, want NULL", chainID, actorID.Int64)
+	}
+	if wantActorID != 0 && (!actorID.Valid || actorID.Int64 != wantActorID) {
+		t.Fatalf("chain %d rejection actor = %#v, want %d", chainID, actorID, wantActorID)
 	}
 }
 
@@ -297,6 +320,9 @@ func TestPostgresServiceReceiptConfirmationIntegration(t *testing.T) {
 		if participant.ReceiptConfirmed {
 			t.Fatalf("participant %d receiptConfirmed = true, want false before any receipt", participant.User.ID)
 		}
+		if participant.IncomingDeliveryStatus != "AWAITING_PVZ" || participant.IncomingDeliveryUpdatedAt.IsZero() {
+			t.Fatalf("participant %d incoming delivery = %q at %v", participant.User.ID, participant.IncomingDeliveryStatus, participant.IncomingDeliveryUpdatedAt)
+		}
 	}
 
 	userA := userIDs[0]
@@ -326,6 +352,11 @@ func TestPostgresServiceReceiptConfirmationIntegration(t *testing.T) {
 	}
 	if !participantReceiptConfirmed(loaded, userA) {
 		t.Fatal("user A receiptConfirmed = false, want true after RECEIVED")
+	}
+	for _, participant := range loaded.Participants {
+		if participant.User.ID == userA && participant.IncomingDeliveryStatus != "RECEIVED" {
+			t.Fatalf("user A incoming delivery status = %q, want RECEIVED", participant.IncomingDeliveryStatus)
+		}
 	}
 	if participantReceiptConfirmedAt(loaded, userA) == nil {
 		t.Fatal("user A receiptConfirmedAt = nil, want non-nil after RECEIVED")

@@ -265,6 +265,14 @@ type ChainItem struct {
 	DeliveryUpdatedAt time.Time         `json:"delivery_updated_at"`
 }
 
+type ChainRejection struct {
+	ChainID     int64         `json:"chain_id"`
+	Reason      string        `json:"reason"`
+	ActorUserID sql.NullInt64 `json:"actor_user_id"`
+	ItemID      sql.NullInt64 `json:"item_id"`
+	OccurredAt  time.Time     `json:"occurred_at"`
+}
+
 type ChatMessage struct {
 	ID              int64     `json:"id"`
 	ChainID         int64     `json:"chain_id"`
@@ -319,12 +327,42 @@ type MatchingJob struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
+type Notification struct {
+	ID        int64         `json:"id"`
+	UserID    int64         `json:"user_id"`
+	Kind      string        `json:"kind"`
+	Title     string        `json:"title"`
+	Text      string        `json:"text"`
+	ChainID   sql.NullInt64 `json:"chain_id"`
+	ItemID    sql.NullInt64 `json:"item_id"`
+	Read      bool          `json:"read"`
+	CreatedAt time.Time     `json:"created_at"`
+}
+
 type User struct {
-	ID          int64     `json:"id"`
-	Username    string    `json:"username"`
-	Rating      string    `json:"rating"`
-	CreatedAt   time.Time `json:"created_at"`
-	Phone       string    `json:"phone"`
-	SuccessRate string    `json:"success_rate"`
-	Role        UserRole  `json:"role"`
+	ID          int64          `json:"id"`
+	Username    string         `json:"username"`
+	Rating      string         `json:"rating"`
+	CreatedAt   time.Time      `json:"created_at"`
+	Phone       string         `json:"phone"`
+	SuccessRate string         `json:"success_rate"`
+	Role        UserRole       `json:"role"`
+	AvatarUrl   sql.NullString `json:"avatar_url"`
+}
+
+type UserReputation struct {
+	UserID       int64          `json:"user_id"`
+	Rating       sql.NullString `json:"rating"`
+	ReviewsCount int32          `json:"reviews_count"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
+type UserReview struct {
+	ID           int64          `json:"id"`
+	ChainID      int64          `json:"chain_id"`
+	AuthorUserID int64          `json:"author_user_id"`
+	TargetUserID int64          `json:"target_user_id"`
+	Rating       int16          `json:"rating"`
+	ReviewText   sql.NullString `json:"review_text"`
+	CreatedAt    time.Time      `json:"created_at"`
 }

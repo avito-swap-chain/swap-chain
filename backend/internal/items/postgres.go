@@ -279,7 +279,11 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 
 	rejections := make([]chainRejection, 0)
 	if matchingChanged {
-		rejections, err = rejectPendingChainsForItem(ctx, tx, itemID)
+		reason := "item_changed"
+		if input.Withdraw {
+			reason = "item_withdrawn"
+		}
+		rejections, err = rejectPendingChainsForItem(ctx, tx, userID, itemID, reason)
 		if err != nil {
 			return updateResult{}, err
 		}
@@ -322,7 +326,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	return updateResult{Item: item, Rejections: rejections}, nil
 }
 
-func rejectPendingChainsForItem(ctx context.Context, tx *sql.Tx, itemID int64) ([]chainRejection, error) {
+func rejectPendingChainsForItem(ctx context.Context, tx *sql.Tx, actorID, itemID int64, reason string) ([]chainRejection, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT c.id, participant.user_id
 		FROM chains c
@@ -363,6 +367,12 @@ func rejectPendingChainsForItem(ctx context.Context, tx *sql.Tx, itemID int64) (
 		UPDATE chains SET status = 'REJECTED', updated_at = now()
 		WHERE id = ANY($1)`, pq.Array(order)); err != nil {
 		return nil, fmt.Errorf("reject pending item chains: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO chain_rejections (chain_id, reason, actor_user_id, item_id)
+		SELECT unnest($1::bigint[]), $2, $3, $4
+		ON CONFLICT (chain_id) DO NOTHING`, pq.Array(order), reason, actorID, itemID); err != nil {
+		return nil, fmt.Errorf("record pending item chain rejections: %w", err)
 	}
 
 	result := make([]chainRejection, 0, len(order))

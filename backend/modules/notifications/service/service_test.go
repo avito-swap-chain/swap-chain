@@ -27,7 +27,7 @@ func (m *mockRepository) MarkRead(ctx context.Context, userID int64, ids []int64
 	return m.markReadFunc(ctx, userID, ids)
 }
 
-func (m *mockRepository) CountUnread(ctx context.Context, userID int64) (int64, error) {
+func (m *mockRepository) CountUnread(_ context.Context, _ int64) (int64, error) {
 	return 0, nil
 }
 
@@ -70,7 +70,7 @@ func TestCreate_ValidatesRequiredFields(t *testing.T) {
 
 func TestCreate_Success(t *testing.T) {
 	repo := &mockRepository{
-		createFunc: func(ctx context.Context, n model.Notification) (model.Notification, error) {
+		createFunc: func(_ context.Context, n model.Notification) (model.Notification, error) {
 			n.ID = 1
 			n.Kind = "CHAIN"
 			n.Read = false
@@ -103,7 +103,7 @@ func TestCreate_Success(t *testing.T) {
 
 func TestCreate_UpperCaseKindsOnly(t *testing.T) {
 	repo := &mockRepository{
-		createFunc: func(ctx context.Context, n model.Notification) (model.Notification, error) {
+		createFunc: func(_ context.Context, n model.Notification) (model.Notification, error) {
 			n.ID = 1
 			return n, nil
 		},
@@ -160,7 +160,7 @@ func TestList_Validation(t *testing.T) {
 
 func TestList_ReturnsCorrectFieldNames(t *testing.T) {
 	repo := &mockRepository{
-		listFunc: func(ctx context.Context, userID int64, cursor int64, limit int) (model.ListResult, error) {
+		listFunc: func(_ context.Context, _ int64, _ int64, _ int) (model.ListResult, error) {
 			return model.ListResult{
 				Notifications: []model.Notification{
 					{ID: 1, Kind: "CHAIN", Title: "T", Text: "B"},
@@ -209,7 +209,7 @@ func TestMarkRead_Validation(t *testing.T) {
 func TestMarkRead_All(t *testing.T) {
 	called := false
 	repo := &mockRepository{
-		markReadFunc: func(ctx context.Context, userID int64, ids []int64) error {
+		markReadFunc: func(_ context.Context, _ int64, ids []int64) error {
 			called = true
 			if len(ids) != 0 {
 				t.Errorf("expected empty ids for mark all, got %v", ids)
@@ -233,7 +233,7 @@ func TestMarkRead_All(t *testing.T) {
 func TestMarkRead_Selected(t *testing.T) {
 	ids := []int64{1, 2, 3}
 	repo := &mockRepository{
-		markReadFunc: func(ctx context.Context, userID int64, receivedIDs []int64) error {
+		markReadFunc: func(_ context.Context, _ int64, receivedIDs []int64) error {
 			if len(receivedIDs) != len(ids) {
 				t.Errorf("expected %d ids, got %d", len(ids), len(receivedIDs))
 			}

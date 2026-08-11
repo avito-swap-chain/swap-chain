@@ -14,6 +14,11 @@ const item = (id: number, title: string) => ({
   updatedAt: '2026-08-09T10:00:00Z',
 })
 
+const incomingDelivery = {
+  incomingDeliveryStatus: 'AWAITING_PVZ' as const,
+  incomingDeliveryUpdatedAt: '2026-08-09T10:00:00Z',
+}
+
 const apiChain = (
   status: ApiChain['status'],
   receipts: [boolean, boolean] = [false, false],
@@ -29,6 +34,7 @@ const apiChain = (
       receiveItem: item(2, 'Наушники'),
       status: 'WAITING',
       receiptConfirmed: receipts[0],
+      ...incomingDelivery,
     },
     {
       user: { id: 2, username: 'Марк' },
@@ -36,6 +42,7 @@ const apiChain = (
       receiveItem: item(1, 'Горный велосипед'),
       status: 'APPROVED',
       receiptConfirmed: receipts[1],
+      ...incomingDelivery,
     },
   ],
 })
@@ -106,6 +113,7 @@ const stand: ApiChain = {
       receiveItem: item(56, 'Лампа'),
       status: 'APPROVED',
       receiptConfirmed: false,
+      ...incomingDelivery,
     },
     {
       user: { id: 16, username: 'Борис' },
@@ -113,6 +121,7 @@ const stand: ApiChain = {
       receiveItem: item(57, 'Клавиатура'),
       status: 'APPROVED',
       receiptConfirmed: false,
+      ...incomingDelivery,
     },
     {
       user: { id: 17, username: 'Вера' },
@@ -120,6 +129,7 @@ const stand: ApiChain = {
       receiveItem: item(55, 'Книга'),
       status: 'APPROVED',
       receiptConfirmed: false,
+      ...incomingDelivery,
     },
   ],
 }
