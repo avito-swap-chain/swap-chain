@@ -11,6 +11,7 @@ import {
 } from '@/shared/model/session'
 import { asset } from '@/shared/lib'
 import { isBackendConnected } from '@/shared/config/backend'
+import { ActionError } from '@/shared/ui'
 
 /** Строка переключателя: имя в поле, телефон для входа, корона у сотрудника ПВЗ. */
 interface SwitchOption {
@@ -101,7 +102,15 @@ export function SwitchPersona() {
     : PERSONAS.map((persona) => ({ name: persona.name, phone: persona.id }))
 
   return (
-    <span className="flex items-center gap-2">
+    <span className="relative flex items-center gap-2">
+      {/* Переключение — это настоящие выход и вход, и оно тоже может не получиться.
+          Сообщение висит под шапкой: в самой шапке для него нет ряда. */}
+      {switchUser.isError && (
+        <span className="absolute top-full right-0 z-10 mt-1 rounded-card bg-card px-2.5 py-1.5 shadow-lg">
+          <ActionError error={switchUser.error} />
+        </span>
+      )}
+
       <label className="flex items-center gap-2">
         {/* На узких окнах подпись прячется: в одну строку шапки лезут лок-ап, поиск и аккаунт,
             а смысл переключателя и так виден по имени в поле. Экранным читалкам она остаётся. */}

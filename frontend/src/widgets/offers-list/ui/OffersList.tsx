@@ -9,6 +9,7 @@ import {
 } from '@/entities/chain'
 import { OfferCard } from './OfferCard'
 import { isBackendConnected } from '@/shared/config/backend'
+import { Notice } from '@/shared/ui'
 
 /**
  * Что человеку нужно увидеть в блоке предложений: варианты, ждущие ответа, и те, что
@@ -26,7 +27,7 @@ const answerableFirst = (a: Chain, b: Chain): number =>
  * кто хочет разобраться подробнее.
  */
 export function OffersList() {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: chainKeys.my(),
     queryFn: getMyChains,
     // С бэкендом обновления приносит поток событий — опрос остаётся только для моков,
@@ -36,6 +37,10 @@ export function OffersList() {
         ? 2000
         : false,
   })
+
+  // Молчаливое исчезновение раздела читалось бы как «сервис ничего не подобрал» — самый
+  // обидный вывод, который человек может сделать из упавшего запроса.
+  if (isError) return <Notice tone="error">Не удалось загрузить предложения обмена</Notice>
 
   const offers = data?.filter(isInbox).sort(answerableFirst) ?? []
   if (offers.length === 0) return null

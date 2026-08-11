@@ -1,4 +1,10 @@
-export type { Chain, ChainStatus, ChainParticipant, ParticipantStatus } from './model/types'
+export type {
+  Chain,
+  ChainDecision,
+  ChainStatus,
+  ChainParticipant,
+  ParticipantStatus,
+} from './model/types'
 export {
   chainKeys,
   getChain,
@@ -7,13 +13,12 @@ export {
   leaveChain,
   confirmReceipt,
   dissolveChainsWithItem,
-  type ChainDecision,
 } from './api/chainApi'
+// `displayName` и `isNeighbour` наружу не отдаём: подпись участника и выделение соседа —
+// дело самих карточек цепочки, а они живут здесь же.
 export {
   findMe,
-  displayName,
   findNeighbours,
-  isNeighbour,
   findDecliner,
   needsMyAction,
   countConfirmed,

@@ -1,5 +1,6 @@
 import { useState, type SubmitEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { describeError } from '@/shared/api/describeError'
 import { ApiError } from '@/shared/api/fetcher'
 import { normalizePhone } from '@/shared/lib'
 import { DEMO_USERS, login, register } from '@/shared/model/session'
@@ -61,10 +62,13 @@ export function LoginPage() {
 
   // Ответ бэкенда пересказываем своими словами: в его `message` лежит текст для разработчика.
   // 404 сюда не попадает — незнакомый номер это не ошибка, а развилка на регистрацию.
+  // Сбой сети проверкой на `ApiError` не ловился, и форма молчала при лежащем бэкенде.
+  const failed = enter.error && !(enter.error instanceof ApiError && enter.error.status === 404)
+
   const message = isPhoneBroken
     ? 'Проверьте номер — нужен российский, например +7 900 100-00-01'
-    : enter.error instanceof ApiError && enter.error.status !== 404
-      ? 'Не удалось войти. Попробуйте ещё раз'
+    : failed
+      ? describeError(enter.error)
       : undefined
 
   return (
