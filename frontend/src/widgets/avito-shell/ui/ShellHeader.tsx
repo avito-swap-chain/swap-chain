@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { getThreads, messageKeys } from '@/entities/message'
-import { getUnreadCount, notificationKeys } from '@/entities/notification'
+import { isBackendConnected } from '@/shared/config/backend'
+import { getNotifications, notificationKeys } from '@/entities/notification'
 import { SwitchPersona } from '@/features/switch-persona'
 import { BrandMark, IconBell, IconChat, IconHeart, IconPlus } from '@/shared/ui'
 
@@ -65,11 +66,13 @@ export function ShellHeader() {
     refetchInterval: (query) => (query.state.error ? false : 10_000),
   })
   const { data: news = 0 } = useQuery({
-    queryKey: notificationKeys.unread(),
-    queryFn: getUnreadCount,
-    // Уведомления рождаются по таймерам в моках (цепочка собралась, обмен завершён) —
-    // без периодической проверки счётчик ожил бы только после перехода по разделам.
-    refetchInterval: 2000,
+    queryKey: notificationKeys.list(),
+    queryFn: getNotifications,
+    select: (list) => list.totalUnread,
+    // На моках уведомления рождаются по таймерам (цепочка собралась, обмен завершён),
+    // и без периодической проверки счётчик ожил бы только при переходе по разделам.
+    // С бэкендом их приносит событие потока, поэтому опрос там не нужен.
+    refetchInterval: isBackendConnected ? false : 2000,
   })
 
   return (

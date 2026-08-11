@@ -1,9 +1,17 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { DescriptionField, editItem, getMyItems, itemKeys, type Item } from '@/entities/item'
+import {
+  categoryKeys,
+  DescriptionField,
+  editItem,
+  getCategories,
+  getMyItems,
+  itemKeys,
+  type Item,
+} from '@/entities/item'
 import { DescribeWishForm } from '@/features/describe-wish'
-import { Field, Input, Notice, Screen, ScreenHeader } from '@/shared/ui'
+import { Field, Input, Notice, Screen, ScreenHeader, Select } from '@/shared/ui'
 
 /**
  * Правка размещённого объявления: название, описание и желание. Отдельный экран нужен потому,
@@ -42,6 +50,12 @@ export function EditItemPage() {
 function EditItemFields({ item, onDone }: { item: Item; onDone: () => void }) {
   const [title, setTitle] = useState(item.title)
   const [description, setDescription] = useState(item.description ?? '')
+  const [categoryId, setCategoryId] = useState(item.categoryId)
+
+  const { data: categories = [] } = useQuery({
+    queryKey: categoryKeys.list(),
+    queryFn: getCategories,
+  })
 
   return (
     <div className="flex flex-1 flex-col gap-3.5">
@@ -58,12 +72,30 @@ function EditItemFields({ item, onDone }: { item: Item; onDone: () => void }) {
 
       <DescriptionField value={description} onChange={setDescription} />
 
+      {/* Смена категории перезапускает разбор вещи на бэкенде — она участвует в подборе. */}
+      <Field label="Категория">
+        <Select
+          value={categoryId ?? ''}
+          onChange={(event) => setCategoryId(Number(event.target.value) || undefined)}
+          disabled={categories.length === 0}
+        >
+          <option value="" disabled>
+            Выберите категорию
+          </option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
       <DescribeWishForm
         give={{ ...item, title }}
         initial={item.wish}
         submitLabel="Сохранить"
         pendingLabel="Сохраняем…"
-        onSubmit={(wish) => editItem(item.id, { wish, description, title })}
+        onSubmit={(wish) => editItem(item.id, { wish, description, title, categoryId })}
         onDone={onDone}
       />
     </div>

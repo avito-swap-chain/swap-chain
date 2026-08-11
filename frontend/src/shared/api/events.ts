@@ -22,6 +22,7 @@ export type BackendEvent =
   | 'chain.updated'
   | 'chain.accepted'
   | 'chain.rejected'
+  | 'notification.created'
 
 const ITEM_EVENTS: BackendEvent[] = ['item.created', 'item.status.updated']
 
@@ -33,6 +34,8 @@ const CHAIN_EVENTS: BackendEvent[] = [
 ]
 
 interface Handlers {
+  /** Пришло уведомление. Payload не разбираем: бэкенд просит перечитать список целиком. */
+  onNotifications: () => void
   /** Что-то случилось с вещами: сменился статус разбора, вещь сняли с обмена. */
   onItems: () => void
   /** Что-то случилось с цепочками: появилась, кто-то ответил, собралась, распалась. */
@@ -92,7 +95,12 @@ const markConnected = () => {
  * `withCredentials` обязателен: сессия живёт в куке, без неё поток ответит 401.
  * Адрес относительный — фронт и API отдаются с одного origin (см. `shared/api/fetcher`).
  */
-export function subscribeToBackendEvents({ onItems, onChains, onConnected }: Handlers): () => void {
+export function subscribeToBackendEvents({
+  onItems,
+  onChains,
+  onNotifications,
+  onConnected,
+}: Handlers): () => void {
   const source = new EventSource('/api/v1/events', { withCredentials: true })
 
   // `stream.connected` приходит и на первое подключение, и после каждого разрыва —
@@ -103,6 +111,7 @@ export function subscribeToBackendEvents({ onItems, onChains, onConnected }: Han
   })
   for (const event of ITEM_EVENTS) source.addEventListener(event, onItems)
   for (const event of CHAIN_EVENTS) source.addEventListener(event, onChains)
+  source.addEventListener('notification.created', onNotifications)
 
   // Результат распознавания — единственное событие, из которого мы читаем данные.
   // Полезная нагрузка лежит в поле `data` конверта; кривой JSON здесь означает,
