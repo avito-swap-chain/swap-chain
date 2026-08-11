@@ -359,7 +359,7 @@ func (h *Handler) UpdateUser(ctx context.Context, request api.UpdateUserRequestO
 		}, nil
 	}
 
-	user, err := h.users.Update(ctx, current.UserID, users.UpdateInput{Username: request.Body.Username})
+	user, err := h.users.Update(ctx, current.UserID, users.UpdateInput{Username: request.Body.Username, AvatarURL: request.Body.AvatarUrl})
 	if err != nil {
 		var validationError *users.ValidationError
 		switch {
@@ -1181,11 +1181,15 @@ func sessionModel(current session.Session, user users.User) api.Session {
 }
 
 func userProfileModel(user users.User) api.UserProfile {
-	return api.UserProfile{
+	profile := api.UserProfile{
 		Id:        user.ID,
 		Username:  user.Username,
 		CreatedAt: user.CreatedAt,
 	}
+	if user.AvatarURL != "" {
+		profile.AvatarUrl = &user.AvatarURL
+	}
+	return profile
 }
 
 func errorModel(ctx context.Context, code, message string, details map[string]any) api.Error {

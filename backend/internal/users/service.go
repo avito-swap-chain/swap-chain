@@ -35,6 +35,7 @@ type User struct {
 	Username  string
 	Phone     string
 	Role      string
+	AvatarURL string
 	CreatedAt time.Time
 }
 
@@ -45,8 +46,10 @@ type CreateInput struct {
 }
 
 // UpdateInput contains fields the user is allowed to modify on their own profile.
+// Nil pointers are not updated; empty strings are stored as-is (used to clear avatarUrl).
 type UpdateInput struct {
-	Username string
+	Username  *string
+	AvatarURL *string
 }
 
 // Service defines user operations required by the HTTP handler.
@@ -79,13 +82,20 @@ func normalizeCreateInput(input CreateInput) (CreateInput, error) {
 }
 
 func normalizeUpdateInput(input UpdateInput) (UpdateInput, error) {
-	input.Username = strings.TrimSpace(input.Username)
 	fields := make(map[string]string)
-	usernameLength := len([]rune(input.Username))
-	if usernameLength == 0 {
-		fields["username"] = "must not be blank"
-	} else if usernameLength > 100 {
-		fields["username"] = "must contain at most 100 characters"
+	if input.Username != nil {
+		trimmed := strings.TrimSpace(*input.Username)
+		input.Username = &trimmed
+		usernameLength := len([]rune(*input.Username))
+		if usernameLength == 0 {
+			fields["username"] = "must not be blank"
+		} else if usernameLength > 100 {
+			fields["username"] = "must contain at most 100 characters"
+		}
+	}
+	if input.AvatarURL != nil {
+		trimmed := strings.TrimSpace(*input.AvatarURL)
+		input.AvatarURL = &trimmed
 	}
 	if len(fields) > 0 {
 		return UpdateInput{}, &ValidationError{Fields: fields}

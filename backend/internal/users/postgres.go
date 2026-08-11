@@ -29,7 +29,7 @@ func (s *PostgresService) Create(ctx context.Context, input CreateInput) (User, 
 	user, err := scanUser(s.database.QueryRowContext(ctx, `
 		INSERT INTO users (username, phone)
 		VALUES ($1, $2)
-		RETURNING id, username, phone, role::text, created_at`, normalized.Username, normalized.Phone))
+		RETURNING id, username, phone, role::text, COALESCE(avatar_url, ''), created_at`, normalized.Username, normalized.Phone))
 	if err != nil {
 		var postgresError *pq.Error
 		if errors.As(err, &postgresError) && postgresError.Code == "23505" && postgresError.Constraint == "users_phone_key" {
@@ -43,7 +43,7 @@ func (s *PostgresService) Create(ctx context.Context, input CreateInput) (User, 
 // Get returns a user by ID.
 func (s *PostgresService) Get(ctx context.Context, userID int64) (User, error) {
 	user, err := scanUser(s.database.QueryRowContext(ctx, `
-		SELECT id, username, phone, role::text, created_at
+		SELECT id, username, phone, role::text, COALESCE(avatar_url, ''), created_at
 		FROM users WHERE id = $1`, userID))
 	return mapLookupError(user, err, "get user")
 }
@@ -55,23 +55,41 @@ func (s *PostgresService) FindByPhone(ctx context.Context, phone string) (User, 
 		return User{}, err
 	}
 	user, err := scanUser(s.database.QueryRowContext(ctx, `
-		SELECT id, username, phone, role::text, created_at
+		SELECT id, username, phone, role::text, COALESCE(avatar_url, ''), created_at
 		FROM users WHERE phone = $1`, normalized))
 	return mapLookupError(user, err, "find user by phone")
 }
 
-// Update validates and persists a username change for the given user.
+// Update validates and persists profile changes for the given user.
 func (s *PostgresService) Update(ctx context.Context, userID int64, input UpdateInput) (User, error) {
 	normalized, err := normalizeUpdateInput(input)
 	if err != nil {
 		return User{}, err
 	}
 
+	var avatarValue interface{}
+	hasAvatar := normalized.AvatarURL != nil
+	if hasAvatar && *normalized.AvatarURL == "" {
+		avatarValue = nil
+	} else if hasAvatar {
+		avatarValue = *normalized.AvatarURL
+	}
+
 	user, err := scanUser(s.database.QueryRowContext(ctx, `
-		UPDATE users SET username = $1
-		WHERE id = $2
-		RETURNING id, username, phone, role::text, created_at`, normalized.Username, userID))
+		UPDATE users
+		SET username = COALESCE($1, username),
+		    avatar_url = CASE WHEN $2::boolean THEN $3 ELSE avatar_url END
+		WHERE id = $4
+		RETURNING id, username, phone, role::text, COALESCE(avatar_url, ''), created_at`,
+		optionalString(normalized.Username), hasAvatar, avatarValue, userID))
 	return mapLookupError(user, err, "update user")
+}
+
+func optionalString(value *string) interface{} {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 type rowScanner interface {
@@ -80,7 +98,7 @@ type rowScanner interface {
 
 func scanUser(row rowScanner) (User, error) {
 	var user User
-	err := row.Scan(&user.ID, &user.Username, &user.Phone, &user.Role, &user.CreatedAt)
+	err := row.Scan(&user.ID, &user.Username, &user.Phone, &user.Role, &user.AvatarURL, &user.CreatedAt)
 	return user, err
 }
 

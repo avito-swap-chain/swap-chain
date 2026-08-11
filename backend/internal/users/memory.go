@@ -85,7 +85,7 @@ func (s *MemoryService) FindByPhone(_ context.Context, phone string) (User, erro
 	return s.users[userID], nil
 }
 
-// Update validates and persists a username change for the given user.
+// Update validates and persists profile changes for the given user.
 func (s *MemoryService) Update(_ context.Context, userID int64, input UpdateInput) (User, error) {
 	normalized, err := normalizeUpdateInput(input)
 	if err != nil {
@@ -98,7 +98,12 @@ func (s *MemoryService) Update(_ context.Context, userID int64, input UpdateInpu
 	if !exists {
 		return User{}, ErrNotFound
 	}
-	user.Username = normalized.Username
+	if normalized.Username != nil {
+		user.Username = *normalized.Username
+	}
+	if normalized.AvatarURL != nil {
+		user.AvatarURL = *normalized.AvatarURL
+	}
 	s.users[userID] = user
 	return user, nil
 }

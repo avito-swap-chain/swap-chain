@@ -1153,12 +1153,16 @@ components:
 
     UpdateUserRequest:
       type: object
-      required: [username]
+      minProperties: 1
       properties:
         username:
           type: string
           minLength: 1
           maxLength: 100
+        avatarUrl:
+          type: string
+          format: uri-reference
+          description: Set a profile photo URL (upload via POST /api/v1/media first). Pass an empty string to remove.
 
     LoginRequest:
       type: object
@@ -1341,6 +1345,10 @@ components:
           format: int64
         username:
           type: string
+        avatarUrl:
+          type: string
+          format: uri-reference
+          nullable: true
         createdAt:
           type: string
           format: date-time

@@ -593,6 +593,116 @@ func TestUpdateUserProfileValidatesInput(t *testing.T) {
 	}
 }
 
+func TestUpdateUserProfileAvatar(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	const avatarURL = "/api/v1/media/test-avatar.png"
+	response := patchJSON(t, client, fmt.Sprintf("%s/api/v1/users/1", server.URL), fmt.Sprintf(`{"avatarUrl":%q}`, avatarURL))
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
+	}
+	var profile api.UserProfile
+	if err := json.NewDecoder(response.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode profile: %v", err)
+	}
+	if profile.AvatarUrl == nil || *profile.AvatarUrl != avatarURL {
+		t.Fatalf("avatarUrl = %v, want %q", profile.AvatarUrl, avatarURL)
+	}
+	if profile.Username != "user-1" {
+		t.Fatalf("username changed unexpectedly: %s", profile.Username)
+	}
+}
+
+func TestUpdateUserProfileRemoveAvatar(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	setResponse := patchJSON(t, client, fmt.Sprintf("%s/api/v1/users/1", server.URL), `{"avatarUrl":"/api/v1/media/test-avatar.png"}`)
+	defer closeBody(t, setResponse.Body)
+
+	removeResponse := patchJSON(t, client, fmt.Sprintf("%s/api/v1/users/1", server.URL), `{"avatarUrl":""}`)
+	defer closeBody(t, removeResponse.Body)
+	if removeResponse.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", removeResponse.StatusCode, http.StatusOK, readBody(t, removeResponse.Body))
+	}
+	var profile api.UserProfile
+	if err := json.NewDecoder(removeResponse.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode profile: %v", err)
+	}
+	if profile.AvatarUrl != nil {
+		t.Fatalf("avatarUrl should be nil after removal, got %v", profile.AvatarUrl)
+	}
+}
+
+func TestUpdateUserProfileBothFields(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	response := patchJSON(t, client, fmt.Sprintf("%s/api/v1/users/1", server.URL), `{"username":"Alice","avatarUrl":"/api/v1/media/alice.png"}`)
+	defer closeBody(t, response.Body)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.StatusCode, http.StatusOK, readBody(t, response.Body))
+	}
+	var profile api.UserProfile
+	if err := json.NewDecoder(response.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode profile: %v", err)
+	}
+	if profile.Username != "Alice" {
+		t.Fatalf("username = %q, want Alice", profile.Username)
+	}
+	if profile.AvatarUrl == nil || *profile.AvatarUrl != "/api/v1/media/alice.png" {
+		t.Fatalf("avatarUrl = %v", profile.AvatarUrl)
+	}
+}
+
+func TestGetUserProfileWithAvatar(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	setResponse := patchJSON(t, client, fmt.Sprintf("%s/api/v1/users/1", server.URL), `{"avatarUrl":"/api/v1/media/ava.png"}`)
+	defer closeBody(t, setResponse.Body)
+
+	getResponse, err := http.Get(fmt.Sprintf("%s/api/v1/users/1", server.URL))
+	if err != nil {
+		t.Fatalf("GET profile: %v", err)
+	}
+	defer closeBody(t, getResponse.Body)
+	if getResponse.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", getResponse.StatusCode, http.StatusOK)
+	}
+	var profile api.UserProfile
+	if err := json.NewDecoder(getResponse.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode profile: %v", err)
+	}
+	if profile.AvatarUrl == nil || *profile.AvatarUrl != "/api/v1/media/ava.png" {
+		t.Fatalf("avatarUrl = %v, want /api/v1/media/ava.png", profile.AvatarUrl)
+	}
+}
+
+func TestGetUserProfileWithoutAvatar(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	response, err := http.Get(fmt.Sprintf("%s/api/v1/users/1", server.URL))
+	if err != nil {
+		t.Fatalf("GET profile: %v", err)
+	}
+	defer closeBody(t, response.Body)
+	var profile api.UserProfile
+	if err := json.NewDecoder(response.Body).Decode(&profile); err != nil {
+		t.Fatalf("decode profile: %v", err)
+	}
+	if profile.AvatarUrl != nil {
+		t.Fatalf("avatarUrl should be nil for fresh user, got %v", profile.AvatarUrl)
+	}
+}
+
 func TestItemListIsScopedToCurrentSession(t *testing.T) {
 	server := newTestServer(t)
 	defer server.Close()
