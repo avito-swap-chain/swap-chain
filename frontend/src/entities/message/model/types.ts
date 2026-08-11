@@ -54,3 +54,16 @@ export interface ThreadList {
   threads: Thread[]
   totalUnread: number
 }
+
+/** Что передаётся в отправку: текст и ключ идемпотентности, выданный на само действие. */
+export interface MessageDraft {
+  text: string
+  clientMessageId: string
+}
+
+/** Параметры чтения ленты: курсор и сколько секунд бэкенду держать запрос, ожидая нового. */
+export interface ReadOptions {
+  afterId?: string
+  waitSeconds?: number
+  signal?: AbortSignal
+}

@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
 import { isServiceThread, SERVICE_THREAD } from '../lib/thread'
 import type { ThreadRef } from '../model/types'
-import { getMessages, getThreads, markThreadRead, resetThreads, sendMessage } from './messagesApi'
+import { resetThreads } from './messageMocks'
+import { getMessages, getThreads, markThreadRead, sendMessage } from './messagesApi'
 
 const [DASHA, MARK] = PERSONAS
 

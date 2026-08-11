@@ -9,6 +9,8 @@ export { Banner } from './Banner'
 export { Screen, ScreenHeader } from './Screen'
 export { Notice } from './Notice'
 export { EmptyState } from './EmptyState'
+export { ActionError } from './ActionError'
+export { ErrorBoundary } from './ErrorBoundary'
 export {
   IconCheck,
   IconClock,

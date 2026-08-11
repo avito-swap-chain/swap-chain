@@ -9,7 +9,7 @@ import {
   type MessageDraft,
   type ThreadRef,
 } from '@/entities/message'
-import { Button, Input } from '@/shared/ui'
+import { ActionError, Button, Input } from '@/shared/ui'
 
 /**
  * Отправка сообщения: поле ввода и заготовки вопросов о состоянии. Один компонент
@@ -22,7 +22,7 @@ export function MessageComposer({ thread, empty }: { thread: ThreadRef; empty: b
   const [draft, setDraft] = useState('')
   const queryClient = useQueryClient()
 
-  const { mutate, isPending } = useMutation({
+  const { mutate, isPending, error } = useMutation({
     mutationFn: (message: MessageDraft) => sendMessage(thread, message),
     // Повтор идёт с тем же ключом идемпотентности — он в переменных мутации, а не внутри
     // запроса. Ради этого повтор и включён: обрыв на ответе сервера иначе оставляет человека
@@ -36,6 +36,9 @@ export function MessageComposer({ thread, empty }: { thread: ThreadRef; empty: b
       )
       queryClient.invalidateQueries({ queryKey: messageKeys.list() })
     },
+    // Не ушло — возвращаем текст в поле. Поле очищается сразу при отправке, и без этого
+    // сообщение просто исчезало бы: человек считает, что отправил, а реплики нет.
+    onError: (_, message) => setDraft(message.text),
   })
 
   const send = (text: string) => {
@@ -81,6 +84,8 @@ export function MessageComposer({ thread, empty }: { thread: ThreadRef; empty: b
           Отправить
         </Button>
       </form>
+
+      <ActionError error={error} conflict="Переписка недоступна — цепочка уже завершилась" />
     </div>
   )
 }

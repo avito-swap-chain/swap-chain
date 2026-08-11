@@ -30,9 +30,9 @@ export interface CurrentUser {
   rating?: number
   reviews?: number
   /**
-   * Роль есть в контракте админки ПВЗ (прислан отдельно, в общий `openapi.yaml` ещё не влит —
-   * номер версии там совпал с нашей, но набор ручек другой). В том, что раскатано, роли нет,
-   * поэтому поле необязательное: интерфейс просто не помечает аккаунт, пока она не придёт.
+   * Сотрудник ПВЗ: у него открыто рабочее место с доставками. Роль приходит с сессией
+   * (`CurrentUser.role` в контракте), но на моках сессии нет — там «я» это выбранная персона,
+   * и роли взять неоткуда. Поэтому поле необязательное.
    */
   isAdmin?: boolean
 }
@@ -103,15 +103,11 @@ let sessionUserId: number | undefined
 const fromSession = (session: Session): CurrentUser => {
   sessionUserId = session.user.id
 
-  // `role` живёт в контракте админки, которого нет в общем `openapi.yaml`, — читаем мягко,
-  // чтобы не ждать его вливания: до тех пор поле просто не приходит.
-  const { role } = session.user as typeof session.user & { role?: string }
-
   const user: CurrentUser = {
     id: String(session.user.id),
     name: session.user.username,
     phone: session.user.phone,
-    isAdmin: role === 'ADMIN',
+    isAdmin: session.user.role === 'ADMIN',
   }
 
   rememberAccount(user)

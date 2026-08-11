@@ -7,12 +7,10 @@ import {
 } from '@/shared/api/generated/endpoints'
 import type { Chain as ApiChain, ChainList } from '@/shared/api/generated/model'
 import { isBackendConnected } from '@/shared/config/backend'
-import { notify } from '@/shared/model/notifications'
-import { mapChain } from './mapChain'
-import { currentPersonaId, PERSONAS, type Persona } from '@/shared/model/persona'
 import { currentUserId } from '@/shared/model/session'
-import { confirmReceiptFor } from '../lib/participants'
-import type { Chain, ChainParticipant, ParticipantStatus } from '../model/types'
+import type { Chain, ChainDecision } from '../model/types'
+import * as mock from './chainMocks'
+import { mapChain } from './mapChain'
 
 /**
  * Ключи кэша TanStack Query. Иерархия не случайна: `my` — префикс `detail`,
@@ -24,259 +22,20 @@ export const chainKeys = {
   detail: (id: string) => [...chainKeys.all, id] as const,
 }
 
-/**
- * Ответ участника на предложение: лайк — «этот вариант мне подходит», дизлайк — отказ
- * от этого варианта, а не от обмена вообще: вариант распадётся, но вещь останется
- * в подборе. Игнор — просто отсутствие ответа.
- */
-export type ChainDecision = 'like' | 'dislike'
-
-const [DASHA, MARK, LENA] = PERSONAS
-
-/** Участник-персона: имя, рейтинг и аватар берём из общего реестра, чтобы они не разъезжались. */
-const of = (
-  persona: Persona,
-  givesItem: ChainParticipant['givesItem'],
-  status: ParticipantStatus,
-  receiptConfirmed = false,
-): ChainParticipant => ({
-  userId: persona.id,
-  name: persona.name,
-  avatarUrl: persona.avatarUrl,
-  rating: persona.rating,
-  givesItem,
-  status,
-  receiptConfirmed,
-})
-
-// Мок вместо Go-API: цепочки живут в модуле, мутации меняют их так же, как это делал бы
-// бэкенд. Меняется на реальные HTTP-вызовы без правок компонентов.
-// Порядок участников = обход цикла: participants[i] отдаёт вещь participants[i + 1].
-// Флага `isMe` в данных нет: чья это цепочка — вопрос точки зрения, см. `asSeenBy`.
-// Длина цепочки — три участника: по исследованиям обмена почками переход с трёх на четыре
-// добавляет 1–5% совпадений, а алгоритм и объяснимость сделки тяжелеют заметно сильнее.
-// Подбор параллельный: у Даши сразу три предложения, и два из них держат один велосипед —
-// состоится ровно одно, второе отменится. Это штатный ход сервиса, а не крайний случай.
-let chains: Chain[] = [
-  // Демонстрационная цепочка: все трое — персоны, поэтому один обмен виден тремя парами глаз.
-  // Даша отдаёт велосипед Марку, Марк наушники — Лене, Лена фотоаппарат — Даше: каждый получает
-  // ровно то, что указал в желании (см. `wish` этих вещей в `itemsApi`).
-  {
-    id: 'c1',
-    status: 'formed',
-    participants: [
-      of(
-        DASHA,
-        { id: '1', title: 'Горный велосипед', photoUrl: '/mock/items/bike.jpg' },
-        'pending',
-      ),
-      of(
-        MARK,
-        { id: '21', title: 'Наушники', photoUrl: '/mock/items/headphones.jpg' },
-        'confirmed',
-      ),
-      of(
-        LENA,
-        { id: '31', title: 'Плёночный фотоаппарат', photoUrl: '/mock/items/camera.jpg' },
-        'pending',
-      ),
-    ],
-  },
-  // Соперник c1 за тот же велосипед: Даша получает приставку — второй вариант её желания
-  // (первый закрывает c1). Двое уже лайкнули, поэтому её лайк собирает цепочку сразу,
-  // и на демо видно, как конкурирующее предложение отменяется.
-  {
-    id: 'c4',
-    status: 'formed',
-    participants: [
-      of(
-        DASHA,
-        { id: '1', title: 'Горный велосипед', photoUrl: '/mock/items/bike.jpg' },
-        'pending',
-      ),
-      {
-        userId: 'u9',
-        name: 'Костя',
-        avatarUrl: '/mock/avatars/u15.jpg',
-        rating: 4.7,
-        givesItem: { id: '91', title: 'Смартфон Redmi Note 12', photoUrl: '/mock/items/phone.jpg' },
-        status: 'confirmed',
-        receiptConfirmed: false,
-      },
-      {
-        userId: 'u10',
-        name: 'Аня',
-        avatarUrl: '/mock/avatars/u5.jpg',
-        rating: 4.9,
-        givesItem: {
-          id: '92',
-          title: 'Игровая приставка PlayStation 4',
-          photoUrl: '/mock/items/console.jpg',
-        },
-        status: 'confirmed',
-        receiptConfirmed: false,
-      },
-    ],
-  },
-  // Прямой обмен на двоих — вырожденная цепочка, но такая же законная. Держит другую вещь
-  // Даши (гантели), поэтому от исхода велосипедных вариантов не зависит.
-  {
-    id: 'c5',
-    status: 'formed',
-    participants: [
-      of(DASHA, { id: '2', title: 'Гантели 20 кг' }, 'pending'),
-      {
-        userId: 'u11',
-        name: 'Петя',
-        rating: 4.5,
-        givesItem: {
-          id: '93',
-          title: 'Умные часы Xiaomi Watch S3',
-          photoUrl: '/mock/items/watch.jpg',
-        },
-        status: 'pending',
-        receiptConfirmed: false,
-      },
-    ],
-  },
-  // Идущая передача: Игорь свою вещь уже получил, Соня — ещё нет. Значит после отметки
-  // текущего пользователя цепочка не закроется — видно состояние «жду остальных».
-  {
-    id: 'c2',
-    status: 'active',
-    participants: [
-      of(DASHA, { id: '5', title: 'Кофеварка', photoUrl: '/mock/items/coffee.jpg' }, 'confirmed'),
-      {
-        userId: 'u5',
-        name: 'Игорь',
-        avatarUrl: '/mock/avatars/u60.jpg',
-        rating: 4.8,
-        givesItem: { id: '51', title: 'Акустическая гитара', photoUrl: '/mock/items/guitar.jpg' },
-        status: 'confirmed',
-        receiptConfirmed: true,
-      },
-      // Единственный участник без `avatarUrl` — намеренно: на нём видно фолбэк на инициал.
-      {
-        userId: 'u6',
-        name: 'Соня',
-        rating: 4.6,
-        givesItem: { id: '61', title: 'Электросамокат', photoUrl: '/mock/items/scooter.jpg' },
-        status: 'confirmed',
-        receiptConfirmed: false,
-      },
-    ],
-  },
-  {
-    id: 'c3',
-    status: 'completed',
-    participants: [
-      of(
-        LENA,
-        { id: '32', title: 'Настольная лампа', photoUrl: '/mock/items/lamp.jpg' },
-        'confirmed',
-        true,
-      ),
-      {
-        userId: 'u7',
-        name: 'Паша',
-        avatarUrl: '/mock/avatars/u68.jpg',
-        rating: 4.9,
-        givesItem: { id: '71', title: 'Монитор 24"', photoUrl: '/mock/items/monitor24.jpg' },
-        status: 'confirmed',
-        receiptConfirmed: true,
-      },
-      {
-        userId: 'u8',
-        name: 'Катя',
-        avatarUrl: '/mock/avatars/u26.jpg',
-        rating: 5.0,
-        givesItem: { id: '81', title: 'Плед', photoUrl: '/mock/items/blanket.jpg' },
-        status: 'confirmed',
-        receiptConfirmed: true,
-      },
-    ],
-  },
-]
-
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-function find(id: string): Chain {
-  const chain = chains.find((c) => c.id === id)
-  if (!chain) throw new Error(`Цепочка ${id} не найдена`)
-  return chain
-}
-
-/** Заменить цепочку новым объектом — ссылка меняется, TanStack Query видит обновление. */
-function replace(id: string, update: (chain: Chain) => Chain) {
-  chains = chains.map((chain) => (chain.id === id ? update(chain) : chain))
-}
-
-/**
- * Цепочка глазами конкретного пользователя: `isMe` не лежит в данных, а проставляется
- * на ответе — ровно так же поступил бы бэкенд, зная, кто именно запрашивает.
- */
-const asSeenBy = (chain: Chain, personaId: string): Chain => ({
-  ...chain,
-  participants: chain.participants.map((p) => (p.userId === personaId ? { ...p, isMe: true } : p)),
-})
-
-const withPersonaStatus = (chain: Chain, personaId: string, status: ParticipantStatus): Chain => ({
-  ...chain,
-  participants: chain.participants.map((p) => (p.userId === personaId ? { ...p, status } : p)),
-})
-
 /** Обмены, в которых участвует текущий пользователь, — чужие в кабинет не попадают. */
 export async function getMyChains(): Promise<Chain[]> {
-  if (isBackendConnected) {
-    const meId = await currentUserId()
-    const { chains: list } = unwrap<ChainList>(await listChains())
-    return list.map((chain) => mapChain(chain, meId))
-  }
+  if (!isBackendConnected) return mock.myChains()
 
-  await delay(300)
-  const personaId = currentPersonaId()
-
-  return chains
-    .filter((chain) => chain.participants.some((p) => p.userId === personaId))
-    .map((chain) => asSeenBy(chain, personaId))
+  const meId = await currentUserId()
+  const { chains } = unwrap<ChainList>(await listChains())
+  return chains.map((chain) => mapChain(chain, meId))
 }
 
 export async function getChain(id: string): Promise<Chain> {
-  if (isBackendConnected) {
-    const meId = await currentUserId()
-    return mapChain(unwrap<ApiChain>(await getChainRequest(Number(id))), meId)
-  }
+  if (!isBackendConnected) return mock.chainById(id)
 
-  await delay(250)
-  return asSeenBy(find(id), currentPersonaId())
-}
-
-/**
- * Цепочка собралась — её вещи заблокированы, и конкурирующие предложения с теми же вещами
- * собрать уже нельзя. Отменяем их сразу, запоминая вещь-причину: без неё человеку не объяснить,
- * почему предложение, которое он только что видел, больше не работает.
- */
-function cancelRivals(formedId: string) {
-  const taken = new Set(find(formedId).participants.map((p) => p.givesItem.id))
-
-  chains = chains.map((chain) => {
-    if (chain.id === formedId || chain.status !== 'formed') return chain
-
-    const lost = chain.participants.find((p) => taken.has(p.givesItem.id))
-    if (!lost) return chain
-
-    const cancelled: Chain = { ...chain, status: 'cancelled', cancelledItemId: lost.givesItem.id }
-    // Отмену человек увидит и в списке, но узнать о ней он должен, даже если ушёл с экрана.
-    if (cancelled.participants.some((p) => p.userId === currentPersonaId())) {
-      notify({
-        kind: 'offer',
-        title: 'Вариант обмена отменён',
-        text: `«${lost.givesItem.title}» ушла в другую цепочку. Остальные ваши варианты в силе.`,
-        to: '/exchange',
-      })
-    }
-    return cancelled
-  })
+  const meId = await currentUserId()
+  return mapChain(unwrap<ApiChain>(await getChainRequest(Number(id))), meId)
 }
 
 /**
@@ -289,81 +48,22 @@ function cancelRivals(formedId: string) {
  * вещь остаётся свободной и участвует в других вариантах.
  */
 export async function respondToChain(id: string, decision: ChainDecision): Promise<void> {
-  if (isBackendConnected) {
-    unwrap(
-      await submitChainDecision(Number(id), {
-        decision: decision === 'like' ? 'APPROVED' : 'DECLINED',
-      }),
-    )
-    return
-  }
+  if (!isBackendConnected) return mock.respond(id, decision)
 
-  await delay(400)
-  find(id)
-  const personaId = currentPersonaId()
-
-  if (decision === 'dislike') {
-    replace(id, (chain) => ({
-      ...withPersonaStatus(chain, personaId, 'declined'),
-      status: 'dissolved',
-    }))
-    return
-  }
-
-  replace(id, (chain) => withPersonaStatus(chain, personaId, 'confirmed'))
-
-  // Демо-имитация лайков остальных участников: на бэке это придёт обычным refetch.
-  setTimeout(() => {
-    const chain = find(id)
-    // За это время предложение могло отмениться, а пользователь — выйти из цепочки.
-    if (chain.status !== 'formed' || chain.participants.some((p) => p.status === 'declined')) return
-
-    replace(id, (current) => ({
-      ...current,
-      status: 'active',
-      participants: current.participants.map((p) => ({ ...p, status: 'confirmed' })),
-    }))
-    notify({
-      kind: 'chain',
-      title: 'Цепочка собралась',
-      text: 'Все участники согласны. Сдайте вещь в пункт выдачи и отметьте, когда получите свою.',
-      to: `/exchange/${id}`,
-    })
-    cancelRivals(id)
-  }, 2500)
-}
-
-/**
- * Вещь сняли с обмена — предложения с ней больше не соберутся. На бэкенде это делает он сам
- * и присылает `chain.rejected` с причиной `item_withdrawn`, поэтому здесь только мок: без
- * этого в демо остались бы висеть варианты с вещью, которой в подборе уже нет.
- *
- * Живёт в `entities/chain`, потому что трогает цепочки; вызывает её фича снятия — ей можно
- * знать про обе сущности сразу, а сущностям друг про друга нет.
- */
-export function dissolveChainsWithItem(itemId: string) {
-  chains = chains.map((chain) =>
-    chain.status === 'formed' && chain.participants.some((p) => p.givesItem.id === itemId)
-      ? { ...chain, status: 'dissolved' }
-      : chain,
+  unwrap(
+    await submitChainDecision(Number(id), {
+      decision: decision === 'like' ? 'APPROVED' : 'DECLINED',
+    }),
   )
 }
 
 /** Выйти из цепочки до общего подтверждения — вещь снова свободна. */
 export async function leaveChain(id: string): Promise<void> {
-  if (isBackendConnected) {
-    // Отдельной ручки выхода в контракте нет: выход — это то же решение `DECLINED`,
-    // что и дизлайк, и цепочка распускается целиком.
-    unwrap(await submitChainDecision(Number(id), { decision: 'DECLINED' }))
-    return
-  }
+  if (!isBackendConnected) return mock.leave(id)
 
-  await delay(400)
-  find(id)
-  replace(id, (chain) => ({
-    ...withPersonaStatus(chain, currentPersonaId(), 'declined'),
-    status: 'dissolved',
-  }))
+  // Отдельной ручки выхода в контракте нет: выход — это то же решение `DECLINED`,
+  // что и дизлайк, и цепочка распускается целиком.
+  unwrap(await submitChainDecision(Number(id), { decision: 'DECLINED' }))
 }
 
 /**
@@ -371,33 +71,19 @@ export async function leaveChain(id: string): Promise<void> {
  * когда получение подтвердят все — обмен состоялся только тогда, когда его закрыли с обеих сторон.
  */
 export async function confirmReceipt(id: string): Promise<void> {
-  if (isBackendConnected) {
-    // Какую именно вещь получает пользователь, бэкенд выбирает сам по сессии — подтвердить
-    // чужую передачу нельзя. Отметка принимается только после того, как сотрудник ПВЗ отправил
-    // вещь получателю (`IN_DELIVERY`), иначе 409: подтверждать нечего, пока она не выехала.
-    unwrap(await confirmChainReceipt(Number(id)))
-    return
-  }
+  if (!isBackendConnected) return mock.confirmReceipt(id)
 
-  await delay(400)
-  find(id)
-  replace(id, (chain) => confirmReceiptFor(chain, currentPersonaId()))
-
-  // Демо-имитация отметки остальных участников: на бэке это придёт обычным refetch.
-  setTimeout(() => {
-    // За это время получение мог отметить последний участник — закрытую цепочку не трогаем.
-    if (find(id).status !== 'active') return
-
-    replace(id, (chain) => ({
-      ...chain,
-      status: 'completed',
-      participants: chain.participants.map((p) => ({ ...p, receiptConfirmed: true })),
-    }))
-    notify({
-      kind: 'chain',
-      title: 'Обмен завершён',
-      text: 'Все участники подтвердили получение вещей.',
-      to: `/exchange/${id}`,
-    })
-  }, 2500)
+  // Какую именно вещь получает пользователь, бэкенд выбирает сам по сессии — подтвердить
+  // чужую передачу нельзя. Отметка принимается только после того, как сотрудник ПВЗ отправил
+  // вещь получателю (`IN_DELIVERY`), иначе 409: подтверждать нечего, пока она не выехала.
+  unwrap(await confirmChainReceipt(Number(id)))
 }
+
+/**
+ * Вещь сняли с обмена — предложения с ней больше не соберутся. Только для моков: на бэкенде
+ * это делает он сам и присылает `chain.rejected` с причиной `item_withdrawn`.
+ *
+ * Живёт в `entities/chain`, потому что трогает цепочки; вызывает её фича снятия — ей можно
+ * знать про обе сущности сразу, а сущностям друг про друга нет.
+ */
+export const dissolveChainsWithItem = mock.dissolveWithItem

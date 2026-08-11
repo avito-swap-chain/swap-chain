@@ -11,7 +11,7 @@ import { Notice, Screen, ScreenHeader } from '@/shared/ui'
 export function EnableBarterPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const { data, isPending } = useQuery({ queryKey: itemKeys.my(), queryFn: getMyItems })
+  const { data, isPending, isError } = useQuery({ queryKey: itemKeys.my(), queryFn: getMyItems })
   const item = data?.find((candidate) => candidate.id === id)
 
   return (
@@ -20,7 +20,9 @@ export function EnableBarterPage() {
 
       <main className="flex flex-1 flex-col p-4">
         {isPending && <Notice>Загрузка…</Notice>}
-        {!isPending && !item && <Notice tone="error">Объявление не найдено</Notice>}
+        {/* Сбой запроса не равен «объявления нет»: на упавшей сети вещь на месте. */}
+        {isError && <Notice tone="error">Не удалось загрузить объявление</Notice>}
+        {!isPending && !isError && !item && <Notice tone="error">Объявление не найдено</Notice>}
 
         {item && (
           <DescribeWishForm

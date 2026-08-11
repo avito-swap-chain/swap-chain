@@ -15,7 +15,7 @@ import { Notice, Screen, ScreenHeader } from '@/shared/ui'
 export function EditItemPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const { data, isPending } = useQuery({ queryKey: itemKeys.my(), queryFn: getMyItems })
+  const { data, isPending, isError } = useQuery({ queryKey: itemKeys.my(), queryFn: getMyItems })
   const item = data?.find((candidate) => candidate.id === id)
 
   return (
@@ -24,7 +24,10 @@ export function EditItemPage() {
 
       <main className="flex flex-1 flex-col p-4">
         {isPending && <Notice>Загрузка…</Notice>}
-        {!isPending && !item && <Notice tone="error">Объявление не найдено</Notice>}
+        {/* «Не загрузилось» и «нет такого» — разные вещи: на сбое сети объявление никуда
+            не делось, и говорить человеку, что оно пропало, нельзя. */}
+        {isError && <Notice tone="error">Не удалось загрузить объявление</Notice>}
+        {!isPending && !isError && !item && <Notice tone="error">Объявление не найдено</Notice>}
 
         {item && <EditItemFields item={item} onDone={() => navigate('/')} />}
       </main>

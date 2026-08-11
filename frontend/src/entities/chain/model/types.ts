@@ -8,6 +8,13 @@ export type ChainStatus = 'formed' | 'active' | 'completed' | 'dissolved' | 'can
 /** Решение конкретного участника по цепочке: лайк даёт `confirmed`, дизлайк — `declined`. */
 export type ParticipantStatus = 'pending' | 'confirmed' | 'declined'
 
+/**
+ * Ответ участника на предложение: лайк — «этот вариант мне подходит», дизлайк — отказ
+ * от этого варианта, а не от обмена вообще: вариант распадётся, но вещь останется
+ * в подборе. Игнор — просто отсутствие ответа.
+ */
+export type ChainDecision = 'like' | 'dislike'
+
 export interface ChainParticipant {
   userId: string
   name: string

@@ -1,6 +1,6 @@
 import { currentPersonaId, PERSONAS } from '@/shared/model/persona'
 import type { Item, Wish } from '../model/types'
-import { itemsOfOthers } from './itemsApi'
+import { itemsOfOthers } from './itemMocks'
 
 /** Больше пяти подсказок не показываем: столько же вариантов принимает форма желания. */
 const MAX_SUGGESTIONS = 5

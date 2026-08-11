@@ -29,7 +29,11 @@ export function ThreadPage() {
 
   // Подписи берём из списка переписок: отдельной ручки одного треда в контракте нет,
   // а список всё равно нужен шапке кабинета и обновляется сам.
-  const { data: thread, isPending: threadPending } = useQuery({
+  const {
+    data: thread,
+    isPending: threadPending,
+    isError: threadFailed,
+  } = useQuery({
     queryKey: messageKeys.list(),
     queryFn: getThreads,
     select: (list) => list.threads.find((item) => sameThread(item, key)),
@@ -72,7 +76,12 @@ export function ThreadPage() {
       <div className="flex flex-col gap-3 p-4">
         {isPending && threadPending && <Notice>Загрузка…</Notice>}
 
-        {!threadPending && !thread && <Notice tone="error">Переписка не найдена</Notice>}
+        {/* Список переписок не загрузился — это не значит, что разговора нет. */}
+        {threadFailed && <Notice tone="error">Не удалось загрузить переписку</Notice>}
+
+        {!threadPending && !threadFailed && !thread && (
+          <Notice tone="error">Переписка не найдена</Notice>
+        )}
 
         {thread && (
           <>

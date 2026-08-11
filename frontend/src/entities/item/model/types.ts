@@ -18,6 +18,16 @@ export interface Wish {
   description: string
 }
 
+/** Что пользователь заполняет в форме: вещь без служебных полей. */
+export type ItemDraft = Omit<Item, 'id' | 'status'> & {
+  /**
+   * Сам файл фотографии — живёт только до создания вещи. `photoUrl` рядом с ним это
+   * `blob:`-ссылка для предпросмотра, и бэкенду её отдавать нельзя: он принимает только
+   * свои же адреса из `POST /api/v1/media` и внешние http(s).
+   */
+  photoFile?: File
+}
+
 export interface Item {
   id: string
   title: string

@@ -10,6 +10,7 @@ import { MessagesPage } from '@/pages/messages'
 import { NotificationsPage } from '@/pages/notifications'
 import { ThreadPage } from '@/pages/thread'
 import { AvitoShell } from '@/widgets/avito-shell'
+import { RouteError } from './RouteError'
 import { SessionGate } from './SessionGate'
 
 export const router = createBrowserRouter(
@@ -21,6 +22,9 @@ export const router = createBrowserRouter(
           <AvitoShell />
         </SessionGate>
       ),
+      // Исключение при рендере любого экрана: без этого роутер показал бы служебную
+      // страницу с трассировкой — на демо это выглядит как падение сервиса.
+      errorElement: <RouteError />,
       children: [
         // Верхний уровень — разделы меню кабинета.
         { path: '/', element: <ItemsPage /> },
