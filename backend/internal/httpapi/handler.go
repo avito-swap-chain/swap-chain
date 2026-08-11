@@ -1069,15 +1069,20 @@ func itemModel(item items.Item) api.Item {
 func chainModel(chain chains.Chain) api.Chain {
 	participants := make([]api.ChainParticipant, 0, len(chain.Participants))
 	for _, participant := range chain.Participants {
-		participants = append(participants, api.ChainParticipant{
+		p := api.ChainParticipant{
 			User: api.UserSummary{
 				Id:       participant.User.ID,
 				Username: participant.User.Username,
 			},
-			GiveItem:    itemModel(participant.GiveItem),
-			ReceiveItem: itemModel(participant.ReceiveItem),
-			Status:      api.ParticipantStatus(participant.Status),
-		})
+			GiveItem:         itemModel(participant.GiveItem),
+			ReceiveItem:      itemModel(participant.ReceiveItem),
+			Status:           api.ParticipantStatus(participant.Status),
+			ReceiptConfirmed: participant.ReceiptConfirmed,
+		}
+		if participant.ReceiptConfirmedAt != nil {
+			p.ReceiptConfirmedAt = participant.ReceiptConfirmedAt
+		}
+		participants = append(participants, p)
 	}
 	return api.Chain{
 		Id:           chain.ID,

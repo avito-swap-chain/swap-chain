@@ -238,6 +238,120 @@ func seedMatchingItems(t *testing.T, database *sql.DB, count int) ([]int64, []in
 	return userIDs, itemIDs
 }
 
+func participantReceiptConfirmed(chain Chain, userID int64) bool {
+	for _, participant := range chain.Participants {
+		if participant.User.ID == userID {
+			return participant.ReceiptConfirmed
+		}
+	}
+	return false
+}
+
+func participantReceiptConfirmedAt(chain Chain, userID int64) *time.Time {
+	for _, participant := range chain.Participants {
+		if participant.User.ID == userID {
+			return participant.ReceiptConfirmedAt
+		}
+	}
+	return nil
+}
+
+func TestPostgresServiceReceiptConfirmationIntegration(t *testing.T) {
+	database := openIntegrationDatabase(t)
+	userIDs, itemIDs := seedMatchingItems(t, database, 3)
+	recorder := &eventRecorder{}
+	service := NewPostgresService(database, recorder.publish)
+
+	edges := []Edge{
+		{SourceItemID: itemIDs[0], TargetItemID: itemIDs[1]},
+		{SourceItemID: itemIDs[1], TargetItemID: itemIDs[2]},
+		{SourceItemID: itemIDs[2], TargetItemID: itemIDs[0]},
+	}
+	chain, err := service.Create(context.Background(), userIDs[0], CreateInput{Edges: edges})
+	if err != nil {
+		t.Fatalf("create chain: %v", err)
+	}
+
+	for _, participant := range chain.Participants {
+		if participant.ReceiptConfirmed {
+			t.Fatalf("participant %d receiptConfirmed = true, want false for new chain", participant.User.ID)
+		}
+		if participant.ReceiptConfirmedAt != nil {
+			t.Fatalf("participant %d receiptConfirmedAt = %v, want nil for new chain", participant.User.ID, participant.ReceiptConfirmedAt)
+		}
+	}
+
+	_, err = service.Decide(context.Background(), userIDs[1], chain.ID, DecisionApproved)
+	if err != nil {
+		t.Fatalf("second participant approve: %v", err)
+	}
+	acceptedChain, err := service.Decide(context.Background(), userIDs[2], chain.ID, DecisionApproved)
+	if err != nil {
+		t.Fatalf("third participant approve: %v", err)
+	}
+	if acceptedChain.Status != StatusAccepted {
+		t.Fatalf("chain status = %q, want ACCEPTED", acceptedChain.Status)
+	}
+
+	for _, participant := range acceptedChain.Participants {
+		if participant.ReceiptConfirmed {
+			t.Fatalf("participant %d receiptConfirmed = true, want false before any receipt", participant.User.ID)
+		}
+	}
+
+	userA := userIDs[0]
+	userB := userIDs[1]
+	var itemForUserA int64
+	for _, participant := range acceptedChain.Participants {
+		if participant.User.ID == userA {
+			itemForUserA = participant.ReceiveItem.ID
+			break
+		}
+	}
+	if itemForUserA == 0 {
+		t.Fatal("could not find receiveItem for user A")
+	}
+
+	if _, err := database.Exec(`
+		UPDATE chain_items
+		SET delivery_status = 'RECEIVED', delivery_updated_at = now()
+		WHERE chain_id = $1 AND item_id = $2`,
+		chain.ID, itemForUserA); err != nil {
+		t.Fatalf("simulate receipt for user A: %v", err)
+	}
+
+	loaded, err := service.Get(context.Background(), userA, chain.ID)
+	if err != nil {
+		t.Fatalf("get chain after receipt: %v", err)
+	}
+	if !participantReceiptConfirmed(loaded, userA) {
+		t.Fatal("user A receiptConfirmed = false, want true after RECEIVED")
+	}
+	if participantReceiptConfirmedAt(loaded, userA) == nil {
+		t.Fatal("user A receiptConfirmedAt = nil, want non-nil after RECEIVED")
+	}
+	if participantReceiptConfirmed(loaded, userB) {
+		t.Fatal("user B receiptConfirmed = true, want false (still AWAITING_PVZ)")
+	}
+
+	listed, _, err := service.List(context.Background(), userA, "", 0, 10)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	found := false
+	for _, c := range listed {
+		if c.ID == chain.ID {
+			found = true
+			if !participantReceiptConfirmed(c, userA) {
+				t.Fatal("user A receiptConfirmed = false in List response")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("chain not found in List response")
+	}
+}
+
 func participantStatus(chain Chain, userID int64) string {
 	for _, participant := range chain.Participants {
 		if participant.User.ID == userID {

@@ -517,12 +517,16 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 		       give_item.image_urls, give_item.status::text, give_item.created_at, give_item.updated_at,
 		       receive_item.id, receive_item.user_id, receive_item.offer_title,
 		       COALESCE(receive_item.offer_description, ''), COALESCE(receive_item.want_description, ''),
-		       receive_item.image_urls, receive_item.status::text, receive_item.created_at, receive_item.updated_at
+		       receive_item.image_urls, receive_item.status::text, receive_item.created_at, receive_item.updated_at,
+		       incoming_delivery.delivery_status::text, incoming_delivery.delivery_updated_at
 		FROM chains c
 		JOIN chain_items ci ON ci.chain_id = c.id
 		JOIN users u ON u.id = ci.user_id
 		JOIN items give_item ON give_item.id = ci.item_id
 		JOIN items receive_item ON receive_item.id = ci.next_item_id
+		LEFT JOIN chain_items AS incoming_delivery
+		  ON incoming_delivery.chain_id = c.id
+		 AND incoming_delivery.item_id = receive_item.id
 		WHERE c.id = $1
 		ORDER BY ci.id`, chainID)
 	if err != nil {
@@ -534,6 +538,8 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 	for rows.Next() {
 		var participant Participant
 		var giveImages, receiveImages pq.StringArray
+		var deliveryStatus sql.NullString
+		var deliveryUpdatedAt sql.NullTime
 		if err := rows.Scan(
 			&chain.ID, &chain.Status, &chain.CreatedAt, &chain.ExpiresAt, &chain.UpdatedAt,
 			&participant.User.ID, &participant.User.Username, &participant.Status,
@@ -543,8 +549,15 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 			&participant.ReceiveItem.ID, &participant.ReceiveItem.UserID, &participant.ReceiveItem.OfferTitle,
 			&participant.ReceiveItem.OfferDescription, &participant.ReceiveItem.WantDescription,
 			&receiveImages, &participant.ReceiveItem.Status, &participant.ReceiveItem.CreatedAt, &participant.ReceiveItem.UpdatedAt,
+			&deliveryStatus, &deliveryUpdatedAt,
 		); err != nil {
 			return Chain{}, fmt.Errorf("scan chain: %w", err)
+		}
+		if deliveryStatus.Valid && deliveryStatus.String == "RECEIVED" {
+			participant.ReceiptConfirmed = true
+			if deliveryUpdatedAt.Valid {
+				participant.ReceiptConfirmedAt = &deliveryUpdatedAt.Time
+			}
 		}
 		if giveImages == nil {
 			participant.GiveItem.ImageURLs = []string{}

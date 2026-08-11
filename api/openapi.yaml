@@ -1355,7 +1355,7 @@ components:
 
     ChainParticipant:
       type: object
-      required: [user, giveItem, receiveItem, status]
+      required: [user, giveItem, receiveItem, status, receiptConfirmed]
       properties:
         user:
           $ref: "#/components/schemas/UserSummary"
@@ -1365,6 +1365,14 @@ components:
           $ref: "#/components/schemas/Item"
         status:
           $ref: "#/components/schemas/ParticipantStatus"
+        receiptConfirmed:
+          type: boolean
+          description: Whether the participant has confirmed receipt of their incoming item.
+        receiptConfirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the participant confirmed receipt. Null until confirmed.
 
     Chain:
       type: object
