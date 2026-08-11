@@ -24,4 +24,6 @@ export interface UpdateItemRequest {
   wantDescription?: string;
   /** Remove the wish and stop matching this item. Cannot be combined with wantDescription. */
   withdraw?: boolean;
+  /** User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. */
+  categoryId?: number;
 }

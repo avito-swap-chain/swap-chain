@@ -15,6 +15,21 @@ export interface Item {
   wantDescription: string;
   imageUrls: string[];
   status: ItemStatus;
+  /**
+     * User-selected offer category; null when not explicitly set. Maps to offer_category_id.
+     * @nullable
+     */
+  categoryId?: number | null;
+  /**
+     * Assigned by AI analysis; null until analysis completes.
+     * @nullable
+     */
+  offerCategoryId?: number | null;
+  /**
+     * Assigned by AI analysis; null until analysis completes.
+     * @nullable
+     */
+  wantCategoryId?: number | null;
   createdAt: string;
   updatedAt: string;
 }

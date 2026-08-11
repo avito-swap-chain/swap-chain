@@ -10,6 +10,7 @@ export {
   setItemWish,
   withdrawItem,
 } from './api/itemsApi'
+export { categoryKeys, getCategories, matchCategory } from './api/categoriesApi'
 export { suggestWish, type GivenItem } from './api/suggestWish'
 export { recognizeItem } from './api/recognizeItem'
 export { CATEGORIES, CONDITIONS, CONDITION_LABEL } from './model/dictionaries'
