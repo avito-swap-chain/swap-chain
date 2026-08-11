@@ -1725,6 +1725,7 @@ func newTestServerWithNotifications(t *testing.T, notificationService notificati
 		itemService,
 		mediaService,
 		chainService,
+		&testCategoriesService{},
 		eventHub,
 		sessions,
 		userService,
