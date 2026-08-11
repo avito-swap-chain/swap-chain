@@ -261,30 +261,44 @@ export async function withdrawItem(id: string): Promise<Item> {
   return updated
 }
 
+/** Что человек меняет в уже размещённом объявлении. */
+export interface ItemEdit {
+  /** Желание целиком: форма отдаёт все варианты сразу, правки одного отдельно нет. */
+  wish: Wish[]
+  /**
+   * Пустое описание не отправляем: в контракте у него `minLength: 1`, и стереть его нельзя.
+   * Значит поле, оставленное пустым, — это «не трогать», а не «убрать».
+   */
+  description?: string
+}
+
 /**
- * Включить обмен у уже размещённого объявления — главный вход в сервис: человек не заводит
- * вещь заново, а указывает, что готов её обменять. Без желания включать нечего: каждый
- * вариант желания — отдельное ребро графа, по которому ищется цепочка.
+ * Правка размещённого объявления: описание и желание. Ими же включается обмен у объявления,
+ * которое лежало без него, — для бэкенда это один и тот же `PATCH`.
+ *
+ * Название и фото сюда не входят: в `UpdateItemRequest` (0.6.0) таких полей нет, и менять
+ * их пока негде. Каждый вариант желания — отдельное ребро графа, поэтому без желания
+ * объявление в подборе не участвует и пустым его не сохраняем.
  */
-export async function setItemWish(id: string, wish: Wish[]): Promise<Item> {
+export async function editItem(id: string, { wish, description }: ItemEdit): Promise<Item> {
+  const usable = usableWishes(wish)
+  if (usable.length === 0) throw new Error('Не указано, что хочется взамен')
+
+  const text = description?.trim()
+
   if (isBackendConnected) {
     // Контракт принимает одну строку желания — склеиваем варианты так же, как при создании.
-    const usable = usableWishes(wish)
-    if (usable.length === 0) throw new Error('Не указано, что хочется взамен')
-
     return mapItem(
       unwrap<ApiItem>(
         await updateItem(Number(id), {
           wantDescription: usable.map((variant) => variant.description).join(' или '),
+          ...(text ? { offerDescription: text } : {}),
         }),
       ),
     )
   }
 
   await delay(400)
-
-  const usable = usableWishes(wish)
-  if (usable.length === 0) throw new Error('Не указано, что хочется взамен')
 
   const ownerId = currentPersonaId()
   const items = itemsByOwner[ownerId] ?? []
@@ -295,9 +309,17 @@ export async function setItemWish(id: string, wish: Wish[]): Promise<Item> {
   const updated: Item = {
     ...item,
     wish: usable,
+    description: text || item.description,
     // Снятая вещь возвращается в подбор так же, как никогда не включённая.
     status: item.status === 'idle' || item.status === 'withdrawn' ? 'searching' : item.status,
   }
   itemsByOwner = { ...itemsByOwner, [ownerId]: items.map((i) => (i.id === id ? updated : i)) }
   return updated
 }
+
+/**
+ * Включить обмен у уже размещённого объявления — главный вход в сервис: человек не заводит
+ * вещь заново, а указывает, что готов её обменять. Описание у такого объявления уже есть,
+ * меняется только желание.
+ */
+export const setItemWish = (id: string, wish: Wish[]): Promise<Item> => editItem(id, { wish })

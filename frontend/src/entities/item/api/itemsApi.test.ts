@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
-import { createItem, getMyItems, setItemWish, withdrawItem } from './itemsApi'
+import { createItem, editItem, getMyItems, setItemWish, withdrawItem } from './itemsApi'
 
 const [DASHA, MARK] = PERSONAS
 
@@ -90,6 +90,31 @@ describe('варианты желания — каждый отдельное р
     ])
 
     expect(updated.wish).toEqual([{ category: 'Электроника', description: 'Монитор 27"' }])
+  })
+})
+
+describe('editItem — правка размещённого объявления', () => {
+  beforeEach(() => {
+    usePersonaStore.setState({ personaId: DASHA.id })
+  })
+
+  it('описание и желание меняются вместе, снимать вещь с обмена для этого не нужно', async () => {
+    await setItemWish('3', wish)
+    const edited = await editItem('3', {
+      wish: [{ category: 'Аудио', description: 'Колонка' }],
+      description: 'Монитор LG, 27 дюймов, IPS-матрица',
+    })
+
+    expect(edited.status).toBe('searching')
+    expect(edited.description).toBe('Монитор LG, 27 дюймов, IPS-матрица')
+    expect(edited.wish[0].description).toBe('Колонка')
+  })
+
+  it('пустое описание ничего не стирает: у бэкенда это поле нельзя очистить', async () => {
+    await editItem('3', { wish, description: 'Было описание' })
+    const edited = await editItem('3', { wish, description: '   ' })
+
+    expect(edited.description).toBe('Было описание')
   })
 })
 

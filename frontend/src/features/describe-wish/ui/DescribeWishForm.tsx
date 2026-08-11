@@ -19,6 +19,11 @@ const rowLabel = (index: number) => (index === 0 ? 'Что хотите взам
 interface DescribeWishFormProps {
   /** Что человек отдаёт: название показываем, категорию используем для подсказок. */
   give: GivenItem
+  /**
+   * Уже сохранённое желание. При правке форма открывается с ним: иначе «поменять один
+   * вариант» означало бы набрать заново все, и человек терял бы то, что уже указал.
+   */
+  initial?: Wish[]
   submitLabel: string
   pendingLabel: string
   /**
@@ -36,13 +41,17 @@ interface DescribeWishFormProps {
  */
 export function DescribeWishForm({
   give,
+  initial,
   submitLabel,
   pendingLabel,
   onSubmit,
   onDone,
 }: DescribeWishFormProps) {
-  const [rows, setRows] = useState<WishRow[]>([emptyRow(0)])
-  const nextKey = useRef(1)
+  const [rows, setRows] = useState<WishRow[]>(
+    initial?.length ? initial.map((wish, index) => ({ ...wish, key: index })) : [emptyRow(0)],
+  )
+  // Ключи новых строк продолжают занятые: совпадение спутало бы React поля местами.
+  const nextKey = useRef(rows.length)
   const queryClient = useQueryClient()
 
   // Пустые строки не сохраняем: добавить вариант и передумать — нормальный ход.

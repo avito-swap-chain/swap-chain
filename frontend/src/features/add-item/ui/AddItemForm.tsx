@@ -4,33 +4,13 @@ import {
   CATEGORIES,
   CONDITIONS,
   CONDITION_LABEL,
-  descriptionQuality,
+  DescriptionField,
   recognizeItem,
-  type DescriptionQuality,
   type ItemCondition,
   type ItemDraft,
 } from '@/entities/item'
-import {
-  Button,
-  Field,
-  IconImage,
-  Input,
-  Select,
-  Status,
-  Textarea,
-  type StatusTone,
-} from '@/shared/ui'
+import { Button, Field, IconImage, Input, Select, Status } from '@/shared/ui'
 import { recognitionPatch, type RecognizedField } from '../lib/recognitionPatch'
-
-/**
- * Что человек видит вместо порогов длины. Формулировки про подбор, а не про символы:
- * считать буквы — не его работа, ему важно, найдётся ли обмен.
- */
-const QUALITY: Record<DescriptionQuality, { tone: StatusTone; label: string }> = {
-  short: { tone: 'stop', label: 'Слишком коротко для подбора' },
-  fair: { tone: 'attention', label: 'Добавьте деталей — найдётся точнее' },
-  good: { tone: 'ok', label: 'Хорошее описание' },
-}
 
 /** Первый шаг публикации: сама вещь, без желания. */
 export type ItemFormValues = Omit<ItemDraft, 'wish'>
@@ -78,10 +58,6 @@ export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
     onSubmit({ ...values, title: values.title.trim(), description: values.description?.trim() })
   }
 
-  const quality = values.description?.trim()
-    ? QUALITY[descriptionQuality(values.description)]
-    : undefined
-
   return (
     <form onSubmit={submit} className="flex flex-1 flex-col gap-3.5">
       <label className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-[1.5px] border-dashed border-line p-5 text-center text-ink-3">
@@ -115,19 +91,11 @@ export function AddItemForm({ initial, onSubmit }: AddItemFormProps) {
 
       {/* Описание не обязательно, но по нему подбор и ищет: бэкенд векторизует
           название вместе с описанием, и без него у вещи остаётся одно название. */}
-      <Field label="Описание">
-        <Textarea
-          value={values.description ?? ''}
-          onChange={(event) => patch({ description: event.target.value })}
-          placeholder="Что за вещь, как долго у вас, что в комплекте"
-          rows={3}
-          maxLength={4000}
-          disabled={recognition.isPending}
-        />
-        {/* Подсказка появляется только когда есть что оценивать: у пустого поля она читалась бы
-            как упрёк за то, что человек ещё не начал. */}
-        {quality && <Status tone={quality.tone}>{quality.label}</Status>}
-      </Field>
+      <DescriptionField
+        value={values.description ?? ''}
+        onChange={(description) => patch({ description })}
+        disabled={recognition.isPending}
+      />
 
       <Field label="Категория">
         <Select
