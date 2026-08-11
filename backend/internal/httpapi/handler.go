@@ -25,6 +25,8 @@ import (
 	chatmodel "swap-chain/modules/chat/model"
 	chatservice "swap-chain/modules/chat/service"
 	"swap-chain/modules/matching/model"
+	notificationmodel "swap-chain/modules/notifications/model"
+	notificationservice "swap-chain/modules/notifications/service"
 )
 
 type databasePinger interface {
@@ -46,20 +48,21 @@ type mediaService interface {
 
 // Handler connects generated HTTP operations to application services.
 type Handler struct {
-	database   databasePinger
-	finder     cycleFinder
-	logger     *zap.Logger
-	items      items.Service
-	media      mediaService
-	chains     chains.Service
-	events     *events.Hub
-	sessions   *session.Manager
-	users      users.Service
-	admin      adminservice.Service
-	chat       chatservice.Service
-	vision     VisionService
-	visionJobs chan struct{}
-	readiness  []readinessChecker
+	database      databasePinger
+	finder        cycleFinder
+	logger        *zap.Logger
+	items         items.Service
+	media         mediaService
+	chains        chains.Service
+	events        *events.Hub
+	sessions      *session.Manager
+	users         users.Service
+	admin         adminservice.Service
+	chat          chatservice.Service
+	notifications notificationservice.Service
+	vision        VisionService
+	visionJobs    chan struct{}
+	readiness     []readinessChecker
 }
 
 // NewHandler creates the integrated API handler.
@@ -75,23 +78,25 @@ func NewHandler(
 	userService users.Service,
 	adminService adminservice.Service,
 	chatService chatservice.Service,
+	notificationService notificationservice.Service,
 	visionService VisionService,
 	readiness ...readinessChecker,
 ) *Handler {
 	handler := &Handler{
-		database:  database,
-		finder:    finder,
-		logger:    logger,
-		items:     itemService,
-		media:     mediaService,
-		chains:    chainService,
-		events:    eventHub,
-		sessions:  sessions,
-		users:     userService,
-		admin:     adminService,
-		chat:      chatService,
-		vision:    visionService,
-		readiness: readiness,
+		database:      database,
+		finder:        finder,
+		logger:        logger,
+		items:         itemService,
+		media:         mediaService,
+		chains:        chainService,
+		events:        eventHub,
+		sessions:      sessions,
+		users:         userService,
+		admin:         adminService,
+		chat:          chatService,
+		notifications: notificationService,
+		vision:        visionService,
+		readiness:     readiness,
 	}
 	if visionService != nil {
 		handler.visionJobs = make(chan struct{}, maxPendingVisionJobs)
@@ -1033,6 +1038,110 @@ func (h *Handler) TransitionAdminDelivery(ctx context.Context, request api.Trans
 	return api.TransitionAdminDelivery200JSONResponse(adminDeliveryModel(delivery)), nil
 }
 
+// ListNotifications returns cursor-paginated notifications for the current user.
+func (h *Handler) ListNotifications(ctx context.Context, request api.ListNotificationsRequestObject) (api.ListNotificationsResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ListNotifications401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	limit := 20
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+
+	cursor := int64(0)
+	if request.Params.Cursor != nil {
+		parsed, err := strconv.ParseInt(*request.Params.Cursor, 10, 64)
+		if err != nil || parsed < 0 {
+			return api.ListNotifications400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_CURSOR", "cursor must be a non-negative integer", nil)),
+			}, nil
+		}
+		cursor = parsed
+	}
+
+	result, err := h.notifications.List(ctx, current.UserID, cursor, limit)
+	if err != nil {
+		var validationError *notificationmodel.ValidationError
+		if errors.As(err, &validationError) {
+			return api.ListNotifications400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "VALIDATION_ERROR", err.Error(), nil)),
+			}, nil
+		}
+		h.logger.Error("list notifications", zap.Int64("user_id", current.UserID), zap.Error(err))
+		return api.ListNotifications500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to list notifications", nil)),
+		}, nil
+	}
+
+	response := api.NotificationList{
+		Items:       make([]api.AppNotification, 0, len(result.Items)),
+		UnreadCount: result.UnreadCount,
+	}
+	for _, n := range result.Items {
+		response.Items = append(response.Items, notificationModel(n))
+	}
+	if result.NextCursor != nil {
+		c := strconv.FormatInt(*result.NextCursor, 10)
+		response.NextCursor = &c
+	}
+
+	return api.ListNotifications200JSONResponse(response), nil
+}
+
+// MarkNotificationsRead marks selected or all notifications as read.
+func (h *Handler) MarkNotificationsRead(ctx context.Context, request api.MarkNotificationsReadRequestObject) (api.MarkNotificationsReadResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.MarkNotificationsRead401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	var ids []int64
+	if request.Body != nil && request.Body.Ids != nil {
+		ids = *request.Body.Ids
+	}
+
+	if err := h.notifications.MarkRead(ctx, current.UserID, ids); err != nil {
+		var validationError *notificationmodel.ValidationError
+		if errors.As(err, &validationError) {
+			return api.MarkNotificationsRead400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "VALIDATION_ERROR", err.Error(), nil)),
+			}, nil
+		}
+		h.logger.Error("mark notifications read", zap.Int64("user_id", current.UserID), zap.Error(err))
+		return api.MarkNotificationsRead500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to mark notifications as read", nil)),
+		}, nil
+	}
+
+	result, err := h.notifications.List(ctx, current.UserID, 0, 20)
+	if err != nil {
+		h.logger.Error("list notifications after mark read", zap.Int64("user_id", current.UserID), zap.Error(err))
+		return api.MarkNotificationsRead500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to list notifications", nil)),
+		}, nil
+	}
+
+	response := api.NotificationList{
+		Items:       make([]api.AppNotification, 0, len(result.Items)),
+		UnreadCount: result.UnreadCount,
+	}
+	for _, n := range result.Items {
+		response.Items = append(response.Items, notificationModel(n))
+	}
+	if result.NextCursor != nil {
+		c := strconv.FormatInt(*result.NextCursor, 10)
+		response.NextCursor = &c
+	}
+
+	return api.MarkNotificationsRead200JSONResponse(response), nil
+}
+
 // SubscribeEvents streams only events addressed to the current demo user.
 func (h *Handler) SubscribeEvents(ctx context.Context, _ api.SubscribeEventsRequestObject) (api.SubscribeEventsResponseObject, error) {
 	current, ok := session.Current(ctx)
@@ -1051,6 +1160,23 @@ func (h *Handler) SubscribeEvents(ctx context.Context, _ api.SubscribeEventsRequ
 			Connection:   &connection,
 		},
 	}, nil
+}
+
+func notificationModel(n notificationmodel.Notification) api.AppNotification {
+	var entityID *int64
+	if n.EntityID != nil {
+		entityID = n.EntityID
+	}
+	return api.AppNotification{
+		Id:        n.ID,
+		Kind:      api.NotificationKind(n.Kind),
+		Title:     n.Title,
+		Text:      n.Text,
+		TargetUrl: n.TargetURL,
+		EntityId:  entityID,
+		IsRead:    n.IsRead,
+		CreatedAt: n.CreatedAt,
+	}
 }
 
 func itemModel(item items.Item) api.Item {

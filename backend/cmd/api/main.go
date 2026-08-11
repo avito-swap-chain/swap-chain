@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -27,10 +28,13 @@ import (
 	"swap-chain/modules/analyze/adapters"
 	analyzerepository "swap-chain/modules/analyze/repository"
 	analyzeservice "swap-chain/modules/analyze/service"
+	chatmodel "swap-chain/modules/chat/model"
 	chatrepository "swap-chain/modules/chat/repository"
 	chatservice "swap-chain/modules/chat/service"
 	matchingrepository "swap-chain/modules/matching/repository"
 	"swap-chain/modules/matching/service"
+	notificationrepository "swap-chain/modules/notifications/repository"
+	notificationservice "swap-chain/modules/notifications/service"
 	"swap-chain/shared/db"
 
 	"go.uber.org/zap"
@@ -193,8 +197,37 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create matching: %w", err)
 	}
+	notificationRepo, err := notificationrepository.NewPostgres(database)
+	if err != nil {
+		return fmt.Errorf("create notification repository: %w", err)
+	}
+	notificationService, err := notificationservice.New(notificationRepo)
+	if err != nil {
+		return fmt.Errorf("create notification service: %w", err)
+	}
+	notificationProducer := notificationservice.NewProducer(notificationService, logger, func(userID int64, eventType, entityID string, data map[string]any) {
+		eventHub.PublishToUser(userID, eventType, entityID, data)
+	})
 	chainService := chains.NewPostgresService(database, func(userIDs []int64, eventType, entityID string, data map[string]any) {
 		eventHub.PublishToUsers(userIDs, eventType, entityID, data)
+		chainID, _ := strconv.ParseInt(entityID, 10, 64)
+		ctx := context.Background()
+		switch eventType {
+		case "chain.created":
+			notificationProducer.NotifyChainCreated(ctx, userIDs, chainID)
+		case "chain.updated":
+			notificationProducer.NotifyChainUpdated(ctx, userIDs, chainID)
+		case "chain.accepted":
+			notificationProducer.NotifyChainAccepted(ctx, userIDs, chainID)
+		case "chain.rejected":
+			reason := ""
+			if v, ok := data["reason"]; ok {
+				if r, ok2 := v.(string); ok2 {
+					reason = r
+				}
+			}
+			notificationProducer.NotifyChainRejected(ctx, userIDs, chainID, reason)
+		}
 	})
 	finder := applicationmatching.NewFindCycles(matcher, chainService)
 	matchingJobs, err := postgres.NewMatchingJobs(database)
@@ -227,7 +260,10 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create chat repository: %w", err)
 	}
-	chatModule, err := chatservice.New(chatRepo)
+	chatModule, err := chatservice.NewWithCallback(chatRepo, func(ctx context.Context, message chatmodel.Message) {
+		eventHub.PublishToUser(message.Recipient.ID, "chat.message.created", strconv.FormatInt(message.ChainID, 10), nil)
+		notificationProducer.NotifyChatMessage(ctx, message.Recipient.ID, message.Sender.Username, message.ChainID, message.Sender.ID)
+	})
 	if err != nil {
 		return fmt.Errorf("create chat service: %w", err)
 	}
@@ -243,6 +279,7 @@ func run(logger *zap.Logger) error {
 		userService,
 		adminModule,
 		chatModule,
+		notificationService,
 		visionService,
 		ollamaClient,
 		categoryBootstrap,

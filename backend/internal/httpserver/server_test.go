@@ -32,6 +32,8 @@ import (
 	analyzemodel "swap-chain/modules/analyze/model"
 	chatmodel "swap-chain/modules/chat/model"
 	"swap-chain/modules/matching/model"
+	notificationmodel "swap-chain/modules/notifications/model"
+	notificationservice "swap-chain/modules/notifications/service"
 )
 
 func TestHealthAndMatchingRoutesUseIntegratedServices(t *testing.T) {
@@ -100,6 +102,7 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		users.NewMemoryService(testUser(1)),
 		&testAdminService{},
 		newTestChatService(),
+		nil,
 		nil,
 		testReadiness{err: errors.New("ollama model is missing")},
 	)
@@ -1103,7 +1106,7 @@ func newTestServerWithAllServicesAndVision(t *testing.T, chainService chains.Ser
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), vision)
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, vision)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1574,3 +1577,370 @@ const validChatPayload = `{
   "clientMessageId": "web-message-1",
   "text": "Привет участникам!"
 }`
+
+type testNotificationService struct {
+	notifications []notificationmodel.Notification
+	nextID        int64
+	mu            sync.Mutex
+}
+
+func newTestNotificationService() *testNotificationService {
+	return &testNotificationService{
+		notifications: make([]notificationmodel.Notification, 0),
+		nextID:        1,
+	}
+}
+
+func (s *testNotificationService) Create(ctx context.Context, userID int64, kind, title, text, targetURL string, entityID *int64) (notificationmodel.Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := notificationmodel.Notification{
+		ID:        s.nextID,
+		UserID:    userID,
+		Kind:      kind,
+		Title:     title,
+		Text:      text,
+		TargetURL: targetURL,
+		EntityID:  entityID,
+		IsRead:    false,
+	}
+	s.nextID++
+	s.notifications = append([]notificationmodel.Notification{n}, s.notifications...)
+	return n, nil
+}
+
+func (s *testNotificationService) List(ctx context.Context, userID int64, cursor int64, limit int) (notificationmodel.ListResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var filtered []notificationmodel.Notification
+	for _, n := range s.notifications {
+		if n.UserID == userID && (cursor == 0 || n.ID < cursor) {
+			filtered = append(filtered, n)
+		}
+	}
+
+	var unreadCount int64
+	for _, n := range s.notifications {
+		if n.UserID == userID && !n.IsRead {
+			unreadCount++
+		}
+	}
+
+	if len(filtered) > limit {
+		last := filtered[limit-1]
+		return notificationmodel.ListResult{
+			Items:       filtered[:limit],
+			NextCursor:  &last.ID,
+			UnreadCount: unreadCount,
+		}, nil
+	}
+
+	return notificationmodel.ListResult{
+		Items:       filtered,
+		NextCursor:  nil,
+		UnreadCount: unreadCount,
+	}, nil
+}
+
+func (s *testNotificationService) MarkRead(ctx context.Context, userID int64, ids []int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(ids) == 0 {
+		for i := range s.notifications {
+			if s.notifications[i].UserID == userID {
+				s.notifications[i].IsRead = true
+			}
+		}
+		return nil
+	}
+
+	for i := range s.notifications {
+		if s.notifications[i].UserID != userID {
+			continue
+		}
+		for _, id := range ids {
+			if s.notifications[i].ID == id {
+				s.notifications[i].IsRead = true
+				break
+			}
+		}
+	}
+	return nil
+}
+
+var _ notificationservice.Service = (*testNotificationService)(nil)
+
+func newTestServerWithNotifications(t *testing.T, notificationService notificationservice.Service) *httptest.Server {
+	t.Helper()
+	logger := zap.NewNop()
+	eventHub := events.NewHub()
+	sessions := session.NewManager(time.Hour, false)
+	userService := users.NewMemoryService(
+		testUser(1),
+		testUser(2),
+		testUser(3),
+		testUser(7),
+	)
+	itemService := items.NewMemoryService(func(userID int64, eventType, entityID string, data map[string]any) {
+		eventHub.PublishToUser(userID, eventType, entityID, data)
+	})
+	mediaService := media.NewService(newTestMediaStorage(), 10<<20)
+	chainService := &testChainService{chain: testChain()}
+
+	handler := httpapi.NewHandler(
+		testDatabase{},
+		testFinder{},
+		logger,
+		itemService,
+		mediaService,
+		chainService,
+		eventHub,
+		sessions,
+		userService,
+		&testAdminService{},
+		newTestChatService(),
+		notificationService,
+		nil,
+	)
+	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
+	if err != nil {
+		t.Fatalf("create HTTP handler: %v", err)
+	}
+	return httptest.NewServer(router)
+}
+
+func TestListNotificationsRequiresSession(t *testing.T) {
+	svc := newTestNotificationService()
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/v1/notifications")
+	if err != nil {
+		t.Fatalf("GET notifications: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestMarkNotificationsReadRequiresSession(t *testing.T) {
+	svc := newTestNotificationService()
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/v1/notifications/read", "application/json", strings.NewReader(`{"ids": [1]}`))
+	if err != nil {
+		t.Fatalf("POST notifications/read: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestListNotifications_Empty(t *testing.T) {
+	svc := newTestNotificationService()
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	resp, err := client.Get(server.URL + "/api/v1/notifications")
+	if err != nil {
+		t.Fatalf("GET notifications: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var list api.NotificationList
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(list.Items) != 0 {
+		t.Errorf("expected 0 items, got %d", len(list.Items))
+	}
+	if list.UnreadCount != 0 {
+		t.Errorf("expected 0 unread, got %d", list.UnreadCount)
+	}
+}
+
+func TestListNotifications_WithData(t *testing.T) {
+	svc := newTestNotificationService()
+	entityID := int64(42)
+	svc.Create(context.Background(), 1, "chain", "Title 1", "Text 1", "/chains/1", &entityID)
+	svc.Create(context.Background(), 1, "message", "Title 2", "Text 2", "/chat/1", &entityID)
+	svc.Create(context.Background(), 2, "chain", "Other user", "Other", "/chains/2", nil)
+
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	resp, err := client.Get(server.URL + "/api/v1/notifications")
+	if err != nil {
+		t.Fatalf("GET notifications: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var list api.NotificationList
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(list.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(list.Items))
+	}
+	if list.UnreadCount != 2 {
+		t.Errorf("expected 2 unread, got %d", list.UnreadCount)
+	}
+}
+
+func TestMarkNotificationsRead_MarkAll(t *testing.T) {
+	svc := newTestNotificationService()
+	eID := int64(1)
+	svc.Create(context.Background(), 1, "chain", "T1", "Text", "/c/1", &eID)
+	svc.Create(context.Background(), 1, "chain", "T2", "Text", "/c/2", &eID)
+
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	resp := postJSON(t, client, server.URL+"/api/v1/notifications/read", `{}`)
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var list api.NotificationList
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if list.UnreadCount != 0 {
+		t.Errorf("expected 0 unread after mark all, got %d", list.UnreadCount)
+	}
+}
+
+func TestMarkNotificationsRead_MarkSelected(t *testing.T) {
+	svc := newTestNotificationService()
+	eID := int64(1)
+	n1, _ := svc.Create(context.Background(), 1, "chain", "T1", "Text", "/c/1", &eID)
+	n2, _ := svc.Create(context.Background(), 1, "chain", "T2", "Text", "/c/2", &eID)
+
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	body := fmt.Sprintf(`{"ids": [%d]}`, n1.ID)
+	resp := postJSON(t, client, server.URL+"/api/v1/notifications/read", body)
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	_ = n2
+
+	var list api.NotificationList
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if list.UnreadCount != 1 {
+		t.Errorf("expected 1 unread after marking one, got %d", list.UnreadCount)
+	}
+}
+
+func TestListNotifications_CursorPagination(t *testing.T) {
+	svc := newTestNotificationService()
+	eID := int64(1)
+	for i := 0; i < 5; i++ {
+		svc.Create(context.Background(), 1, "chain",
+			fmt.Sprintf("T%d", i), "Text", "/c/1", &eID)
+	}
+
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+
+	resp, err := client.Get(server.URL + "/api/v1/notifications?limit=3")
+	if err != nil {
+		t.Fatalf("GET notifications page 1: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+
+	var page1 api.NotificationList
+	if err := json.NewDecoder(resp.Body).Decode(&page1); err != nil {
+		t.Fatalf("decode page1: %v", err)
+	}
+	if len(page1.Items) != 3 {
+		t.Fatalf("expected 3 items on page 1, got %d", len(page1.Items))
+	}
+	if page1.NextCursor == nil {
+		t.Fatal("expected nextCursor on page 1")
+	}
+
+	resp2, err := client.Get(server.URL + "/api/v1/notifications?limit=3&cursor=" + *page1.NextCursor)
+	if err != nil {
+		t.Fatalf("GET notifications page 2: %v", err)
+	}
+	defer closeBody(t, resp2.Body)
+
+	var page2 api.NotificationList
+	if err := json.NewDecoder(resp2.Body).Decode(&page2); err != nil {
+		t.Fatalf("decode page2: %v", err)
+	}
+	if len(page2.Items) != 2 {
+		t.Fatalf("expected 2 items on page 2, got %d", len(page2.Items))
+	}
+	if page2.NextCursor != nil {
+		t.Errorf("expected nil nextCursor on last page, got %s", *page2.NextCursor)
+	}
+}
+
+func TestListNotifications_InvalidCursor(t *testing.T) {
+	svc := newTestNotificationService()
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	resp, err := client.Get(server.URL + "/api/v1/notifications?cursor=invalid")
+	if err != nil {
+		t.Fatalf("GET notifications: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestNotifications_CrossUserIsolation(t *testing.T) {
+	svc := newTestNotificationService()
+	eID := int64(1)
+	svc.Create(context.Background(), 1, "chain", "User 1", "Text", "/c/1", &eID)
+	svc.Create(context.Background(), 2, "chain", "User 2", "Text", "/c/2", &eID)
+
+	server := newTestServerWithNotifications(t, svc)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+	resp, err := client.Get(server.URL + "/api/v1/notifications")
+	if err != nil {
+		t.Fatalf("GET notifications: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+
+	var list api.NotificationList
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("user 1 should see 1 notification, got %d", len(list.Items))
+	}
+	if list.Items[0].Title != "User 1" {
+		t.Errorf("user 1 should see their own notification")
+	}
+}

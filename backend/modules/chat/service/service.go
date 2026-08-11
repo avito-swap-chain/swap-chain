@@ -26,6 +26,8 @@ type Repository interface {
 	MarkRead(ctx context.Context, chainID, actorID, counterpartID, lastReadMessageID int64) (model.ReadState, error)
 }
 
+type OnMessageSent func(ctx context.Context, message model.Message)
+
 type Service interface {
 	Send(ctx context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (message model.Message, created bool, err error)
 	List(ctx context.Context, chainID, actorID, counterpartID, afterID int64, limit int, wait time.Duration) ([]model.Message, error)
@@ -36,6 +38,7 @@ type Service interface {
 type Chat struct {
 	repository Repository
 	notifier   *notifier
+	onSent     OnMessageSent
 }
 
 func New(repository Repository) (*Chat, error) {
@@ -43,6 +46,13 @@ func New(repository Repository) (*Chat, error) {
 		return nil, fmt.Errorf("chat init: 'repository' is required")
 	}
 	return &Chat{repository: repository, notifier: newNotifier()}, nil
+}
+
+func NewWithCallback(repository Repository, onSent OnMessageSent) (*Chat, error) {
+	if repository == nil {
+		return nil, fmt.Errorf("chat init: 'repository' is required")
+	}
+	return &Chat{repository: repository, notifier: newNotifier(), onSent: onSent}, nil
 }
 
 func (s *Chat) Send(ctx context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (model.Message, bool, error) {
@@ -57,6 +67,9 @@ func (s *Chat) Send(ctx context.Context, chainID, actorID, counterpartID int64, 
 	}
 	if created {
 		s.notifier.Notify(newThreadKey(chainID, actorID, counterpartID))
+		if s.onSent != nil {
+			s.onSent(ctx, message)
+		}
 	}
 	return message, created, nil
 }

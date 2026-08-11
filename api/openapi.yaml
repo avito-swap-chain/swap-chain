@@ -18,6 +18,7 @@ tags:
   - name: chat
   - name: admin
   - name: events
+  - name: notifications
   - name: vision
 
 paths:
@@ -1022,6 +1023,65 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List the current user's notifications with unread count
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notifications newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/notifications/read:
+    post:
+      operationId: markNotificationsRead
+      tags: [notifications]
+      summary: Mark selected or all notifications as read
+      description: >
+        Empty or absent IDs array marks all unread notifications as read.
+        IDs that do not belong to the current user are silently ignored.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkNotificationsReadRequest"
+      responses:
+        "200":
+          description: Notifications marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/events:
     get:
       operationId: subscribeEvents
@@ -1676,6 +1736,62 @@ components:
           $ref: "#/components/schemas/AdminDelivery"
         chainStatus:
           $ref: "#/components/schemas/ChainStatus"
+
+    NotificationKind:
+      type: string
+      enum: [chain, message, offer]
+
+    AppNotification:
+      type: object
+      required: [id, kind, title, text, targetUrl, isRead, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          $ref: "#/components/schemas/NotificationKind"
+        title:
+          type: string
+        text:
+          type: string
+        targetUrl:
+          type: string
+        entityId:
+          type: integer
+          format: int64
+          nullable: true
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    NotificationList:
+      type: object
+      required: [items, unreadCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppNotification"
+        nextCursor:
+          type: string
+          nullable: true
+        unreadCount:
+          type: integer
+          format: int64
+          minimum: 0
+
+    MarkNotificationsReadRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+            minimum: 1
+          description: Empty or absent means mark all as read
 
     PipelineEvent:
       type: object
