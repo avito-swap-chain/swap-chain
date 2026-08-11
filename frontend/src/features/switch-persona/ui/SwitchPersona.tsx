@@ -3,6 +3,7 @@ import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
 import {
   DEMO_USERS,
   getCurrentUser,
+  knownAccounts,
   login,
   logout,
   sessionKeys,
@@ -86,14 +87,15 @@ export function SwitchPersona() {
 
   if (!user) return null
 
-  // Список для выбора: с бэкендом это засеянные демо-пользователи, и в нём может не быть
-  // текущего — тот, кто зарегистрировался сам, всё равно должен видеть себя в поле.
-  // Сравниваем по телефону: имена не уникальны, и на них выбор промахивался.
+  // Список для выбора: засеянные бэкендом демо-пользователи плюс все, кто входил с этого
+  // браузера. Раньше своим здесь был только текущий, и после переключения на другого человека
+  // зарегистрировавшийся терял себя из виду. Сравниваем по телефону: имена не уникальны,
+  // и на них выбор промахивался.
   const options: SwitchOption[] = isBackendConnected
     ? [
-        ...(DEMO_USERS.some((demo) => demo.phone === user.phone)
-          ? []
-          : [{ name: user.name, phone: user.phone ?? '', isAdmin: user.isAdmin }]),
+        ...knownAccounts().filter(
+          (account) => !DEMO_USERS.some((demo) => demo.phone === account.phone),
+        ),
         ...DEMO_USERS,
       ]
     : PERSONAS.map((persona) => ({ name: persona.name, phone: persona.id }))

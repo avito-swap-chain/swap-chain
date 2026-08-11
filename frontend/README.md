@@ -42,7 +42,7 @@ pnpm format       # форматирование (prettier --write)
 
 Два адреса, и роли у них разные.
 
-**Демо на GitHub Pages** — [merely04.github.io/avito-swap-chain-frontend](https://merely04.github.io/avito-swap-chain-frontend/).
+**Демо на GitHub Pages** — [merely04.github.io/barter-ring-frontend](https://merely04.github.io/barter-ring-frontend/).
 Собирается на мок-данных, поэтому открывается всегда, даже когда стенд бэкенда лежит.
 Это витрина: посмотреть продукт, ничего не поднимая.
 

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { getMyItems, ItemCard, ItemStatusLabel, itemKeys, type Item } from '@/entities/item'
+import { EditItemLink } from '@/features/edit-item'
 import { EnableBarterButton } from '@/features/enable-barter'
 import { WithdrawItem } from '@/features/withdraw-item'
 import { Button, EmptyState, Notice } from '@/shared/ui'
@@ -32,6 +33,9 @@ function actionFor(item: Item) {
   return (
     <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
       <ItemStatusLabel status={item.status} />
+      {/* Пока вещь в подборе, описание и желание правятся без снятия с обмена: снятие
+          отменило бы предложения с ней у других людей, а это не то же самое, что правка. */}
+      <EditItemLink itemId={item.id} />
       <WithdrawItem itemId={item.id} />
     </span>
   )

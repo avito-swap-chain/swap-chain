@@ -56,6 +56,43 @@ export const DEMO_USERS: { name: string; phone: string; isAdmin?: boolean }[] = 
   { name: 'ПВЗ Администратор', phone: '+79009999999', isAdmin: true },
 ]
 
+/** Аккаунт, под которым уже входили с этого браузера: то же, из чего состоит `DEMO_USERS`. */
+export interface KnownAccount {
+  name: string
+  phone: string
+  isAdmin?: boolean
+}
+
+/**
+ * Демо-пользователей засевает бэкенд, а тот, кто зарегистрировался своим номером, не значится
+ * нигде — и после переключения на другого человека собственный аккаунт пропадал из списка:
+ * вернуться в него можно было, только набрав номер заново. Поэтому входы запоминаем.
+ *
+ * Храним в браузере, а не в памяти модуля: перезагрузка страницы на демо — обычное дело,
+ * и список обнулялся бы ровно с тем же результатом.
+ */
+const KNOWN_ACCOUNTS_KEY = 'barter.known-accounts'
+
+export function knownAccounts(): KnownAccount[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(KNOWN_ACCOUNTS_KEY) ?? '[]')
+    return Array.isArray(stored) ? stored : []
+  } catch {
+    // Мусор в хранилище (например, формат прошлой версии) — не повод ронять шапку.
+    return []
+  }
+}
+
+/** Список пополняется сам при каждом чтении сессии: отдельного действия для этого нет. */
+function rememberAccount(user: CurrentUser): void {
+  if (!user.phone) return
+
+  const others = knownAccounts().filter((account) => account.phone !== user.phone)
+  const account: KnownAccount = { name: user.name, phone: user.phone, isAdmin: user.isAdmin }
+
+  localStorage.setItem(KNOWN_ACCOUNTS_KEY, JSON.stringify([account, ...others]))
+}
+
 /**
  * Идентификатор владельца сессии. Держим в модуле: сессия одна на приложение, а
  * запрашивать её перед каждым чтением цепочек — лишний round-trip на каждый рендер.
@@ -70,12 +107,15 @@ const fromSession = (session: Session): CurrentUser => {
   // чтобы не ждать его вливания: до тех пор поле просто не приходит.
   const { role } = session.user as typeof session.user & { role?: string }
 
-  return {
+  const user: CurrentUser = {
     id: String(session.user.id),
     name: session.user.username,
     phone: session.user.phone,
     isAdmin: role === 'ADMIN',
   }
+
+  rememberAccount(user)
+  return user
 }
 
 const fromPersona = (): CurrentUser => {

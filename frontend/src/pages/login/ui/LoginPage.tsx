@@ -1,6 +1,7 @@
 import { useState, type SubmitEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '@/shared/api/fetcher'
+import { normalizePhone } from '@/shared/lib'
 import { DEMO_USERS, login, register } from '@/shared/model/session'
 import { Button, Field, Input } from '@/shared/ui'
 
@@ -15,6 +16,7 @@ export function LoginPage() {
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [isNewUser, setIsNewUser] = useState(false)
+  const [isPhoneBroken, setIsPhoneBroken] = useState(false)
   const queryClient = useQueryClient()
 
   /**
@@ -37,15 +39,33 @@ export function LoginPage() {
   const editPhone = (value: string) => {
     setPhone(value)
     setIsNewUser(false)
+    setIsPhoneBroken(false)
   }
 
+  /**
+   * Номер проверяем до отправки. Бэкенд знает про телефон только длину и на коротком отвечает
+   * дампом схемы валидатора — этот текст попадал прямо в форму, и на нём споткнулась проверка.
+   * Заодно человек не заводит три аккаунта на один номер, набрав его через `8`, `+7` и без кода.
+   */
   const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
-    enter.mutate({ phone: phone.trim(), name: isNewUser ? name.trim() : undefined })
+
+    const normalized = normalizePhone(phone)
+    if (!normalized) {
+      setIsPhoneBroken(true)
+      return
+    }
+
+    enter.mutate({ phone: normalized, name: isNewUser ? name.trim() : undefined })
   }
 
-  const message =
-    enter.error instanceof ApiError && enter.error.status !== 404 ? enter.error.message : undefined
+  // Ответ бэкенда пересказываем своими словами: в его `message` лежит текст для разработчика.
+  // 404 сюда не попадает — незнакомый номер это не ошибка, а развилка на регистрацию.
+  const message = isPhoneBroken
+    ? 'Проверьте номер — нужен российский, например +7 900 100-00-01'
+    : enter.error instanceof ApiError && enter.error.status !== 404
+      ? 'Не удалось войти. Попробуйте ещё раз'
+      : undefined
 
   return (
     <div className="flex min-h-svh items-center justify-center bg-page px-4">
@@ -85,7 +105,11 @@ export function LoginPage() {
           </>
         )}
 
-        {message && <p className="text-[13px] leading-4 font-semibold text-stop">{message}</p>}
+        {message && (
+          <p role="alert" className="text-[13px] leading-4 font-semibold text-stop">
+            {message}
+          </p>
+        )}
 
         <Button type="submit" fullWidth disabled={enter.isPending || phone.trim() === ''}>
           {isNewUser ? 'Зарегистрироваться' : 'Войти'}

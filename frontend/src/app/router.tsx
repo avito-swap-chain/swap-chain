@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import { AdminDeliveriesPage } from '@/pages/admin-deliveries'
 import { ChainPage } from '@/pages/chain'
 import { CreateOfferPage } from '@/pages/create-offer'
+import { EditItemPage } from '@/pages/edit-item'
 import { EnableBarterPage } from '@/pages/enable-barter'
 import { ExchangePage } from '@/pages/exchange'
 import { ItemsPage } from '@/pages/items'
@@ -32,6 +33,7 @@ export const router = createBrowserRouter(
         // Вложенные экраны: сюда ведут из разделов, путь назад показывают крошки.
         { path: '/items/new', element: <CreateOfferPage /> },
         { path: '/items/:id/barter', element: <EnableBarterPage /> },
+        { path: '/items/:id/edit', element: <EditItemPage /> },
         { path: '/exchange/:id', element: <ChainPage /> },
         // Переписка адресуется парой «цепочка + собеседник»: она привязана к ребру круга
         // обмена, а не к вещи — с одним человеком в двух цепочках это два разных разговора.
