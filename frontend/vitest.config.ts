@@ -8,6 +8,9 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    // `.tsx` — тесты экранов. Окружение им нужно браузерное, но включается оно построчно
+    // (`// @vitest-environment jsdom`) в самих файлах: логических тестов на порядок больше,
+    // и поднимать им jsdom не за что.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 })

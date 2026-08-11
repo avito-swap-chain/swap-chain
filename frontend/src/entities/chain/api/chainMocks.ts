@@ -185,6 +185,12 @@ function find(id: string): Chain {
   return chain
 }
 
+/**
+ * Проверка перед изменением: `replace` молча ничего не делает с несуществующей цепочкой,
+ * а действие над чужим или удалённым id должно падать — так же, как ответил бы бэкенд.
+ */
+const requireChain = (id: string): void => void find(id)
+
 /** Заменить цепочку новым объектом — ссылка меняется, TanStack Query видит обновление. */
 function replace(id: string, update: (chain: Chain) => Chain) {
   chains = chains.map((chain) => (chain.id === id ? update(chain) : chain))
@@ -249,7 +255,7 @@ export async function chainById(id: string): Promise<Chain> {
 
 export async function respond(id: string, decision: ChainDecision): Promise<void> {
   await delay(400)
-  find(id)
+  requireChain(id)
   const personaId = currentPersonaId()
 
   if (decision === 'dislike') {
@@ -285,7 +291,7 @@ export async function respond(id: string, decision: ChainDecision): Promise<void
 
 export async function leave(id: string): Promise<void> {
   await delay(400)
-  find(id)
+  requireChain(id)
   replace(id, (chain) => ({
     ...withPersonaStatus(chain, currentPersonaId(), 'declined'),
     status: 'dissolved',
@@ -294,7 +300,7 @@ export async function leave(id: string): Promise<void> {
 
 export async function confirmReceipt(id: string): Promise<void> {
   await delay(400)
-  find(id)
+  requireChain(id)
   replace(id, (chain) => confirmReceiptFor(chain, currentPersonaId()))
 
   // Демо-имитация отметки остальных участников: на бэке это придёт обычным refetch.
