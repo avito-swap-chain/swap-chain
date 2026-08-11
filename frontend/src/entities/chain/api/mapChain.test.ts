@@ -14,7 +14,10 @@ const item = (id: number, title: string) => ({
   updatedAt: '2026-08-09T10:00:00Z',
 })
 
-const apiChain = (status: ApiChain['status']): ApiChain => ({
+const apiChain = (
+  status: ApiChain['status'],
+  receipts: [boolean, boolean] = [false, false],
+): ApiChain => ({
   id: 42,
   status,
   createdAt: '2026-08-09T10:00:00Z',
@@ -25,12 +28,14 @@ const apiChain = (status: ApiChain['status']): ApiChain => ({
       giveItem: item(1, 'Горный велосипед'),
       receiveItem: item(2, 'Наушники'),
       status: 'WAITING',
+      receiptConfirmed: receipts[0],
     },
     {
       user: { id: 2, username: 'Марк' },
       giveItem: item(2, 'Наушники'),
       receiveItem: item(1, 'Горный велосипед'),
       status: 'APPROVED',
+      receiptConfirmed: receipts[1],
     },
   ],
 })
@@ -50,10 +55,10 @@ describe('mapChain — цепочка из контракта в нашу мод
     expect(mapChain(apiChain('REJECTED'), 1).status).toBe('dissolved')
   })
 
-  it('закрытая цепочка — получение отметили все: иначе COMPLETED не наступил бы', () => {
-    expect(mapChain(apiChain('COMPLETED'), 1).participants.every((p) => p.receiptConfirmed)).toBe(
-      true,
-    )
+  it('отметка получения берётся у участника, а не выводится из статуса цепочки', () => {
+    const chain = mapChain(apiChain('COMPLETED', [true, true]), 1)
+
+    expect(chain.participants.every((p) => p.receiptConfirmed)).toBe(true)
   })
 
   it('статусы участников переводятся в решения по варианту', () => {
@@ -66,6 +71,16 @@ describe('mapChain — цепочка из контракта в нашу мод
     const chain = mapChain(apiChain('ACCEPTED'), 1)
 
     expect(chain.participants.every((p) => p.receiptConfirmed === false)).toBe(true)
+  })
+
+  /**
+   * То, ради чего поле и просили у бэкенда: пока отметка выводилась из `COMPLETED`,
+   * состояние «я подтвердил, жду остальных» было неотличимо от «ещё никто не подтвердил».
+   */
+  it('передача идёт: один участник уже отметил получение, второй нет', () => {
+    const chain = mapChain(apiChain('ACCEPTED', [true, false]), 1)
+
+    expect(chain.participants.map((p) => p.receiptConfirmed)).toEqual([true, false])
   })
 
   it('идентификаторы приводятся к строкам: у бэкенда они числовые', () => {
@@ -90,18 +105,21 @@ const stand: ApiChain = {
       giveItem: item(55, 'Книга'),
       receiveItem: item(56, 'Лампа'),
       status: 'APPROVED',
+      receiptConfirmed: false,
     },
     {
       user: { id: 16, username: 'Борис' },
       giveItem: item(56, 'Лампа'),
       receiveItem: item(57, 'Клавиатура'),
       status: 'APPROVED',
+      receiptConfirmed: false,
     },
     {
       user: { id: 17, username: 'Вера' },
       giveItem: item(57, 'Клавиатура'),
       receiveItem: item(55, 'Книга'),
       status: 'APPROVED',
+      receiptConfirmed: false,
     },
   ],
 }

@@ -29,11 +29,7 @@ const PARTICIPANT_STATUS: Record<ApiParticipant['status'], ParticipantStatus> = 
   DECLINED: 'declined',
 }
 
-const mapParticipant = (
-  participant: ApiParticipant,
-  meId: number,
-  receiptConfirmed: boolean,
-): ChainParticipant => ({
+const mapParticipant = (participant: ApiParticipant, meId: number): ChainParticipant => ({
   userId: String(participant.user.id),
   name: participant.user.username,
   givesItem: {
@@ -42,7 +38,7 @@ const mapParticipant = (
     photoUrl: participant.giveItem.imageUrls?.[0],
   },
   status: PARTICIPANT_STATUS[participant.status],
-  receiptConfirmed,
+  receiptConfirmed: participant.receiptConfirmed,
   isMe: participant.user.id === meId ? true : undefined,
 })
 
@@ -76,10 +72,10 @@ function inCycleOrder(participants: ApiParticipant[]): ApiParticipant[] {
 export const mapChain = (chain: ApiChain, meId: number): Chain => ({
   id: String(chain.id),
   status: STATUS[chain.status],
+  // Кто именно отметил получение, теперь приходит полем участника — до этого приходилось
+  // выводить отметку из `COMPLETED`, то есть «либо никто, либо все», и прогресс передачи
+  // показать было нечем.
   participants: inCycleOrder(chain.participants).map((participant) =>
-    // Кто именно отметил получение, в цепочке не приходит: отметка возвращается ответом
-    // на `POST /chains/{id}/receipt`, а не полем участника. Но `COMPLETED` по контракту
-    // наступает ровно тогда, когда получение подтвердил последний, — значит все.
-    mapParticipant(participant, meId, chain.status === 'COMPLETED'),
+    mapParticipant(participant, meId),
   ),
 })

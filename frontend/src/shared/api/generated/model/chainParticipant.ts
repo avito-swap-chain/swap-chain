@@ -14,4 +14,11 @@ export interface ChainParticipant {
   giveItem: Item;
   receiveItem: Item;
   status: ParticipantStatus;
+  /** Whether the participant has confirmed receipt of their incoming item. */
+  receiptConfirmed: boolean;
+  /**
+     * When the participant confirmed receipt. Null until confirmed.
+     * @nullable
+     */
+  receiptConfirmedAt?: string | null;
 }

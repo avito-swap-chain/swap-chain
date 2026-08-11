@@ -67,6 +67,7 @@ export * from './session';
 export * from './submitChainDecisionRequest';
 export * from './unauthorizedResponse';
 export * from './updateItemRequest';
+export * from './updateUserRequest';
 export * from './uploadMediaBody';
 export * from './userProfile';
 export * from './userRole';

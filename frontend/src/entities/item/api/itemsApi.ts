@@ -30,6 +30,8 @@ export interface ItemEdit {
    * Значит поле, оставленное пустым, — это «не трогать», а не «убрать».
    */
   description?: string
+  /** Название. Появилось в контракте позже остального — до этого правка была наполовину. */
+  title?: string
 }
 
 /**
@@ -90,26 +92,30 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
 }
 
 /**
- * Правка размещённого объявления: описание и желание. Ими же включается обмен у объявления,
- * которое лежало без него, — для бэкенда это один и тот же `PATCH`.
+ * Правка размещённого объявления: название, описание и желание. Ими же включается обмен
+ * у объявления, которое лежало без него, — для бэкенда это один и тот же `PATCH`.
  *
- * Название и фото сюда не входят: в `UpdateItemRequest` (0.6.0) таких полей нет, и менять
- * их пока негде. Каждый вариант желания — отдельное ребро графа, поэтому без желания
- * объявление в подборе не участвует и пустым его не сохраняем.
+ * Фото сюда пока не входит: `imageUrls` в `UpdateItemRequest` не принимается. Каждый вариант
+ * желания — отдельное ребро графа, поэтому без желания объявление в подборе не участвует
+ * и пустым его не сохраняем.
  */
-export async function editItem(id: string, { wish, description }: ItemEdit): Promise<Item> {
+export async function editItem(id: string, { wish, description, title }: ItemEdit): Promise<Item> {
   const usable = usableWishes(wish)
   if (usable.length === 0) throw new Error('Не указано, что хочется взамен')
 
+  // Пустые поля не отправляем: у обоих в контракте `minLength: 1`, и стереть их нельзя —
+  // значит оставленное пустым означает «не трогать».
   const text = description?.trim()
+  const name = title?.trim()
 
-  if (!isBackendConnected) return mock.edit(id, usable, text)
+  if (!isBackendConnected) return mock.edit(id, usable, text, name)
 
   return mapItem(
     unwrap<ApiItem>(
       await updateItem(Number(id), {
         wantDescription: asWantDescription(usable),
         ...(text ? { offerDescription: text } : {}),
+        ...(name ? { offerTitle: name } : {}),
       }),
     ),
   )
