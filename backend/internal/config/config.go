@@ -33,6 +33,7 @@ const (
 	defaultOllamaBaseURL          = "http://localhost:11434"
 	defaultOllamaChatModel        = "llama3.1"
 	defaultOllamaEmbedModel       = "bge-m3"
+	defaultOllamaEmbedDimensions  = 1024
 	defaultOllamaTimeout          = 4 * time.Minute
 	defaultMinIOEndpoint          = "localhost:9000"
 	defaultMinIOAccessKey         = "minioadmin"
@@ -56,6 +57,7 @@ type Config struct {
 	UndefinedCategoryID             int32
 	UndefinedCompatibilityThreshold float64
 	MatchingDebug                   bool
+	DisableMatchingWorker           bool
 	CategorySimilarityThreshold     float64
 	CategoryConfidenceMargin        float64
 	AnalysisPollInterval            time.Duration
@@ -69,7 +71,10 @@ type Config struct {
 	OllamaBaseURL                   string
 	OllamaChatModel                 string
 	OllamaEmbeddingsModel           string
+	OllamaEmbeddingsDimensions      int
 	OllamaTimeout                   time.Duration
+	OpenRouterAPIKey                string
+	OpenRouterModel                 string
 	GigaChatAuthKey                 string
 	MinIOEndpoint                   string
 	MinIOAccessKey                  string
@@ -103,6 +108,8 @@ func Load() (Config, error) {
 		OllamaBaseURL:         envOrDefault("OLLAMA_BASE_URL", defaultOllamaBaseURL),
 		OllamaChatModel:       envOrDefault("OLLAMA_CHAT_MODEL", defaultOllamaChatModel),
 		OllamaEmbeddingsModel: envOrDefault("OLLAMA_EMBEDDINGS_MODEL", defaultOllamaEmbedModel),
+		OpenRouterAPIKey:      os.Getenv("OPENROUTER_API_KEY"),
+		OpenRouterModel:       os.Getenv("OPENROUTER_MODEL"),
 		GigaChatAuthKey:       os.Getenv("GIGACHAT_AUTH_KEY"),
 		MinIOEndpoint:         envOrDefault("MINIO_ENDPOINT", defaultMinIOEndpoint),
 		MinIOAccessKey:        envOrDefault("MINIO_ACCESS_KEY", defaultMinIOAccessKey),
@@ -162,6 +169,9 @@ func Load() (Config, error) {
 	if cfg.MatchingDebug, err = boolFromEnv("MATCHING_DEBUG", false); err != nil {
 		return Config{}, err
 	}
+	if cfg.DisableMatchingWorker, err = boolFromEnv("DISABLE_MATCHING_WORKER", false); err != nil {
+		return Config{}, err
+	}
 	if cfg.CategorySimilarityThreshold, err = boundedFloatFromEnv("ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD", defaultCategorySimilarity, 0, 1); err != nil {
 		return Config{}, err
 	}
@@ -184,6 +194,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.AnalysisBootstrapTimeout, err = durationFromEnv("ANALYSIS_BOOTSTRAP_TIMEOUT", defaultAnalysisBootstrap); err != nil {
+		return Config{}, err
+	}
+	if cfg.OllamaEmbeddingsDimensions, err = positiveIntFromEnv("OLLAMA_EMBEDDINGS_DIMENSIONS", defaultOllamaEmbedDimensions); err != nil {
 		return Config{}, err
 	}
 

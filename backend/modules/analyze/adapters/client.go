@@ -18,25 +18,21 @@ type Embedder interface {
 }
 
 type FallbackClient struct {
-	primary        Enricher
-	fallback       Enricher
-	reportFallback func(error)
+	primary  Enricher
+	fallback Enricher
 }
 
-func NewFallbackClient(primary Enricher, fallback Enricher, reportFallback func(error)) (*FallbackClient, error) {
+func NewFallbackClient(primary Enricher, fallback Enricher) (*FallbackClient, error) {
 	switch {
 	case primary == nil:
 		return nil, fmt.Errorf("fallback client init: 'primary enricher' is required")
 	case fallback == nil:
 		return nil, fmt.Errorf("fallback client init: 'fallback enricher' is required")
-	case reportFallback == nil:
-		return nil, fmt.Errorf("fallback client init: 'fallback reporter' is required")
 	}
 
 	return &FallbackClient{
-		primary:        primary,
-		fallback:       fallback,
-		reportFallback: reportFallback,
+		primary:  primary,
+		fallback: fallback,
 	}, nil
 }
 
@@ -49,12 +45,47 @@ func (f *FallbackClient) GenerateJSON(ctx context.Context, prompt string) (strin
 		err = errors.New("primary enricher returned invalid JSON")
 	}
 
-	f.reportFallback(err)
 	fallbackResult, fallbackErr := f.fallback.GenerateJSON(ctx, prompt)
 	if fallbackErr != nil {
 		return "", errors.Join(
 			fmt.Errorf("primary enricher: %w", err),
 			fmt.Errorf("fallback enricher: %w", fallbackErr),
+		)
+	}
+
+	return fallbackResult, nil
+}
+
+type FallbackEmbedder struct {
+	primary  Embedder
+	fallback Embedder
+}
+
+func NewFallbackEmbedder(primary Embedder, fallback Embedder) (*FallbackEmbedder, error) {
+	switch {
+	case primary == nil:
+		return nil, fmt.Errorf("fallback embedder init: 'primary embedder' is required")
+	case fallback == nil:
+		return nil, fmt.Errorf("fallback embedder init: 'fallback embedder' is required")
+	}
+
+	return &FallbackEmbedder{
+		primary:  primary,
+		fallback: fallback,
+	}, nil
+}
+
+func (f *FallbackEmbedder) Vectorize(ctx context.Context, text string) ([]float32, error) {
+	res, err := f.primary.Vectorize(ctx, text)
+	if err == nil {
+		return res, nil
+	}
+
+	fallbackResult, fallbackErr := f.fallback.Vectorize(ctx, text)
+	if fallbackErr != nil {
+		return nil, errors.Join(
+			fmt.Errorf("primary embedder: %w", err),
+			fmt.Errorf("fallback embedder: %w", fallbackErr),
 		)
 	}
 

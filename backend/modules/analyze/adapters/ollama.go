@@ -14,22 +14,23 @@ import (
 const defaultOllamaTimeout = 4 * time.Minute
 
 type OllamaConfig struct {
-	BaseURL         string
-	ChatModel       string
-	EmbeddingsModel string
-	Timeout         time.Duration
+	BaseURL              string
+	ChatModel            string
+	EmbeddingsModel      string
+	EmbeddingsDimensions int
+	Timeout              time.Duration
 }
 
 func DefaultOllamaConfig() OllamaConfig {
 	return OllamaConfig{
-		BaseURL:         "http://localhost:11434",
-		ChatModel:       "llama3.1",
-		EmbeddingsModel: "bge-m3",
-		Timeout:         defaultOllamaTimeout,
+		BaseURL:              "http://localhost:11434",
+		ChatModel:            "llama3.1",
+		EmbeddingsModel:      "bge-m3",
+		EmbeddingsDimensions: 1024,
+		Timeout:              defaultOllamaTimeout,
 	}
 }
 
-// Ready проверяет, что Ollama видит обе настроенные модели.
 func (o *Ollama) Ready(ctx context.Context) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, o.cfg.BaseURL+"/api/tags", nil)
 	if err != nil {
@@ -93,9 +94,12 @@ func NewOllama(cfg OllamaConfig) (*Ollama, error) {
 		return nil, fmt.Errorf("ollama init: 'chat model' is required")
 	case strings.TrimSpace(cfg.EmbeddingsModel) == "":
 		return nil, fmt.Errorf("ollama init: 'embeddings model' is required")
+	case cfg.EmbeddingsDimensions <= 0:
+		return nil, fmt.Errorf("ollama init: 'embeddings dimensions' must be positive")
 	case cfg.Timeout <= 0:
 		return nil, fmt.Errorf("ollama init: 'timeout' must be positive")
 	}
+
 	if err := validateHTTPURL("base URL", cfg.BaseURL); err != nil {
 		return nil, fmt.Errorf("ollama init: %w", err)
 	}
@@ -107,19 +111,31 @@ func NewOllama(cfg OllamaConfig) (*Ollama, error) {
 }
 
 func (o *Ollama) Vectorize(ctx context.Context, text string) ([]float32, error) {
-	url := fmt.Sprintf("%s/api/embeddings", o.cfg.BaseURL)
-	reqBody, err := json.Marshal(map[string]string{
-		"model":  o.cfg.EmbeddingsModel,
-		"prompt": text,
+	url := fmt.Sprintf("%s/api/embed", o.cfg.BaseURL)
+
+	reqBody, err := json.Marshal(struct {
+		Model      string `json:"model"`
+		Input      string `json:"input"`
+		Dimensions int    `json:"dimensions"`
+	}{
+		Model:      o.cfg.EmbeddingsModel,
+		Input:      text,
+		Dimensions: o.cfg.EmbeddingsDimensions,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("vectorize - marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		url,
+		bytes.NewBuffer(reqBody),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("vectorize - create request: %w", err)
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := o.client.Do(req)
@@ -133,13 +149,17 @@ func (o *Ollama) Vectorize(ctx context.Context, text string) ([]float32, error) 
 	}
 
 	var response struct {
-		Embedding []float32 `json:"embedding"`
+		Embeddings [][]float32 `json:"embeddings"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return nil, fmt.Errorf("vectorize - decode response: %w", err)
 	}
 
-	return response.Embedding, nil
+	if len(response.Embeddings) == 0 {
+		return nil, fmt.Errorf("vectorize: empty embeddings response")
+	}
+
+	return response.Embeddings[0], nil
 }
 
 type OllamaGenerateRequest struct {

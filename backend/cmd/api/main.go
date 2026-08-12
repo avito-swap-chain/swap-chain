@@ -126,6 +126,7 @@ func run(logger *zap.Logger) error {
 	ollamaConfig.BaseURL = cfg.OllamaBaseURL
 	ollamaConfig.ChatModel = cfg.OllamaChatModel
 	ollamaConfig.EmbeddingsModel = cfg.OllamaEmbeddingsModel
+	ollamaConfig.EmbeddingsDimensions = cfg.OllamaEmbeddingsDimensions
 	ollamaConfig.Timeout = cfg.OllamaTimeout
 	ollamaClient, err := adapters.NewOllama(ollamaConfig)
 	if err != nil {
@@ -142,9 +143,7 @@ func run(logger *zap.Logger) error {
 		if err != nil {
 			return fmt.Errorf("create gigachat client: %w", err)
 		}
-		enricher, err = adapters.NewFallbackClient(gigaChatClient, ollamaClient, func(fallbackErr error) {
-			logger.Warn("primary LLM failed, using Ollama fallback", zap.Error(fallbackErr))
-		})
+		enricher, err = adapters.NewFallbackClient(gigaChatClient, ollamaClient)
 		if err != nil {
 			return fmt.Errorf("create LLM fallback client: %w", err)
 		}
@@ -157,7 +156,22 @@ func run(logger *zap.Logger) error {
 	} else {
 		logger.Info("vision photo recognition disabled (GIGACHAT_AUTH_KEY not set)")
 	}
-	vectorizer, err := analyzeservice.NewVectorizer(enricher, ollamaClient)
+	var embedder adapters.Embedder = ollamaClient
+	if cfg.OpenRouterAPIKey != "" {
+		openRouterConfig := adapters.DefaultOpenRouterConfig(cfg.OpenRouterAPIKey)
+		if cfg.OpenRouterModel != "" {
+			openRouterConfig.Model = cfg.OpenRouterModel
+		}
+		openRouterClient, err := adapters.NewOpenRouter(openRouterConfig)
+		if err != nil {
+			return fmt.Errorf("create openrouter client: %w", err)
+		}
+		embedder, err = adapters.NewFallbackEmbedder(openRouterClient, ollamaClient)
+		if err != nil {
+			return fmt.Errorf("create fallback embedder: %w", err)
+		}
+	}
+	vectorizer, err := analyzeservice.NewVectorizer(enricher, embedder)
 	if err != nil {
 		return fmt.Errorf("create vectorizer: %w", err)
 	}
@@ -357,7 +371,9 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("create analysis recovery worker: %w", err)
 	}
 	go recoveryWorker.Start(shutdownSignal)
-	go matchingWorker.Start(shutdownSignal)
+	if !cfg.DisableMatchingWorker {
+		go matchingWorker.Start(shutdownSignal)
+	}
 	go realtimeBroadcaster.Run(shutdownSignal)
 	go outboxWorker.Run(shutdownSignal)
 	go runChainExpiry(shutdownSignal, chainService, logger)
