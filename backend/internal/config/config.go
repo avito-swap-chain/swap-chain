@@ -36,7 +36,7 @@ const (
 	defaultSessionTTL             = 24 * time.Hour
 	defaultOllamaBaseURL          = "http://localhost:11434"
 	defaultOllamaChatModel        = "llama3.1"
-	defaultOllamaEmbedModel       = "bge-m3"
+	defaultOllamaEmbedModel       = "qwen3-embedding:4b"
 	defaultOllamaEmbedDimensions  = 1024
 	defaultOllamaTimeout          = 4 * time.Minute
 	defaultMinIOEndpoint          = "localhost:9000"
