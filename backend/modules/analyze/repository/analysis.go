@@ -67,7 +67,7 @@ func (r *Analysis) FindCategories(
 ) ([]model.CategoryCandidate, error) {
 	embeddingVector := pgvector.NewVector(embedding)
 	rows, err := r.queries.FindCategory(ctx, db.FindCategoryParams{
-		EmbeddingLocal:      &embeddingVector,
+		Embedding:           &embeddingVector,
 		UndefinedCategoryID: undefinedCategoryID,
 	})
 	if err != nil {
@@ -118,8 +118,8 @@ func (r *Analysis) SetCategoryEmbedding(
 ) (bool, error) {
 	embeddingVector := pgvector.NewVector(embedding)
 	rowsAffected, err := r.queries.SetCategoryEmbedding(ctx, db.SetCategoryEmbeddingParams{
-		EmbeddingLocal: &embeddingVector,
-		ID:             categoryID,
+		Embedding: &embeddingVector,
+		ID:        categoryID,
 	})
 	if err != nil {
 		return false, fmt.Errorf("set category %d embedding: %w", categoryID, err)

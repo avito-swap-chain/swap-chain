@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -170,7 +171,7 @@ func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 			// db.UpdateItemWishAnalysisParams needs want_embedding_local pgvector.Vector etc
 			vec := pgvector.NewVector(embedding)
 			return s.repo.UpdateItemWishAnalysis(groupCtx, db.UpdateItemWishAnalysisParams{
-				WantCategoryID: cat.CategoryID,
+				WantCategoryID: sql.NullInt32{Int32: cat.CategoryID, Valid: true},
 				WantEmbeddingLocal: &vec,
 				WantEmbeddingExternal: &vec,
 				ID: wish.ID,

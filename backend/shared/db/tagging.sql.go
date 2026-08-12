@@ -26,7 +26,7 @@ func (q *Queries) CountCategories(ctx context.Context) (int64, error) {
 const countCategoriesMissingEmbedding = `-- name: CountCategoriesMissingEmbedding :one
 SELECT count(*)
 FROM categories
-WHERE embedding_local IS NULL
+WHERE embedding_local IS NULL OR embedding_external IS NULL
 `
 
 func (q *Queries) CountCategoriesMissingEmbedding(ctx context.Context) (int64, error) {
@@ -39,16 +39,19 @@ func (q *Queries) CountCategoriesMissingEmbedding(ctx context.Context) (int64, e
 const findCategory = `-- name: FindCategory :many
 SELECT category.id,
        category.name,
-       (1.0 - (category.embedding_local <=> $1::vector))::float8 AS similarity
+       (1.0 - COALESCE(
+           category.embedding_external <=> $1::vector,
+           category.embedding_local <=> $1::vector
+       ))::float8 AS similarity
 FROM categories AS category
-WHERE category.embedding_local IS NOT NULL
+WHERE (category.embedding_local IS NOT NULL OR category.embedding_external IS NOT NULL)
   AND category.id != $2
-ORDER BY category.embedding_local <=> $1::vector
+ORDER BY similarity DESC
 LIMIT 2
 `
 
 type FindCategoryParams struct {
-	EmbeddingLocal      *pgvector_go.Vector `json:"embedding_local"`
+	Embedding           *pgvector_go.Vector `json:"embedding"`
 	UndefinedCategoryID int32               `json:"undefined_category_id"`
 }
 
@@ -59,7 +62,7 @@ type FindCategoryRow struct {
 }
 
 func (q *Queries) FindCategory(ctx context.Context, arg FindCategoryParams) ([]FindCategoryRow, error) {
-	rows, err := q.db.QueryContext(ctx, findCategory, arg.EmbeddingLocal, arg.UndefinedCategoryID)
+	rows, err := q.db.QueryContext(ctx, findCategory, arg.Embedding, arg.UndefinedCategoryID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +123,7 @@ func (q *Queries) ListCategories(ctx context.Context, undefinedCategoryID int32)
 const listCategoriesMissingEmbedding = `-- name: ListCategoriesMissingEmbedding :many
 SELECT category.id, category.name
 FROM categories AS category
-WHERE category.embedding_local IS NULL
+WHERE category.embedding_local IS NULL OR category.embedding_external IS NULL
 ORDER BY category.id
 `
 
@@ -154,18 +157,19 @@ func (q *Queries) ListCategoriesMissingEmbedding(ctx context.Context) ([]ListCat
 
 const setCategoryEmbedding = `-- name: SetCategoryEmbedding :execrows
 UPDATE categories
-SET embedding_local = $1::vector
+SET embedding_local = $1::vector,
+    embedding_external = $1::vector
 WHERE id = $2
-  AND embedding_local IS NULL
+  AND (embedding_local IS NULL OR embedding_external IS NULL)
 `
 
 type SetCategoryEmbeddingParams struct {
-	EmbeddingLocal *pgvector_go.Vector `json:"embedding_local"`
-	ID             int32               `json:"id"`
+	Embedding *pgvector_go.Vector `json:"embedding"`
+	ID        int32               `json:"id"`
 }
 
 func (q *Queries) SetCategoryEmbedding(ctx context.Context, arg SetCategoryEmbeddingParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setCategoryEmbedding, arg.EmbeddingLocal, arg.ID)
+	result, err := q.db.ExecContext(ctx, setCategoryEmbedding, arg.Embedding, arg.ID)
 	if err != nil {
 		return 0, err
 	}

@@ -240,10 +240,11 @@ type AdminDeliveryEvent struct {
 }
 
 type Category struct {
-	ID             int32       `json:"id"`
-	Name           string      `json:"name"`
-	EmbeddingLocal interface{} `json:"embedding_local"`
-	IsSystem       bool        `json:"is_system"`
+	ID                int32       `json:"id"`
+	Name              string      `json:"name"`
+	EmbeddingLocal    interface{} `json:"embedding_local"`
+	IsSystem          bool        `json:"is_system"`
+	EmbeddingExternal interface{} `json:"embedding_external"`
 }
 
 type Chain struct {
@@ -315,12 +316,12 @@ type Item struct {
 }
 
 type ItemWish struct {
-	ID                    int64       `json:"id"`
-	ItemID                int64       `json:"item_id"`
-	WantCategoryID        int32       `json:"want_category_id"`
-	WantDescription       string      `json:"want_description"`
-	WantEmbeddingLocal    interface{} `json:"want_embedding_local"`
-	WantEmbeddingExternal interface{} `json:"want_embedding_external"`
+	ID                    int64         `json:"id"`
+	ItemID                int64         `json:"item_id"`
+	WantCategoryID        sql.NullInt32 `json:"want_category_id"`
+	WantDescription       string        `json:"want_description"`
+	WantEmbeddingLocal    interface{}   `json:"want_embedding_local"`
+	WantEmbeddingExternal interface{}   `json:"want_embedding_external"`
 }
 
 type MatchingJob struct {

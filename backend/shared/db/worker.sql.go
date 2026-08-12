@@ -195,7 +195,7 @@ WHERE id = $1
 
 type UpdateItemWishAnalysisParams struct {
 	ID                    int64               `json:"id"`
-	WantCategoryID        int32               `json:"want_category_id"`
+	WantCategoryID        sql.NullInt32       `json:"want_category_id"`
 	WantEmbeddingLocal    *pgvector_go.Vector `json:"want_embedding_local"`
 	WantEmbeddingExternal *pgvector_go.Vector `json:"want_embedding_external"`
 }
