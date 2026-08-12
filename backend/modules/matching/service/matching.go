@@ -131,20 +131,15 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int64, graph model.
 				errs = append(errs, err)
 			}
 
+			matches = applyElbowMethod(matches)
+
 			for _, match := range matches {
-				threshold := m.compatibilityThreshold(match)
-				compatible := match.Similarity >= threshold
-				m.debug("candidate evaluated",
+				m.debug("candidate evaluated (elbow allowed)",
 					zap.Int64("source_item_id", candidateID),
 					zap.Int64("target_item_id", match.TargetItem.ID),
 					zap.Float64("similarity", match.Similarity),
-					zap.Float64("threshold", threshold),
 					zap.Bool("uses_undefined_category", match.UsesUndefinedCategory),
-					zap.Bool("accepted", compatible),
 				)
-				if !compatible {
-					continue
-				}
 
 				if err := graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID}); err != nil &&
 					!errors.Is(err, model.ErrVertexAlreadyExists) {
@@ -258,6 +253,26 @@ func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int6
 	}
 
 	return filteredChains
+}
+
+// applyElbowMethod динамически отсекает семантический мусор по самому резкому падению скора.
+func applyElbowMethod(matches []model.ItemMatch) []model.ItemMatch {
+	if len(matches) < 2 {
+		return matches
+	}
+
+	maxDrop := 0.0
+	dropIndex := len(matches)
+
+	for i := 0; i < len(matches)-1; i++ {
+		drop := matches[i].Similarity - matches[i+1].Similarity
+		if drop > maxDrop && drop >= 0.05 {
+			maxDrop = drop
+			dropIndex = i + 1
+		}
+	}
+
+	return matches[:dropIndex]
 }
 
 func (m *Matching) debug(message string, fields ...zap.Field) {

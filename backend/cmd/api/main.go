@@ -162,6 +162,7 @@ func run(logger *zap.Logger) error {
 		if cfg.OpenRouterModel != "" {
 			openRouterConfig.Model = cfg.OpenRouterModel
 		}
+		openRouterConfig.Dimensions = cfg.OllamaEmbeddingsDimensions
 		openRouterClient, err := adapters.NewOpenRouter(openRouterConfig)
 		if err != nil {
 			return fmt.Errorf("create openrouter client: %w", err)
@@ -179,7 +180,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create analysis repo: %w", err)
 	}
-	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(analysisRepo, ollamaClient)
+	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(analysisRepo, embedder)
 	if err != nil {
 		return fmt.Errorf("create category bootstrap: %w", err)
 	}

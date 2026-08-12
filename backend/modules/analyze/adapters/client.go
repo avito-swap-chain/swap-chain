@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"strings"
 )
@@ -43,6 +44,10 @@ func (f *FallbackClient) GenerateJSON(ctx context.Context, prompt string) (strin
 			return normalized, nil
 		}
 		err = errors.New("primary enricher returned invalid JSON")
+	}
+
+	if err != nil {
+		log.Printf("WARN: primary enricher failed, falling back to Ollama... Error: %v", err)
 	}
 
 	fallbackResult, fallbackErr := f.fallback.GenerateJSON(ctx, prompt)

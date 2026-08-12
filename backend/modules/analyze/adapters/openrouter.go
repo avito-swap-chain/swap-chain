@@ -11,10 +11,11 @@ import (
 )
 
 type OpenRouterConfig struct {
-	BaseURL string
-	APIKey  string
-	Model   string
-	Timeout time.Duration
+	BaseURL    string
+	APIKey     string
+	Model      string
+	Timeout    time.Duration
+	Dimensions int
 }
 
 func DefaultOpenRouterConfig(apiKey string) OpenRouterConfig {
@@ -54,10 +55,15 @@ func NewOpenRouter(cfg OpenRouterConfig) (*OpenRouter, error) {
 func (o *OpenRouter) Vectorize(ctx context.Context, text string) ([]float32, error) {
 	url := fmt.Sprintf("%s/embeddings", strings.TrimRight(o.cfg.BaseURL, "/"))
 
-	reqBody, err := json.Marshal(map[string]any{
+	bodyMap := map[string]any{
 		"model": o.cfg.Model,
 		"input": text,
-	})
+	}
+	if o.cfg.Dimensions > 0 {
+		bodyMap["dimensions"] = o.cfg.Dimensions
+	}
+
+	reqBody, err := json.Marshal(bodyMap)
 	if err != nil {
 		return nil, fmt.Errorf("openrouter vectorize - marshal request: %w", err)
 	}
