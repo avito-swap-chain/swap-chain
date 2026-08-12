@@ -138,7 +138,10 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("create ollama client: %w", err)
 	}
 	var enricher adapters.Enricher = ollamaClient
+	var embedder adapters.Embedder = ollamaClient
+	var visionAdapter analyzeservice.VisionAdapter
 	var visionService httpapi.VisionService
+
 	var gigaChatClient *adapters.GigaChat
 	if cfg.GigaChatAuthKey != "" {
 		gigaChatConfig := adapters.DefaultGigaChatConfig(cfg.GigaChatAuthKey)
@@ -150,12 +153,14 @@ func run(logger *zap.Logger) error {
 			return fmt.Errorf("create gigachat client: %w", err)
 		}
 		gigaChatClient = gcClient
-		enricher, err = adapters.NewFallbackClient(gigaChatClient, ollamaClient)
+
+		enricher, err = adapters.NewFallbackClient(gigaChatClient, enricher)
 		if err != nil {
 			return fmt.Errorf("create LLM fallback client: %w", err)
 		}
+		visionAdapter = gigaChatClient
 	}
-	var embedder adapters.Embedder = ollamaClient
+
 	var openRouterClient *adapters.OpenRouter
 	if cfg.OpenRouterAPIKey != "" {
 		openRouterConfig := adapters.DefaultOpenRouterConfig(cfg.OpenRouterAPIKey)
@@ -168,19 +173,32 @@ func run(logger *zap.Logger) error {
 			return fmt.Errorf("create openrouter client: %w", err)
 		}
 		openRouterClient = orClient
-		embedder, err = adapters.NewFallbackEmbedder(openRouterClient, ollamaClient)
+
+		embedder, err = adapters.NewFallbackEmbedder(openRouterClient, embedder)
 		if err != nil {
 			return fmt.Errorf("create fallback embedder: %w", err)
 		}
+		enricher, err = adapters.NewFallbackClient(openRouterClient, enricher)
+		if err != nil {
+			return fmt.Errorf("create openrouter enricher fallback: %w", err)
+		}
+		if visionAdapter != nil {
+			visionAdapter, _ = adapters.NewVisionFallbackClient(openRouterClient, visionAdapter)
+		} else {
+			visionAdapter = openRouterClient
+		}
 	}
 
-	var visionAdapter analyzeservice.VisionAdapter
-	if gigaChatClient != nil && openRouterClient != nil {
-		visionAdapter, _ = adapters.NewVisionFallbackClient(gigaChatClient, openRouterClient)
-	} else if gigaChatClient != nil {
-		visionAdapter = gigaChatClient
-	} else if openRouterClient != nil {
-		visionAdapter = openRouterClient
+	if cfg.VoyageAPIKey != "" {
+		voyageConfig := adapters.DefaultVoyageConfig(cfg.VoyageAPIKey)
+		voyageClient, err := adapters.NewVoyage(voyageConfig)
+		if err != nil {
+			return fmt.Errorf("create voyage client: %w", err)
+		}
+		embedder, err = adapters.NewFallbackEmbedder(voyageClient, embedder)
+		if err != nil {
+			return fmt.Errorf("create voyage embedder fallback: %w", err)
+		}
 	}
 
 	if visionAdapter != nil {
