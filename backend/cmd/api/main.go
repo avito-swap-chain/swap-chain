@@ -186,23 +186,24 @@ func run(logger *zap.Logger) error {
 		}
 	}
 
-	if cfg.VoyageAPIKey != "" {
-		voyageConfig := adapters.DefaultOpenRouterConfig(cfg.VoyageAPIKey)
-		voyageConfig.Model = "voyageai/voyage-4-large"
-		if cfg.VoyageModel != "" {
-			voyageConfig.Model = cfg.VoyageModel
-		}
-		voyageConfig.Dimensions = 1024
-		voyageClient, err := adapters.NewOpenRouter(voyageConfig)
-		if err != nil {
-			return fmt.Errorf("create voyage client via openrouter: %w", err)
-		}
-		embedder, err = adapters.NewFallbackEmbedder(voyageClient, embedder)
-		if err != nil {
-			return fmt.Errorf("create voyage embedder fallback: %w", err)
-		}
+	if cfg.VoyageAPIKey == "" {
+		return fmt.Errorf("VOYAGE_API_KEY is required for vectorization, please check your .env")
 	}
 
+	voyageConfig := adapters.DefaultOpenRouterConfig(cfg.VoyageAPIKey)
+	voyageConfig.Model = "voyageai/voyage-4-large"
+	if cfg.VoyageModel != "" {
+		voyageConfig.Model = cfg.VoyageModel
+	}
+	voyageConfig.Dimensions = 1024
+	voyageClient, err := adapters.NewOpenRouter(voyageConfig)
+	if err != nil {
+		return fmt.Errorf("create voyage client via openrouter: %w", err)
+	}
+	embedder, err = adapters.NewFallbackEmbedder(voyageClient, embedder)
+	if err != nil {
+		return fmt.Errorf("create voyage embedder fallback: %w", err)
+	}
 	if visionAdapter != nil {
 		vision, vsErr := analyzeservice.NewVision(visionAdapter)
 		if vsErr != nil {
