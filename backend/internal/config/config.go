@@ -84,6 +84,7 @@ type Config struct {
 	OpenRouterAPIKey                string
 	OpenRouterModel                 string
 	VoyageAPIKey                    string
+	VoyageModel                     string
 	GigaChatAuthKey                 string
 	MinIOEndpoint                   string
 	MinIOAccessKey                  string
@@ -139,6 +140,7 @@ func Load() (Config, error) {
 	cfg.OpenRouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
 	cfg.OpenRouterModel = os.Getenv("OPENROUTER_MODEL")
 	cfg.VoyageAPIKey = os.Getenv("VOYAGE_API_KEY")
+	cfg.VoyageModel = os.Getenv("VOYAGE_MODEL")
 	cfg.GigaChatAuthKey = os.Getenv("GIGACHAT_AUTH_KEY")
 	if cfg.CookieSecure, err = boolFromEnv("COOKIE_SECURE", false); err != nil {
 		return Config{}, err
