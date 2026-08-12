@@ -75,6 +75,7 @@ type Config struct {
 	OllamaTimeout                   time.Duration
 	OpenRouterAPIKey                string
 	OpenRouterModel                 string
+	VoyageAPIKey                    string
 	GigaChatAuthKey                 string
 	MinIOEndpoint                   string
 	MinIOAccessKey                  string
@@ -108,9 +109,6 @@ func Load() (Config, error) {
 		OllamaBaseURL:         envOrDefault("OLLAMA_BASE_URL", defaultOllamaBaseURL),
 		OllamaChatModel:       envOrDefault("OLLAMA_CHAT_MODEL", defaultOllamaChatModel),
 		OllamaEmbeddingsModel: envOrDefault("OLLAMA_EMBEDDINGS_MODEL", defaultOllamaEmbedModel),
-		OpenRouterAPIKey:      os.Getenv("OPENROUTER_API_KEY"),
-		OpenRouterModel:       os.Getenv("OPENROUTER_MODEL"),
-		GigaChatAuthKey:       os.Getenv("GIGACHAT_AUTH_KEY"),
 		MinIOEndpoint:         envOrDefault("MINIO_ENDPOINT", defaultMinIOEndpoint),
 		MinIOAccessKey:        envOrDefault("MINIO_ACCESS_KEY", defaultMinIOAccessKey),
 		MinIOSecretKey:        envOrDefault("MINIO_SECRET_KEY", defaultMinIOSecretKey),
@@ -130,6 +128,10 @@ func Load() (Config, error) {
 	if cfg.OllamaTimeout, err = durationFromEnv("OLLAMA_TIMEOUT", defaultOllamaTimeout); err != nil {
 		return Config{}, err
 	}
+	cfg.OpenRouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
+	cfg.OpenRouterModel = os.Getenv("OPENROUTER_MODEL")
+	cfg.VoyageAPIKey = os.Getenv("VOYAGE_API_KEY")
+	cfg.GigaChatAuthKey = os.Getenv("GIGACHAT_AUTH_KEY")
 	if cfg.CookieSecure, err = boolFromEnv("COOKIE_SECURE", false); err != nil {
 		return Config{}, err
 	}

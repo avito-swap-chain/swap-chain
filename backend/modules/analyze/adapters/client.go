@@ -58,7 +58,59 @@ func (f *FallbackClient) GenerateJSON(ctx context.Context, prompt string) (strin
 		)
 	}
 
-	return fallbackResult, nil
+	if normalized, ok := normalizeJSON(fallbackResult); ok {
+		return normalized, nil
+	}
+	return "", fmt.Errorf("fallback enricher returned invalid JSON: %s", fallbackResult)
+}
+
+type VisionAnalyzer interface {
+	AnalyzePhoto(ctx context.Context, photoBytes []byte, prompt string) (string, error)
+}
+
+type VisionFallbackClient struct {
+	primary  VisionAnalyzer
+	fallback VisionAnalyzer
+}
+
+func NewVisionFallbackClient(primary VisionAnalyzer, fallback VisionAnalyzer) (*VisionFallbackClient, error) {
+	if primary == nil {
+		return nil, fmt.Errorf("vision fallback init: 'primary' is required")
+	}
+	if fallback == nil {
+		return nil, fmt.Errorf("vision fallback init: 'fallback' is required")
+	}
+	return &VisionFallbackClient{
+		primary:  primary,
+		fallback: fallback,
+	}, nil
+}
+
+func (f *VisionFallbackClient) AnalyzePhoto(ctx context.Context, photoBytes []byte, prompt string) (string, error) {
+	res, err := f.primary.AnalyzePhoto(ctx, photoBytes, prompt)
+	if err == nil {
+		if normalized, ok := normalizeJSON(res); ok {
+			return normalized, nil
+		}
+		err = errors.New("primary vision returned invalid JSON")
+	}
+
+	if err != nil {
+		log.Printf("WARN: primary vision failed, falling back... Error: %v", err)
+	}
+
+	fallbackResult, fallbackErr := f.fallback.AnalyzePhoto(ctx, photoBytes, prompt)
+	if fallbackErr != nil {
+		return "", errors.Join(
+			fmt.Errorf("primary vision: %w", err),
+			fmt.Errorf("fallback vision: %w", fallbackErr),
+		)
+	}
+
+	if normalized, ok := normalizeJSON(fallbackResult); ok {
+		return normalized, nil
+	}
+	return "", fmt.Errorf("fallback vision returned invalid JSON: %s", fallbackResult)
 }
 
 type FallbackEmbedder struct {

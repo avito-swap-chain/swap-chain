@@ -266,7 +266,7 @@ func applyElbowMethod(matches []model.ItemMatch) []model.ItemMatch {
 
 	for i := 0; i < len(matches)-1; i++ {
 		drop := matches[i].Similarity - matches[i+1].Similarity
-		if drop > maxDrop && drop >= 0.05 {
+		if drop > maxDrop && drop >= 0.10 {
 			maxDrop = drop
 			dropIndex = i + 1
 		}
