@@ -90,6 +90,7 @@ func run(logger *zap.Logger) error {
 	}()
 
 	queries := db.New(database)
+
 	storageCtx, cancelStorage := context.WithTimeout(context.Background(), cfg.DBConnectTimeout)
 	mediaStorage, err := media.NewMinIOStorage(storageCtx, media.MinIOConfig{
 		Endpoint:  cfg.MinIOEndpoint,
@@ -103,7 +104,9 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("initialize media storage: %w", err)
 	}
 	mediaService := media.NewService(mediaStorage, cfg.MediaMaxUploadBytes)
+
 	eventHub := events.NewHub()
+
 	outboxStore, err := outbox.NewStore(database)
 	if err != nil {
 		return fmt.Errorf("create outbox store: %w", err)
@@ -121,7 +124,9 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create outbox worker: %w", err)
 	}
+
 	sessions := session.NewManager(cfg.SessionTTL, cfg.CookieSecure)
+
 	ollamaConfig := adapters.DefaultOllamaConfig()
 	ollamaConfig.BaseURL = cfg.OllamaBaseURL
 	ollamaConfig.ChatModel = cfg.OllamaChatModel
@@ -134,44 +139,61 @@ func run(logger *zap.Logger) error {
 	}
 	var enricher adapters.Enricher = ollamaClient
 	var visionService httpapi.VisionService
+	var gigaChatClient *adapters.GigaChat
 	if cfg.GigaChatAuthKey != "" {
 		gigaChatConfig := adapters.DefaultGigaChatConfig(cfg.GigaChatAuthKey)
 		gigaChatConfig.OnCleanupError = func(err error) {
 			logger.Warn("failed to remove temporary GigaChat file", zap.Error(err))
 		}
-		gigaChatClient, err := adapters.NewGigaChat(gigaChatConfig)
+		gcClient, err := adapters.NewGigaChat(gigaChatConfig)
 		if err != nil {
 			return fmt.Errorf("create gigachat client: %w", err)
 		}
+		gigaChatClient = gcClient
 		enricher, err = adapters.NewFallbackClient(gigaChatClient, ollamaClient)
 		if err != nil {
 			return fmt.Errorf("create LLM fallback client: %w", err)
 		}
-		vision, vsErr := analyzeservice.NewVision(gigaChatClient)
-		if vsErr != nil {
-			return fmt.Errorf("create vision service: %w", vsErr)
-		}
-		visionService = vision
-		logger.Info("vision photo recognition enabled")
-	} else {
-		logger.Info("vision photo recognition disabled (GIGACHAT_AUTH_KEY not set)")
 	}
 	var embedder adapters.Embedder = ollamaClient
+	var openRouterClient *adapters.OpenRouter
 	if cfg.OpenRouterAPIKey != "" {
 		openRouterConfig := adapters.DefaultOpenRouterConfig(cfg.OpenRouterAPIKey)
 		if cfg.OpenRouterModel != "" {
 			openRouterConfig.Model = cfg.OpenRouterModel
 		}
 		openRouterConfig.Dimensions = cfg.OllamaEmbeddingsDimensions
-		openRouterClient, err := adapters.NewOpenRouter(openRouterConfig)
+		orClient, err := adapters.NewOpenRouter(openRouterConfig)
 		if err != nil {
 			return fmt.Errorf("create openrouter client: %w", err)
 		}
+		openRouterClient = orClient
 		embedder, err = adapters.NewFallbackEmbedder(openRouterClient, ollamaClient)
 		if err != nil {
 			return fmt.Errorf("create fallback embedder: %w", err)
 		}
 	}
+
+	var visionAdapter analyzeservice.VisionAdapter
+	if gigaChatClient != nil && openRouterClient != nil {
+		visionAdapter, _ = adapters.NewVisionFallbackClient(gigaChatClient, openRouterClient)
+	} else if gigaChatClient != nil {
+		visionAdapter = gigaChatClient
+	} else if openRouterClient != nil {
+		visionAdapter = openRouterClient
+	}
+
+	if visionAdapter != nil {
+		vision, vsErr := analyzeservice.NewVision(visionAdapter)
+		if vsErr != nil {
+			return fmt.Errorf("create vision service: %w", vsErr)
+		}
+		visionService = vision
+		logger.Info("vision photo recognition enabled")
+	} else {
+		logger.Info("vision photo recognition disabled (no API keys set)")
+	}
+
 	vectorizer, err := analyzeservice.NewVectorizer(enricher, embedder)
 	if err != nil {
 		return fmt.Errorf("create vectorizer: %w", err)
@@ -194,6 +216,7 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("bootstrap category embeddings: %w", err)
 	}
 	cancelBootstrap()
+
 	tagging, err := analyzeservice.NewTagging(analysisRepo, analyzeservice.TaggingConfig{
 		SimilarityThreshold: cfg.CategorySimilarityThreshold,
 		ConfidenceMargin:    cfg.CategoryConfidenceMargin,
@@ -214,6 +237,7 @@ func run(logger *zap.Logger) error {
 		eventHub.PublishToUser(userID, eventType, entityID, data)
 	}, logger, cfg.AnalysisTimeout)
 	defer itemService.Close()
+
 	matchingRepo, err := matchingrepository.NewPostgreSQLMatching(queries)
 	if err != nil {
 		return fmt.Errorf("create matching repo: %w", err)
@@ -236,6 +260,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create matching: %w", err)
 	}
+
 	notificationRepo, err := notificationrepository.NewPostgres(database)
 	if err != nil {
 		return fmt.Errorf("create notification repository: %w", err)
@@ -247,6 +272,7 @@ func run(logger *zap.Logger) error {
 	notificationProducer := notificationservice.NewProducer(notificationService, logger, func(userID int64, eventType, entityID string, data map[string]any) {
 		eventHub.PublishToUser(userID, eventType, entityID, data)
 	})
+
 	chainService := chains.NewPostgresServiceWithOutbox(database, func(userIDs []int64, eventType, entityID string, data map[string]any) {
 		chainID, _ := strconv.ParseInt(entityID, 10, 64)
 		ctx := context.Background()
@@ -267,6 +293,7 @@ func run(logger *zap.Logger) error {
 			notificationProducer.NotifyChainRejected(ctx, userIDs, chainID, reason)
 		}
 	}, outboxStore)
+
 	finder := applicationmatching.NewFindCycles(matcher, chainService)
 	matchingJobs, err := postgres.NewMatchingJobs(database)
 	if err != nil {
@@ -285,7 +312,9 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create matching worker: %w", err)
 	}
+
 	userService := users.NewPostgresService(database)
+
 	reputationRepo, err := reputationrepository.NewPostgreSQL(database)
 	if err != nil {
 		return fmt.Errorf("create reputation repository: %w", err)
@@ -328,7 +357,9 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create chat service: %w", err)
 	}
+
 	categoriesService := categories.NewPostgresService(queries, cfg.UndefinedCategoryID)
+
 	handler := httpapi.NewHandler(
 		database,
 		finder,
@@ -349,6 +380,7 @@ func run(logger *zap.Logger) error {
 		ollamaClient,
 		categoryBootstrap,
 	)
+
 	router, err := httpserver.New(logger, handler, sessions, cfg.CORSAllowedOrigin, cfg.MediaMaxUploadBytes)
 	if err != nil {
 		return fmt.Errorf("create HTTP router: %w", err)
