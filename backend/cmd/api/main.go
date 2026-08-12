@@ -188,10 +188,11 @@ func run(logger *zap.Logger) error {
 
 	if cfg.VoyageAPIKey != "" {
 		voyageConfig := adapters.DefaultOpenRouterConfig(cfg.VoyageAPIKey)
-		voyageConfig.Model = "voyageai/voyage-3-large"
+		voyageConfig.Model = "voyageai/voyage-4-large"
 		if cfg.VoyageModel != "" {
 			voyageConfig.Model = cfg.VoyageModel
 		}
+		voyageConfig.Dimensions = 1024
 		voyageClient, err := adapters.NewOpenRouter(voyageConfig)
 		if err != nil {
 			return fmt.Errorf("create voyage client via openrouter: %w", err)
