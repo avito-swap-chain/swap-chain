@@ -39,6 +39,7 @@ const mapParticipant = (participant: ApiParticipant, meId: number): ChainPartici
   },
   status: PARTICIPANT_STATUS[participant.status],
   receiptConfirmed: participant.receiptConfirmed,
+  incomingDelivery: participant.incomingDeliveryStatus,
   isMe: participant.user.id === meId ? true : undefined,
 })
 

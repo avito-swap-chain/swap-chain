@@ -7,7 +7,7 @@ const apiItem = (over: Partial<ApiItem> = {}): ApiItem => ({
   userId: 1,
   offerTitle: 'Горный велосипед',
   offerDescription: 'Спорт и отдых, хорошее',
-  wishes: [{ id: 1, categoryId: 1, description: 'Игровая приставка' }],
+  wishes: [{ id: 1, categoryId: 3, description: 'Игровая приставка' }],
   imageUrls: ['/mock/items/bike.jpg'],
   status: 'MATCHING',
   createdAt: '2026-08-09T10:00:00Z',
@@ -16,7 +16,7 @@ const apiItem = (over: Partial<ApiItem> = {}): ApiItem => ({
 })
 
 describe('mapItem — вещь из контракта в нашу модель', () => {
-  it('желание одной строкой разворачивается в вариант', () => {
+  it('желание из контракта становится вариантом нашей модели', () => {
     expect(mapItem(apiItem()).wish).toEqual([{ category: '', description: 'Игровая приставка' }])
   })
 
@@ -24,7 +24,24 @@ describe('mapItem — вещь из контракта в нашу модель'
     expect(mapItem(apiItem({ wishes: [] })).wish).toEqual([])
   })
 
-  it('категории и состояния в контракте нет — не выдумываем их', () => {
+  // Регрессия: пока контракт хранил желание одной строкой, варианты склеивались через
+  // « или » и правка объявления открывалась с одним слипшимся полем. Теперь их отдаёт
+  // сам бэкенд, и каждый вариант должен остаться отдельной строкой формы.
+  it('несколько вариантов желания остаются отдельными', () => {
+    const wish = mapItem(
+      apiItem({
+        wishes: [
+          { id: 1, categoryId: 3, description: 'Приставка' },
+          { id: 2, categoryId: 4, description: 'Велосипед' },
+          { id: 3, categoryId: 5, description: 'Гитара' },
+        ],
+      }),
+    ).wish
+
+    expect(wish.map((variant) => variant.description)).toEqual(['Приставка', 'Велосипед', 'Гитара'])
+  })
+
+  it('состояния вещи в контракте нет — не выдумываем его', () => {
     const item = mapItem(apiItem())
 
     expect(item.category).toBe('')

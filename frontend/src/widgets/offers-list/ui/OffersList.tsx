@@ -7,6 +7,7 @@ import {
   isOpenOffer,
   type Chain,
 } from '@/entities/chain'
+import { getMyItems, itemKeys } from '@/entities/item'
 import { OfferCard } from './OfferCard'
 import { isBackendConnected } from '@/shared/config/backend'
 import { Notice } from '@/shared/ui'
@@ -27,15 +28,33 @@ const answerableFirst = (a: Chain, b: Chain): number =>
  * кто хочет разобраться подробнее.
  */
 export function OffersList() {
+  // Вещи читаем из общего кэша ради одного признака: ждём ли мы сейчас бэкенд. Пока вещь
+  // разбирается или ищет обмен, ответ придёт не по нашему действию, а сам.
+  const { data: items } = useQuery({
+    queryKey: itemKeys.my(),
+    queryFn: getMyItems,
+    refetchInterval: (query) =>
+      isBackendConnected &&
+      query.state.data?.some((item) => item.status === 'analyzing' || item.status === 'searching')
+        ? 15_000
+        : false,
+  })
+  const awaitingBackend = items?.some(
+    (item) => item.status === 'analyzing' || item.status === 'searching',
+  )
+
   const { data, isError } = useQuery({
     queryKey: chainKeys.my(),
     queryFn: getMyChains,
-    // С бэкендом обновления приносит поток событий — опрос остаётся только для моков,
-    // где ответы остальных участников появляются по таймеру.
-    refetchInterval: (query) =>
-      !isBackendConnected && query.state.data?.some((chain) => chain.status === 'formed')
-        ? 2000
-        : false,
+    // Обновления приносит поток событий, но полагаться только на него нельзя: не пришло
+    // событие — экран навсегда остаётся с «Поиск обмена», хотя цепочка уже собрана. Пока
+    // человек чего-то ждёт, страхуемся редким опросом; событие по-прежнему обновляет сразу.
+    // На моках ответы остальных участников появляются по таймеру, там опрос частый.
+    refetchInterval: (query) => {
+      const formed = query.state.data?.some((chain) => chain.status === 'formed')
+      if (!isBackendConnected) return formed ? 2000 : false
+      return awaitingBackend || formed ? 15_000 : false
+    },
   })
 
   // Молчаливое исчезновение раздела читалось бы как «сервис ничего не подобрал» — самый

@@ -17,6 +17,19 @@ export function dative(name: string): string {
   return name
 }
 
+/**
+ * Творительный падеж имени: «обмен с Марком», «обмен с Катей», «обмен с Дашей».
+ * После шипящих у имён на «-а» окончание безударное — «ей», а не «ой».
+ */
+export function instrumental(name: string): string {
+  if (name.endsWith('я')) return swapEnding(name, 'ей')
+  if (HUSHING_A.test(name)) return swapEnding(name, 'ей')
+  if (name.endsWith('а')) return swapEnding(name, 'ой')
+  if (/[йь]$/.test(name)) return swapEnding(name, 'ем')
+  if (CONSONANT.test(name)) return `${name}ом`
+  return name
+}
+
 /** Родительный падеж имени: «получаете от Марка», «получаете от Даши». */
 export function genitive(name: string): string {
   if (name.endsWith('я')) return swapEnding(name, 'и')
@@ -41,5 +54,22 @@ export function reviewsLabel(count: number): string {
       return `${count} отзыва`
     default:
       return `${count} отзывов`
+  }
+}
+
+/** «1 обмен», «3 обмена», «17 обменов» — та же причина, что и у отзывов. */
+export function exchangesLabel(count: number): string {
+  const tail = count % 100
+  if (tail > 4 && tail < 21) return `${count} завершённых обменов`
+
+  switch (count % 10) {
+    case 1:
+      return `${count} завершённый обмен`
+    case 2:
+    case 3:
+    case 4:
+      return `${count} завершённых обмена`
+    default:
+      return `${count} завершённых обменов`
   }
 }

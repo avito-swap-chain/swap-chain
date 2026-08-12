@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dative, genitive } from './declension'
+import { dative, genitive, instrumental } from './declension'
 
 describe('dative', () => {
   it.each([
@@ -43,5 +43,20 @@ describe('genitive', () => {
 
   it('несклоняемое имя остаётся как есть', () => {
     expect(genitive('Нино')).toBe('Нино')
+  })
+})
+
+describe('instrumental — «обмен с …»', () => {
+  it('склоняет имена по окончанию', () => {
+    expect(instrumental('Марк')).toBe('Марком')
+    expect(instrumental('Катя')).toBe('Катей')
+    expect(instrumental('Даша')).toBe('Дашей')
+    expect(instrumental('Лена')).toBe('Леной')
+    expect(instrumental('Игорь')).toBe('Игорем')
+  })
+
+  it('незнакомое окончание оставляет как есть', () => {
+    expect(instrumental('Ким')).toBe('Кимом')
+    expect(instrumental('Ли')).toBe('Ли')
   })
 })

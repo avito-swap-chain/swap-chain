@@ -1,15 +1,27 @@
 import { unwrap } from '@/shared/api/fetcher'
-import { getUser, updateUser, uploadMedia } from '@/shared/api/generated/endpoints'
-import type { MediaUpload, UserProfile } from '@/shared/api/generated/model'
+import {
+  createChainReview,
+  getUser,
+  listUserReviews,
+  updateUser,
+  uploadMedia,
+} from '@/shared/api/generated/endpoints'
+import type {
+  MediaUpload,
+  UserProfile,
+  UserReview,
+  UserReviewList,
+} from '@/shared/api/generated/model'
 import { isBackendConnected } from '@/shared/config/backend'
 import { currentUserId } from '@/shared/model/session'
 import * as mock from './userMocks'
-import type { Profile, ProfileEdit } from '../model/types'
+import type { Profile, ProfileEdit, Review } from '../model/types'
 
 export const userKeys = {
   all: ['users'] as const,
   profile: (id: string) => [...userKeys.all, id] as const,
   me: () => [...userKeys.all, 'me'] as const,
+  reviews: (id: string) => [...userKeys.all, id, 'reviews'] as const,
 }
 
 const mapProfile = (profile: UserProfile): Profile => ({
@@ -18,10 +30,51 @@ const mapProfile = (profile: UserProfile): Profile => ({
   // Бэкенд отдаёт `null` у пользователя без фотографии, а интерфейсу нужна её нехватка.
   avatarUrl: profile.avatarUrl ?? undefined,
   registeredAt: profile.createdAt,
-  completedExchanges: profile.completedExchanges,
+  // `null` в рейтинге — «его ещё никто не оценивал», а не ноль: у нуля на шкале от единицы
+  // до пятёрки нет смысла, и показывать его нельзя.
   rating: profile.rating ?? undefined,
   reviews: profile.reviewsCount,
+  completedExchanges: profile.completedExchanges,
 })
+
+const mapReview = (review: UserReview): Review => ({
+  id: String(review.id),
+  // Фотографии автора в отзыве контракт не отдаёт — `UserSummary` это только id и имя.
+  // Аватар не подставляем: отзыв ведёт в профиль, там она и есть.
+  author: { id: String(review.author.id), name: review.author.username },
+  rating: review.rating,
+  text: review.text ?? undefined,
+  createdAt: review.createdAt,
+})
+
+/**
+ * Отзывы о человеке. Читаются публично — это и есть довод «с кем я меняюсь»,
+ * который до 0.8.0 заменялся датой регистрации.
+ */
+export async function getReviews(id: string): Promise<Review[]> {
+  if (!isBackendConnected) return mock.reviewsFor(id)
+
+  const { reviews } = unwrap<UserReviewList>(await listUserReviews(Number(id)))
+  return reviews.map(mapReview)
+}
+
+/**
+ * Отзыв соседу по завершённому обмену. Бэкенд пускает только участника цепочки в статусе
+ * `COMPLETED` и только на прямого соседа по кругу — второй отзыв тому же человеку по той же
+ * цепочке отклоняется 409, поэтому кнопка после отправки исчезает.
+ */
+export async function leaveReview(
+  chainId: string,
+  { targetUserId, rating, text }: { targetUserId: string; rating: number; text?: string },
+): Promise<void> {
+  if (!isBackendConnected) return mock.addReview(targetUserId, rating, text)
+
+  await createChainReview(Number(chainId), {
+    targetUserId: Number(targetUserId),
+    rating,
+    ...(text?.trim() ? { text: text.trim() } : {}),
+  })
+}
 
 /** Профиль любого пользователя: ручка публичная, за ней и открывают соседа по цепочке. */
 export async function getProfile(id: string): Promise<Profile> {

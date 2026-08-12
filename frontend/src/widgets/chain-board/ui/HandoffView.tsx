@@ -1,4 +1,5 @@
 import { countReceipts, ExchangeSummary } from '@/entities/chain'
+import { DeliveryStatusLabel } from '@/entities/delivery'
 import { ConfirmReceipt } from '@/features/confirm-receipt'
 import { Banner, IconCheck, type Step, Steps } from '@/shared/ui'
 import type { ChainViewProps } from '../model/types'
@@ -11,9 +12,19 @@ export function HandoffView({ chain, me, neighbours }: ChainViewProps) {
   const receive = giver.givesItem
   const done = me.receiptConfirmed
 
-  // Свою вещь пользователь передал, когда сосед отметил её получение, — это единственный
-  // объективный сигнал о ходе передачи, который есть у цепочки. Дальше ход снова за ним.
-  const handedOver = receiver.receiptConfirmed
+  // Где физически обе вещи: моя едет соседу-получателю (для него она входящая), а мне везут
+  // вещь от соседа-отдающего. С контракта 0.8.0 это приходит в самой цепочке, и стадия
+  // передачи больше не молчит до чьей-нибудь отметки о получении.
+  const mineOnTheWay = receiver.incomingDelivery
+  const comingToMe = me.incomingDelivery
+
+  // Свою вещь пользователь сдал, как только ПВЗ её принял. Пока статуса доставки нет
+  // (старый бэкенд или моки), остаётся прежний признак: сосед отметил получение.
+  const handedOver = mineOnTheWay
+    ? mineOnTheWay !== 'AWAITING_PVZ'
+    : receiver.receiptConfirmed
+  const inDelivery = mineOnTheWay === 'IN_DELIVERY' || mineOnTheWay === 'RECEIVED'
+  const readyToPickUp = comingToMe === 'IN_DELIVERY' || comingToMe === 'RECEIVED'
 
   // Передача идёт через пункт выдачи, а не из рук в руки: участники не встречаются и не знают
   // адресов друг друга, а «заморозка вещи» становится физической, а не статусом в базе.
@@ -28,11 +39,11 @@ export function HandoffView({ chain, me, neighbours }: ChainViewProps) {
       ),
     },
     {
-      state: handedOver ? 'done' : 'todo',
+      state: inDelivery ? 'done' : handedOver ? 'current' : 'todo',
       content: <>Дождитесь, пока ПВЗ передаст её в доставку</>,
     },
     {
-      state: handedOver ? 'current' : 'todo',
+      state: readyToPickUp ? 'current' : 'todo',
       content: (
         <>
           Заберите «{receive.title}» в пункте выдачи — вещь отдаёт{' '}
@@ -61,6 +72,29 @@ export function HandoffView({ chain, me, neighbours }: ChainViewProps) {
       </Banner>
 
       <ExchangeSummary me={me} neighbours={neighbours} />
+
+      {/* Где обе вещи прямо сейчас. Без этого стадия передачи выглядела застывшей: человек
+          сдал вещь и не понимал, дошла ли она и едет ли к нему встречная. */}
+      {(mineOnTheWay || comingToMe) && (
+        <dl className="flex flex-col gap-2 rounded-lg bg-surface-2 p-3">
+          {mineOnTheWay && (
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-[12.5px] text-ink-2">Ваша вещь</dt>
+              <dd>
+                <DeliveryStatusLabel status={mineOnTheWay} />
+              </dd>
+            </div>
+          )}
+          {comingToMe && (
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-[12.5px] text-ink-2">Вам везут</dt>
+              <dd>
+                <DeliveryStatusLabel status={comingToMe} direction="incoming" />
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
 
       {done ? (
         <ChainProgress

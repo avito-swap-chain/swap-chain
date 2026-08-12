@@ -1,5 +1,5 @@
 export { cx } from './cx'
 export type { ClassValue } from './cx'
-export { dative, genitive, reviewsLabel } from './declension'
+export { dative, exchangesLabel, genitive, instrumental, reviewsLabel } from './declension'
 export { asset } from './asset'
 export { normalizePhone } from './phone'
