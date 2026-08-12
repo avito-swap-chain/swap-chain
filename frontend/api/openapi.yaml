@@ -1397,7 +1397,7 @@ components:
 
     CreateItemRequest:
       type: object
-      required: [offerTitle, offerDescription, wantDescription]
+      required: [offerTitle, offerDescription, wishes]
       properties:
         offerTitle:
           type: string
@@ -1407,8 +1407,11 @@ components:
           type: string
           minLength: 1
           maxLength: 4000
-        wantDescription:
-          type: string
+        wishes:
+          type: array
+          items:
+            type: string
+          description: A list of items the user wants in exchange for this item
           minLength: 1
           maxLength: 4000
         imageUrls:
@@ -1434,13 +1437,13 @@ components:
           type: string
           minLength: 1
           maxLength: 4000
-        wantDescription:
-          type: string
-          minLength: 1
-          maxLength: 4000
+        wishes:
+          type: array
+          items:
+            type: string
         withdraw:
           type: boolean
-          description: Remove the wish and stop matching this item. Cannot be combined with wantDescription.
+          description: Remove the wish and stop matching this item. Cannot be combined with wishes.
         categoryId:
           type: integer
           format: int32
@@ -1468,7 +1471,7 @@ components:
         - userId
         - offerTitle
         - offerDescription
-        - wantDescription
+        - wishes
         - imageUrls
         - status
         - createdAt
@@ -1484,8 +1487,10 @@ components:
           type: string
         offerDescription:
           type: string
-        wantDescription:
-          type: string
+        wishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemWish"
         imageUrls:
           type: array
           items:
@@ -1514,6 +1519,19 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    ItemWish:
+      type: object
+      required: [id, categoryId, description]
+      properties:
+        id:
+          type: integer
+          format: int64
+        categoryId:
+          type: integer
+          format: int32
+        description:
+          type: string
 
     ItemList:
       type: object

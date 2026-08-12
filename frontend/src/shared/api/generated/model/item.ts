@@ -6,13 +6,14 @@
  * OpenAPI spec version: 0.8.0
  */
 import type { ItemStatus } from './itemStatus';
+import type { ItemWish } from './itemWish';
 
 export interface Item {
   id: number;
   userId: number;
   offerTitle: string;
   offerDescription: string;
-  wantDescription: string;
+  wishes: ItemWish[];
   imageUrls: string[];
   status: ItemStatus;
   /**

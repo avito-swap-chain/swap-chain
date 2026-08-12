@@ -131,7 +131,7 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int64, graph model.
 				errs = append(errs, err)
 			}
 
-			matches = applyElbowMethod(matches)
+			matches = applyElbowMethod(matches, m.cfg.CompatibilityThreshold)
 
 			for _, match := range matches {
 				m.debug("candidate evaluated",
@@ -256,15 +256,15 @@ func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int6
 }
 
 // applyElbowMethod динамически отсекает семантический мусор по самому резкому падению скора.
-func applyElbowMethod(matches []model.ItemMatch) []model.ItemMatch {
+func applyElbowMethod(matches []model.ItemMatch, absoluteMin float64) []model.ItemMatch {
 	if len(matches) == 0 {
 		return matches
 	}
 
 	bestScore := matches[0].Similarity
 	minAllowedScore := bestScore * 0.80
-	if minAllowedScore < 0.45 {
-		minAllowedScore = 0.45
+	if minAllowedScore < absoluteMin {
+		minAllowedScore = absoluteMin
 	}
 
 	var totalDrop float64

@@ -18,10 +18,11 @@ export interface CreateItemRequest {
      */
   offerDescription: string;
   /**
+     * A list of items the user wants in exchange for this item
      * @minLength 1
      * @maxLength 4000
      */
-  wantDescription: string;
+  wishes: string[];
   /** @maxItems 10 */
   imageUrls?: string[];
   /** User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. */

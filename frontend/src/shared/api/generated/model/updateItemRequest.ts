@@ -17,12 +17,8 @@ export interface UpdateItemRequest {
      * @maxLength 4000
      */
   offerDescription?: string;
-  /**
-     * @minLength 1
-     * @maxLength 4000
-     */
-  wantDescription?: string;
-  /** Remove the wish and stop matching this item. Cannot be combined with wantDescription. */
+  wishes?: string[];
+  /** Remove the wish and stop matching this item. Cannot be combined with wishes. */
   withdraw?: boolean;
   /** User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. */
   categoryId?: number;

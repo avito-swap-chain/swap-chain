@@ -54,8 +54,6 @@ function usableWishes(wish: Wish[]): Wish[] {
     })
 }
 
-/** Контракт принимает одну строку желания — склеиваем варианты через «или». */
-const asWantDescription = (wish: Wish[]) => wish.map((variant) => variant.description).join(' или ')
 
 export async function getMyItems(): Promise<Item[]> {
   if (!isBackendConnected) return mock.listMyItems()
@@ -87,7 +85,7 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
       // обмен — служебным словам вроде «good» не место ни там, ни там. Категория едет
       // отдельным полем, для подбора она и нужна.
       offerDescription: draft.description?.trim() || draft.title,
-      wantDescription: asWantDescription(wish),
+      wishes: wish.map((variant) => variant.description),
       imageUrls: imageUrl ? [imageUrl] : [],
       // Категорию бэкенд принимает и учитывает в подборе; если человек её не выбрал,
       // поле не отправляем — модель определит сама при разборе описания.
@@ -122,7 +120,7 @@ export async function editItem(
   return mapItem(
     unwrap<ApiItem>(
       await updateItem(Number(id), {
-        wantDescription: asWantDescription(usable),
+        wishes: usable.map((variant) => variant.description),
         ...(text ? { offerDescription: text } : {}),
         ...(name ? { offerTitle: name } : {}),
         ...(categoryId ? { categoryId } : {}),

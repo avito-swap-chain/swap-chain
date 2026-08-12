@@ -7,7 +7,7 @@ const item = (id: number, title: string) => ({
   userId: id,
   offerTitle: title,
   offerDescription: '',
-  wantDescription: '',
+  wishes: [],
   imageUrls: [`/mock/${id}.jpg`],
   status: 'MATCHING' as const,
   createdAt: '2026-08-09T10:00:00Z',

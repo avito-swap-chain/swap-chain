@@ -49,6 +49,7 @@ export * from './internalErrorResponse';
 export * from './item';
 export * from './itemList';
 export * from './itemStatus';
+export * from './itemWish';
 export * from './listAdminDeliveriesParams';
 export * from './listChainsParams';
 export * from './listChatMessagesParams';
