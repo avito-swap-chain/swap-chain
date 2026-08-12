@@ -14,6 +14,7 @@ require (
 	github.com/oapi-codegen/nethttp-middleware v1.2.0
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/pgvector/pgvector-go v0.4.1
+	github.com/sqlc-dev/pqtype v0.3.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.22.0
 )

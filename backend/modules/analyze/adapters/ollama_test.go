@@ -25,16 +25,16 @@ func TestOllamaVectorize(t *testing.T) {
 			t.Errorf("content type: got %q, want application/json", got)
 		}
 
-		var body map[string]string
+		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Errorf("decode request: %v", err)
 		}
-		if body["model"] != "test-model" || body["prompt"] != "велосипед" {
+		if body["model"] != "test-model" || (body["prompt"] != "велосипед" && body["input"] != "велосипед") {
 			t.Errorf("request body: got %+v", body)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"embedding":[0.1,0.2,0.3]}`))
+		_, _ = w.Write([]byte(`{"embeddings":[[0.1,0.2,0.3]]}`))
 	}))
 	defer server.Close()
 

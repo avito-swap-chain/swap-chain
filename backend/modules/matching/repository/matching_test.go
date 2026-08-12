@@ -11,15 +11,13 @@ import (
 
 func TestMapItemMatch(t *testing.T) {
 	offerEmbedding := pgvector.NewVector([]float32{0.1, 0.2})
-	wantEmbedding := pgvector.NewVector([]float32{0.3, 0.4})
-	row := db.FindSimilarItemsRow{
+		row := db.FindSimilarItemsRow{
 		ID:                  8,
 		OfferTitle:          "Игровая приставка",
 		OfferDescription:    sql.NullString{String: "Описание вещи", Valid: true},
-		WantDescription:     sql.NullString{String: "Горный велосипед", Valid: true},
+		
 		OfferEmbeddingLocal: &offerEmbedding,
-		WantEmbeddingLocal:  &wantEmbedding,
-		ImageAmount:         sql.NullInt32{Int32: 2, Valid: true},
+				ImageAmount:         sql.NullInt32{Int32: 2, Valid: true},
 		ParamRichness:       sql.NullString{String: "0.7", Valid: true},
 		QualityScore:        sql.NullString{String: "0.8", Valid: true},
 		UserRating:          "4.5",

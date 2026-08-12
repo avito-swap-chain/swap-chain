@@ -4,9 +4,7 @@ type Item struct {
 	ID               int64
 	OfferTitle       string
 	OfferDescription string
-	WantDescription  string
 	OfferVector      []float32
-	WantVector       []float32
 
 	Meta ItemMetadata
 }

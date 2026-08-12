@@ -330,11 +330,9 @@ func TestCompletingAnalysisAtomicallyEnqueuesMatchingJob(t *testing.T) {
 		ItemID:          itemID,
 		AnalysisVersion: 1,
 		OfferCategoryID: categoryID,
-		WantCategoryID:  categoryID,
-		ParamRichness:   0.7,
+				ParamRichness:   0.7,
 		OfferEmbedding:  unitVector(0),
-		WantEmbedding:   unitVector(1),
-	})
+			})
 	if err != nil {
 		t.Fatalf("complete item analysis: %v", err)
 	}

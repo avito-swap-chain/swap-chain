@@ -611,10 +611,10 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 		SELECT c.id, c.status::text, c.created_at, c.expires_at, c.updated_at,
 		       u.id, u.username, ci.status::text,
 		       give_item.id, give_item.user_id, give_item.offer_title,
-		       COALESCE(give_item.offer_description, ''), COALESCE(give_item.want_description, ''),
+		       COALESCE(give_item.offer_description, ''),
 		       give_item.image_urls, give_item.status::text, give_item.created_at, give_item.updated_at,
 		       receive_item.id, receive_item.user_id, receive_item.offer_title,
-		       COALESCE(receive_item.offer_description, ''), COALESCE(receive_item.want_description, ''),
+		       COALESCE(receive_item.offer_description, ''),
 		       receive_item.image_urls, receive_item.status::text, receive_item.created_at, receive_item.updated_at,
 		       incoming_delivery.delivery_status::text, incoming_delivery.delivery_updated_at
 		FROM chains c
@@ -642,10 +642,10 @@ func loadChain(ctx context.Context, q queryer, chainID int64) (Chain, error) {
 			&chain.ID, &chain.Status, &chain.CreatedAt, &chain.ExpiresAt, &chain.UpdatedAt,
 			&participant.User.ID, &participant.User.Username, &participant.Status,
 			&participant.GiveItem.ID, &participant.GiveItem.UserID, &participant.GiveItem.OfferTitle,
-			&participant.GiveItem.OfferDescription, &participant.GiveItem.WantDescription,
+			&participant.GiveItem.OfferDescription,
 			&giveImages, &participant.GiveItem.Status, &participant.GiveItem.CreatedAt, &participant.GiveItem.UpdatedAt,
 			&participant.ReceiveItem.ID, &participant.ReceiveItem.UserID, &participant.ReceiveItem.OfferTitle,
-			&participant.ReceiveItem.OfferDescription, &participant.ReceiveItem.WantDescription,
+			&participant.ReceiveItem.OfferDescription,
 			&receiveImages, &participant.ReceiveItem.Status, &participant.ReceiveItem.CreatedAt, &participant.ReceiveItem.UpdatedAt,
 			&incomingDeliveryStatus, &incomingDeliveryUpdatedAt,
 		); err != nil {

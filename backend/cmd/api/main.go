@@ -174,10 +174,7 @@ func run(logger *zap.Logger) error {
 		}
 		openRouterClient = orClient
 
-		embedder, err = adapters.NewFallbackEmbedder(openRouterClient, embedder)
-		if err != nil {
-			return fmt.Errorf("create fallback embedder: %w", err)
-		}
+
 		enricher, err = adapters.NewFallbackClient(openRouterClient, enricher)
 		if err != nil {
 			return fmt.Errorf("create openrouter enricher fallback: %w", err)

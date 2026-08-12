@@ -12,7 +12,7 @@ func TestMemoryServiceWithdrawsItemWithoutDeletingIt(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -22,8 +22,8 @@ func TestMemoryServiceWithdrawsItemWithoutDeletingIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
-	if updated.Status != "WITHDRAWN" || updated.WantDescription != "" {
-		t.Fatalf("withdrawn item = %+v, want WITHDRAWN with empty wish", updated)
+	if updated.Status != "WITHDRAWN" || len(updated.Wishes) != 0 {
+		t.Fatalf("withdrawn item = %+v, want WITHDRAWN with empty wishes", updated)
 	}
 	stored, err := service.Get(context.Background(), created.ID)
 	if err != nil {
@@ -39,7 +39,7 @@ func TestMemoryServiceRestartsAnalysisWhenWishChanges(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -47,11 +47,11 @@ func TestMemoryServiceRestartsAnalysisWhenWishChanges(t *testing.T) {
 	service.items[created.ID] = Item{ID: created.ID, UserID: 7, Status: "WITHDRAWN"}
 
 	want := "Игровой телефон"
-	updated, err := service.Update(context.Background(), 7, created.ID, UpdateInput{WantDescription: &want})
+	updated, err := service.Update(context.Background(), 7, created.ID, UpdateInput{Wishes: []string{want}})
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
-	if updated.Status != "ANALYZING" || updated.WantDescription != want {
+	if updated.Status != "ANALYZING" || len(updated.Wishes) == 0 || updated.Wishes[0].Description != want {
 		t.Fatalf("updated item = %+v, want ANALYZING with new wish", updated)
 	}
 }
@@ -61,7 +61,7 @@ func TestMemoryServiceRefusesLockedOrForeignItemUpdate(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -85,7 +85,7 @@ func TestMemoryServiceUpdatesOfferTitle(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -110,7 +110,7 @@ func TestMemoryServiceRejectsBlankOfferTitle(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -131,7 +131,7 @@ func TestMemoryServiceRejectsLongOfferTitle(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -152,7 +152,7 @@ func TestMemoryServiceNoOpOnSameOfferTitle(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -174,7 +174,7 @@ func TestMemoryServiceForeignOwnerTitleUpdate(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -191,7 +191,7 @@ func TestMemoryServiceLockedItemTitleUpdate(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		WantDescription:  "Телефон",
+		Wishes: []string{"Телефон"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)

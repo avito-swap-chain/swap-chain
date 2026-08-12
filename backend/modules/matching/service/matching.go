@@ -134,7 +134,7 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int64, graph model.
 			matches = applyElbowMethod(matches)
 
 			for _, match := range matches {
-				m.debug("candidate evaluated (elbow allowed)",
+				m.debug("candidate evaluated",
 					zap.Int64("source_item_id", candidateID),
 					zap.Int64("target_item_id", match.TargetItem.ID),
 					zap.Float64("similarity", match.Similarity),
@@ -257,18 +257,38 @@ func (m *Matching) filterChainsByScoreAndRoot(chains [][]model.Edge, rootID int6
 
 // applyElbowMethod динамически отсекает семантический мусор по самому резкому падению скора.
 func applyElbowMethod(matches []model.ItemMatch) []model.ItemMatch {
-	if len(matches) < 2 {
+	if len(matches) == 0 {
 		return matches
 	}
 
-	maxDrop := 0.0
-	dropIndex := len(matches)
+	bestScore := matches[0].Similarity
+	minAllowedScore := bestScore * 0.80
+	if minAllowedScore < 0.45 {
+		minAllowedScore = 0.45
+	}
 
+	var totalDrop float64
 	for i := 0; i < len(matches)-1; i++ {
-		drop := matches[i].Similarity - matches[i+1].Similarity
-		if drop > maxDrop && drop >= 0.10 {
-			maxDrop = drop
-			dropIndex = i + 1
+		totalDrop += (matches[i].Similarity - matches[i+1].Similarity)
+	}
+	avgDrop := 0.0
+	if len(matches) > 1 {
+		avgDrop = totalDrop / float64(len(matches)-1)
+	}
+
+	dropIndex := len(matches)
+	for i := 0; i < len(matches); i++ {
+		if matches[i].Similarity < minAllowedScore {
+			dropIndex = i
+			break
+		}
+
+		if i < len(matches)-1 {
+			drop := matches[i].Similarity - matches[i+1].Similarity
+			if drop > avgDrop*2.5 && drop > 0.01 {
+				dropIndex = i + 1
+				break
+			}
 		}
 	}
 

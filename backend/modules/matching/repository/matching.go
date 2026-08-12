@@ -56,7 +56,7 @@ func (r *Matching) FindSimilarItems(
 	}
 
 	rows, err := r.queries.FindSimilarItems(ctx, db.FindSimilarItemsParams{
-		ID:                  sourceID,
+		ItemID:              sourceID,
 		UndefinedCategoryID: undefinedCategoryID,
 		Limit:               int32(limit),
 	})
@@ -99,16 +99,10 @@ func mapItemMatch(sourceID int64, row db.FindSimilarItemsRow) (model.ItemMatch, 
 	}
 
 	offerDescription := nullableString(row.OfferDescription)
-	wantDescription := nullableString(row.WantDescription)
 
 	var offerVector []float32
 	if row.OfferEmbeddingLocal != nil {
 		offerVector = row.OfferEmbeddingLocal.Slice()
-	}
-
-	var wantVector []float32
-	if row.WantEmbeddingLocal != nil {
-		wantVector = row.WantEmbeddingLocal.Slice()
 	}
 
 	return model.ItemMatch{
@@ -117,9 +111,7 @@ func mapItemMatch(sourceID int64, row db.FindSimilarItemsRow) (model.ItemMatch, 
 			ID:               row.ID,
 			OfferTitle:       row.OfferTitle,
 			OfferDescription: offerDescription,
-			WantDescription:  wantDescription,
 			OfferVector:      offerVector,
-			WantVector:       wantVector,
 			Meta: model.ItemMetadata{
 				TitleLen:       len([]rune(row.OfferTitle)),
 				DescriptionLen: len([]rune(offerDescription)),
@@ -130,9 +122,19 @@ func mapItemMatch(sourceID int64, row db.FindSimilarItemsRow) (model.ItemMatch, 
 				SuccessRate:    userSuccessRate,
 			},
 		},
-		Similarity:            row.Similarity,
+		Similarity:            castSimilarity(row.Similarity),
 		UsesUndefinedCategory: row.UsesUndefinedCategory,
 	}, nil
+}
+
+func castSimilarity(sim interface{}) float64 {
+	switch v := sim.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	}
+	return 0
 }
 
 func parseNullableFloat(field string, value sql.NullString) (float64, error) {

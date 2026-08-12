@@ -153,24 +153,20 @@ func mapAnalysisItem(row db.GetItemForAnalysisRow) model.AnalysisItem {
 		AnalysisVersion:  row.AnalysisVersion,
 		OfferTitle:       row.OfferTitle,
 		OfferDescription: nullableString(row.OfferDescription),
-		WantDescription:  nullableString(row.WantDescription),
 	}
 }
 
 func mapAnalysisResult(result model.AnalysisResult) db.CompleteItemAnalysisParams {
 	offerEmbedding := pgvector.NewVector(result.OfferEmbedding)
-	wantEmbedding := pgvector.NewVector(result.WantEmbedding)
-
 	return db.CompleteItemAnalysisParams{
 		OfferCategoryID: sql.NullInt32{Int32: result.OfferCategoryID, Valid: true},
-		WantCategoryID:  sql.NullInt32{Int32: result.WantCategoryID, Valid: true},
 		ParamRichness: sql.NullString{
 			String: strconv.FormatFloat(result.ParamRichness, 'f', -1, 64),
 			Valid:  true,
 		},
 		IsCategoryManual:    result.IsCategoryManual,
 		OfferEmbeddingLocal: &offerEmbedding,
-		WantEmbeddingLocal:  &wantEmbedding,
+		OfferEmbeddingExternal: &offerEmbedding,
 		AnalysisVersion:     result.AnalysisVersion,
 		ID:                  result.ItemID,
 	}
@@ -207,3 +203,11 @@ var (
 	_ service.StaleAnalysisRepository     = (*Analysis)(nil)
 	_ service.CategoryBootstrapRepository = (*Analysis)(nil)
 )
+
+func (r *Analysis) GetItemWishesForAnalysis(ctx context.Context, itemID int64) ([]db.GetItemWishesForAnalysisRow, error) {
+	return r.queries.GetItemWishesForAnalysis(ctx, itemID)
+}
+
+func (r *Analysis) UpdateItemWishAnalysis(ctx context.Context, params db.UpdateItemWishAnalysisParams) error {
+	return r.queries.UpdateItemWishAnalysis(ctx, params)
+}

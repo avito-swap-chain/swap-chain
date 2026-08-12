@@ -26,6 +26,7 @@ type Querier interface {
 	GetChatMessage(ctx context.Context, messageID int64) (GetChatMessageRow, error)
 	GetChatMessageByClientID(ctx context.Context, arg GetChatMessageByClientIDParams) (GetChatMessageByClientIDRow, error)
 	GetItemForAnalysis(ctx context.Context, id int64) (GetItemForAnalysisRow, error)
+	GetItemWishesForAnalysis(ctx context.Context, itemID int64) ([]GetItemWishesForAnalysisRow, error)
 	GetMatchingSourceItem(ctx context.Context, id int64) (GetMatchingSourceItemRow, error)
 	InsertChatMessage(ctx context.Context, arg InsertChatMessageParams) (int64, error)
 	IsAdminUser(ctx context.Context, id int64) (bool, error)
@@ -39,6 +40,7 @@ type Querier interface {
 	LockRecipientDelivery(ctx context.Context, arg LockRecipientDeliveryParams) (LockRecipientDeliveryRow, error)
 	SetCategoryEmbedding(ctx context.Context, arg SetCategoryEmbeddingParams) (int64, error)
 	UpdateAdminDeliveryStatus(ctx context.Context, arg UpdateAdminDeliveryStatusParams) error
+	UpdateItemWishAnalysis(ctx context.Context, arg UpdateItemWishAnalysisParams) error
 	UpsertChatReadState(ctx context.Context, arg UpsertChatReadStateParams) (int64, error)
 }
 

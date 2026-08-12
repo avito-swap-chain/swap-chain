@@ -22,7 +22,7 @@ func (s *enricherStub) GenerateJSON(context.Context, string) (string, error) {
 func TestFallbackClientUsesPrimary(t *testing.T) {
 	primary := &enricherStub{response: `{"value":"primary"}`}
 	fallback := &enricherStub{response: `{"value":"fallback"}`}
-	client, err := NewFallbackClient(primary, fallback, ignoreFallback)
+	client, err := NewFallbackClient(primary, fallback)
 	if err != nil {
 		t.Fatalf("NewFallbackClient() error = %v", err)
 	}
@@ -39,7 +39,7 @@ func TestFallbackClientUsesPrimary(t *testing.T) {
 func TestFallbackClientUsesFallbackOnPrimaryError(t *testing.T) {
 	primary := &enricherStub{err: errors.New("primary unavailable")}
 	fallback := &enricherStub{response: `{"value":"fallback"}`}
-	client, err := NewFallbackClient(primary, fallback, ignoreFallback)
+	client, err := NewFallbackClient(primary, fallback)
 	if err != nil {
 		t.Fatalf("NewFallbackClient() error = %v", err)
 	}
@@ -56,7 +56,7 @@ func TestFallbackClientUsesFallbackOnPrimaryError(t *testing.T) {
 func TestFallbackClientUsesFallbackOnInvalidPrimaryJSON(t *testing.T) {
 	primary := &enricherStub{response: "not-json"}
 	fallback := &enricherStub{response: `{"value":"fallback"}`}
-	client, err := NewFallbackClient(primary, fallback, ignoreFallback)
+	client, err := NewFallbackClient(primary, fallback)
 	if err != nil {
 		t.Fatalf("NewFallbackClient() error = %v", err)
 	}
@@ -73,7 +73,7 @@ func TestFallbackClientUsesFallbackOnInvalidPrimaryJSON(t *testing.T) {
 func TestFallbackClientAcceptsFencedPrimaryJSON(t *testing.T) {
 	primary := &enricherStub{response: "```json\n{\"value\":\"primary\"}\n```"}
 	fallback := &enricherStub{response: `{"value":"fallback"}`}
-	client, err := NewFallbackClient(primary, fallback, ignoreFallback)
+	client, err := NewFallbackClient(primary, fallback)
 	if err != nil {
 		t.Fatalf("NewFallbackClient() error = %v", err)
 	}
@@ -87,20 +87,3 @@ func TestFallbackClientAcceptsFencedPrimaryJSON(t *testing.T) {
 	}
 }
 
-func TestFallbackClientReportsPrimaryError(t *testing.T) {
-	primaryError := errors.New("primary unavailable")
-	primary := &enricherStub{err: primaryError}
-	fallback := &enricherStub{response: `{"value":"fallback"}`}
-	var reported error
-	client, err := NewFallbackClient(primary, fallback, func(err error) { reported = err })
-	if err != nil {
-		t.Fatalf("NewFallbackClient() error = %v", err)
-	}
-
-	if _, err := client.GenerateJSON(context.Background(), "prompt"); err != nil {
-		t.Fatalf("GenerateJSON() error = %v", err)
-	}
-	if !errors.Is(reported, primaryError) {
-		t.Fatalf("reported error = %v, want %v", reported, primaryError)
-	}
-}

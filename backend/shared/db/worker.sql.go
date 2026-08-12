@@ -62,16 +62,15 @@ const completeItemAnalysis = `-- name: CompleteItemAnalysis :execrows
 WITH analyzed_item AS (
     UPDATE items
     SET offer_category_id = $1,
-        want_category_id = $2,
-        param_richness = $3,
-        is_category_manual = $4,
-        offer_embedding_local = $5::vector,
-        want_embedding_local = $6::vector,
+        param_richness = $2,
+        is_category_manual = $3,
+        offer_embedding_local = $4::vector,
+        offer_embedding_external = $5::vector,
         status = 'MATCHING',
         last_status_updated_at = NOW()
-    WHERE id = $7
+    WHERE id = $6
       AND status = 'ANALYZING'
-      AND analysis_version = $8
+      AND analysis_version = $7
     RETURNING id
 )
 INSERT INTO matching_jobs (
@@ -95,24 +94,22 @@ SET status = 'PENDING',
 `
 
 type CompleteItemAnalysisParams struct {
-	OfferCategoryID     sql.NullInt32       `json:"offer_category_id"`
-	WantCategoryID      sql.NullInt32       `json:"want_category_id"`
-	ParamRichness       sql.NullString      `json:"param_richness"`
-	IsCategoryManual    bool                `json:"is_category_manual"`
-	OfferEmbeddingLocal *pgvector_go.Vector `json:"offer_embedding_local"`
-	WantEmbeddingLocal  *pgvector_go.Vector `json:"want_embedding_local"`
-	ID                  int64               `json:"id"`
-	AnalysisVersion     int64               `json:"analysis_version"`
+	OfferCategoryID        sql.NullInt32       `json:"offer_category_id"`
+	ParamRichness          sql.NullString      `json:"param_richness"`
+	IsCategoryManual       bool                `json:"is_category_manual"`
+	OfferEmbeddingLocal    *pgvector_go.Vector `json:"offer_embedding_local"`
+	OfferEmbeddingExternal *pgvector_go.Vector `json:"offer_embedding_external"`
+	ID                     int64               `json:"id"`
+	AnalysisVersion        int64               `json:"analysis_version"`
 }
 
 func (q *Queries) CompleteItemAnalysis(ctx context.Context, arg CompleteItemAnalysisParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, completeItemAnalysis,
 		arg.OfferCategoryID,
-		arg.WantCategoryID,
 		arg.ParamRichness,
 		arg.IsCategoryManual,
 		arg.OfferEmbeddingLocal,
-		arg.WantEmbeddingLocal,
+		arg.OfferEmbeddingExternal,
 		arg.ID,
 		arg.AnalysisVersion,
 	)
@@ -126,7 +123,6 @@ const getItemForAnalysis = `-- name: GetItemForAnalysis :one
 SELECT item.id,
        item.offer_title,
        item.offer_description,
-       item.want_description,
        item.status,
        item.analysis_version
 FROM items AS item
@@ -137,7 +133,6 @@ type GetItemForAnalysisRow struct {
 	ID               int64          `json:"id"`
 	OfferTitle       string         `json:"offer_title"`
 	OfferDescription sql.NullString `json:"offer_description"`
-	WantDescription  sql.NullString `json:"want_description"`
 	Status           ItemStatus     `json:"status"`
 	AnalysisVersion  int64          `json:"analysis_version"`
 }
@@ -149,9 +144,68 @@ func (q *Queries) GetItemForAnalysis(ctx context.Context, id int64) (GetItemForA
 		&i.ID,
 		&i.OfferTitle,
 		&i.OfferDescription,
-		&i.WantDescription,
 		&i.Status,
 		&i.AnalysisVersion,
 	)
 	return i, err
+}
+
+const getItemWishesForAnalysis = `-- name: GetItemWishesForAnalysis :many
+SELECT id, item_id, want_description
+FROM item_wishes
+WHERE item_id = $1
+`
+
+type GetItemWishesForAnalysisRow struct {
+	ID              int64  `json:"id"`
+	ItemID          int64  `json:"item_id"`
+	WantDescription string `json:"want_description"`
+}
+
+func (q *Queries) GetItemWishesForAnalysis(ctx context.Context, itemID int64) ([]GetItemWishesForAnalysisRow, error) {
+	rows, err := q.db.QueryContext(ctx, getItemWishesForAnalysis, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetItemWishesForAnalysisRow
+	for rows.Next() {
+		var i GetItemWishesForAnalysisRow
+		if err := rows.Scan(&i.ID, &i.ItemID, &i.WantDescription); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateItemWishAnalysis = `-- name: UpdateItemWishAnalysis :exec
+UPDATE item_wishes
+SET want_category_id = $2,
+    want_embedding_local = $3::vector,
+    want_embedding_external = $4::vector
+WHERE id = $1
+`
+
+type UpdateItemWishAnalysisParams struct {
+	ID                    int64               `json:"id"`
+	WantCategoryID        int32               `json:"want_category_id"`
+	WantEmbeddingLocal    *pgvector_go.Vector `json:"want_embedding_local"`
+	WantEmbeddingExternal *pgvector_go.Vector `json:"want_embedding_external"`
+}
+
+func (q *Queries) UpdateItemWishAnalysis(ctx context.Context, arg UpdateItemWishAnalysisParams) error {
+	_, err := q.db.ExecContext(ctx, updateItemWishAnalysis,
+		arg.ID,
+		arg.WantCategoryID,
+		arg.WantEmbeddingLocal,
+		arg.WantEmbeddingExternal,
+	)
+	return err
 }

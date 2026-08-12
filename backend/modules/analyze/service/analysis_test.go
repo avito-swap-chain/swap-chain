@@ -1,6 +1,7 @@
 package service
 
 import (
+	"swap-chain/shared/db"
 	"context"
 	"errors"
 	"sync"
@@ -17,6 +18,14 @@ type analysisRepoStub struct {
 	updated  bool
 	complete model.AnalysisResult
 }
+
+func (m *analysisRepoStub) GetItemWishesForAnalysis(ctx context.Context, itemID int64) ([]db.GetItemWishesForAnalysisRow, error) {
+	return []db.GetItemWishesForAnalysisRow{{ID: 1, ItemID: itemID, WantDescription: "Сноуборд"}}, nil
+}
+func (m *analysisRepoStub) UpdateItemWishAnalysis(ctx context.Context, params db.UpdateItemWishAnalysisParams) error {
+	return nil
+}
+
 
 func (r *analysisRepoStub) GetItemForAnalysis(context.Context, int64) (model.AnalysisItem, error) {
 	return r.item, nil
@@ -79,7 +88,7 @@ func TestAnalysisCompletesItem(t *testing.T) {
 			AnalysisVersion:  3,
 			OfferTitle:       "Велосипед",
 			OfferDescription: "Городской велосипед",
-			WantDescription:  "Сноуборд",
+			
 		},
 		updated: true,
 	}
@@ -109,7 +118,7 @@ func TestAnalysisCompletesItem(t *testing.T) {
 	if repo.complete.AnalysisVersion != 3 {
 		t.Fatalf("analysis version = %d, want 3", repo.complete.AnalysisVersion)
 	}
-	if len(repo.complete.OfferEmbedding) != 2 || len(repo.complete.WantEmbedding) != 2 {
+	if len(repo.complete.OfferEmbedding) != 2  {
 		t.Fatal("embeddings were not passed to repository")
 	}
 }
@@ -120,7 +129,7 @@ func TestAnalysisStoresUndefinedCategoryForManualDecision(t *testing.T) {
 			ID:               7,
 			OfferTitle:       "Вещь",
 			OfferDescription: "Описание",
-			WantDescription:  "Другая вещь",
+			
 		},
 		updated: true,
 	}
@@ -135,7 +144,7 @@ func TestAnalysisStoresUndefinedCategoryForManualDecision(t *testing.T) {
 	if err := analysis.AnalyzeItem(context.Background(), 7); err != nil {
 		t.Fatalf("AnalyzeItem() error = %v", err)
 	}
-	if repo.complete.OfferCategoryID != 99 || repo.complete.WantCategoryID != 99 || !repo.complete.IsCategoryManual {
+	if repo.complete.OfferCategoryID != 99  || !repo.complete.IsCategoryManual {
 		t.Fatalf("undefined categories were not stored: %+v", repo.complete)
 	}
 }
@@ -145,7 +154,7 @@ func TestAnalysisRejectsInvalidRichness(t *testing.T) {
 		ID:               7,
 		OfferTitle:       "Вещь",
 		OfferDescription: "Описание",
-		WantDescription:  "Другая вещь",
+		
 	}}
 	analysis, err := NewAnalysis(
 		repo,

@@ -31,17 +31,24 @@ func (e *ValidationError) Error() string {
 	return "item validation failed"
 }
 
+// ItemWish represents a single user wish for an item.
+type ItemWish struct {
+	ID          int64
+	CategoryID  *int32
+	Description string
+	Vector      []float32
+}
+
 // Item is the transport-independent item representation.
 type Item struct {
 	ID               int64
 	UserID           int64
 	OfferTitle       string
 	OfferDescription string
-	WantDescription  string
+	Wishes           []ItemWish
 	ImageURLs        []string
 	Status           string
 	OfferCategoryID  *int32
-	WantCategoryID   *int32
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -50,7 +57,7 @@ type Item struct {
 type CreateInput struct {
 	OfferTitle       string
 	OfferDescription string
-	WantDescription  string
+	Wishes           []string
 	ImageURLs        []string
 	OfferCategoryID  *int32
 }
@@ -60,7 +67,7 @@ type CreateInput struct {
 type UpdateInput struct {
 	OfferTitle       *string
 	OfferDescription *string
-	WantDescription  *string
+	Wishes           []string
 	OfferCategoryID  *int32
 	Withdraw         bool
 }
@@ -82,21 +89,27 @@ func normalizeUpdate(input UpdateInput) UpdateInput {
 		value := strings.TrimSpace(*input.OfferDescription)
 		input.OfferDescription = &value
 	}
-	if input.WantDescription != nil {
-		value := strings.TrimSpace(*input.WantDescription)
-		input.WantDescription = &value
+	if input.Wishes != nil {
+		var w []string
+		for _, v := range input.Wishes {
+			trimmed := strings.TrimSpace(v)
+			if trimmed != "" {
+				w = append(w, trimmed)
+			}
+		}
+		input.Wishes = w
 	}
 	return input
 }
 
 func validateUpdate(input UpdateInput) error {
 	fields := make(map[string]string)
-	hasChange := input.OfferDescription != nil || input.WantDescription != nil || input.OfferTitle != nil || input.OfferCategoryID != nil || input.Withdraw
+	hasChange := input.OfferDescription != nil || input.Wishes != nil || input.OfferTitle != nil || input.OfferCategoryID != nil || input.Withdraw
 	if !hasChange {
 		fields["request"] = "must change a description, title, category, or withdraw the item"
 	}
-	if input.Withdraw && input.WantDescription != nil {
-		fields["wantDescription"] = "cannot be changed while withdrawing the item"
+	if input.Withdraw && input.Wishes != nil {
+		fields["wishes"] = "cannot be changed while withdrawing the item"
 	}
 	if input.OfferTitle != nil {
 		validateText(fields, "offerTitle", *input.OfferTitle, 255)
@@ -104,8 +117,17 @@ func validateUpdate(input UpdateInput) error {
 	if input.OfferDescription != nil {
 		validateText(fields, "offerDescription", *input.OfferDescription, 4000)
 	}
-	if input.WantDescription != nil {
-		validateText(fields, "wantDescription", *input.WantDescription, 4000)
+	if input.Wishes != nil {
+		if len(input.Wishes) < 1 || len(input.Wishes) > 10 {
+			fields["wishes"] = "must contain between 1 and 10 wishes"
+		} else {
+			for _, w := range input.Wishes {
+				if len([]rune(w)) > 4000 {
+					fields["wishes"] = "each wish must contain at most 4000 characters"
+					break
+				}
+			}
+		}
 	}
 	if len(fields) > 0 {
 		return &ValidationError{Fields: fields}
@@ -134,7 +156,14 @@ func FormatCursor(value int64) string {
 func normalize(input CreateInput) CreateInput {
 	input.OfferTitle = strings.TrimSpace(input.OfferTitle)
 	input.OfferDescription = strings.TrimSpace(input.OfferDescription)
-	input.WantDescription = strings.TrimSpace(input.WantDescription)
+	var wishes []string
+	for _, w := range input.Wishes {
+		w = strings.TrimSpace(w)
+		if w != "" {
+			wishes = append(wishes, w)
+		}
+	}
+	input.Wishes = wishes
 	if input.ImageURLs == nil {
 		input.ImageURLs = []string{}
 	}
@@ -148,7 +177,17 @@ func validate(input CreateInput) error {
 	fields := make(map[string]string)
 	validateText(fields, "offerTitle", input.OfferTitle, 255)
 	validateText(fields, "offerDescription", input.OfferDescription, 4000)
-	validateText(fields, "wantDescription", input.WantDescription, 4000)
+	
+	if len(input.Wishes) < 1 || len(input.Wishes) > 10 {
+		fields["wishes"] = "must contain between 1 and 10 wishes"
+	} else {
+		for _, w := range input.Wishes {
+			if len([]rune(w)) > 4000 {
+				fields["wishes"] = "each wish must contain at most 4000 characters"
+				break
+			}
+		}
+	}
 
 	if len(input.ImageURLs) > 10 {
 		fields["imageUrls"] = "must contain at most 10 URLs"

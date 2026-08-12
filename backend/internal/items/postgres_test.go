@@ -23,7 +23,7 @@ func TestPostgresServiceTransitionsItemToMatching(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Городской",
-		WantDescription:  "Сноуборд",
+		Wishes: []string{"Сноуборд"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -60,7 +60,7 @@ func (r *fakeRepository) Create(_ context.Context, userID int64, input CreateInp
 		UserID:           userID,
 		OfferTitle:       input.OfferTitle,
 		OfferDescription: input.OfferDescription,
-		WantDescription:  input.WantDescription,
+		Wishes: []ItemWish{{ID: 1, Description: input.Wishes[0]}},
 		Status:           "ANALYZING",
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -109,7 +109,7 @@ func TestPostgresServiceUpdatesTitleTriggersAnalysis(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Городской",
-		WantDescription:  "Сноуборд",
+		Wishes: []string{"Сноуборд"},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)

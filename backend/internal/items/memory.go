@@ -38,7 +38,14 @@ func (s *MemoryService) Create(_ context.Context, userID int64, input CreateInpu
 		UserID:           userID,
 		OfferTitle:       input.OfferTitle,
 		OfferDescription: input.OfferDescription,
-		WantDescription:  input.WantDescription,
+		Wishes: func() []ItemWish {
+			w := make([]ItemWish, 0, len(input.Wishes))
+			for i, desc := range input.Wishes {
+				w = append(w, ItemWish{ID: int64(i + 1), Description: desc})
+			}
+			return w
+		}(),
+		
 		ImageURLs:        append([]string(nil), input.ImageURLs...),
 		Status:           "ANALYZING",
 		OfferCategoryID:  copyInt32Ptr(input.OfferCategoryID),
@@ -89,10 +96,13 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 	}
 	switch {
 	case input.Withdraw:
-		item.WantDescription = ""
+		item.Wishes = []ItemWish{}
 		item.Status = "WITHDRAWN"
-	case input.WantDescription != nil:
-		item.WantDescription = *input.WantDescription
+	case input.Wishes != nil:
+		item.Wishes = make([]ItemWish, 0, len(input.Wishes))
+		for i, w := range input.Wishes {
+			item.Wishes = append(item.Wishes, ItemWish{ID: int64(i + 1), Description: w})
+		}
 		item.Status = "ANALYZING"
 	case input.OfferDescription != nil && item.Status != "WITHDRAWN":
 		item.Status = "ANALYZING"
@@ -152,10 +162,7 @@ func clone(item Item) Item {
 		id := *item.OfferCategoryID
 		item.OfferCategoryID = &id
 	}
-	if item.WantCategoryID != nil {
-		id := *item.WantCategoryID
-		item.WantCategoryID = &id
-	}
+
 	return item
 }
 

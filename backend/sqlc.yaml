@@ -17,7 +17,9 @@ sql:
       - "migrations/000013_add_user_avatar.up.sql"
       - "migrations/000014_add_notifications.up.sql"
       - "migrations/000015_add_reputation.up.sql"
+      - "migrations/000016_add_outbox.up.sql"
       - "migrations/000017_add_chain_rejections.up.sql"
+      - "migrations/000018_item_wishes.up.sql"
     queries: "sql/queries"
     gen:
       go:

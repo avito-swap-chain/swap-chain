@@ -55,7 +55,7 @@ func TestPostgresServiceLifecycleIntegration(t *testing.T) {
 	created, err := service.Create(context.Background(), userID, CreateInput{
 		OfferTitle:       "Городской велосипед",
 		OfferDescription: "Исправен",
-		WantDescription:  "Сноуборд",
+		Wishes: []string{"want"},
 		ImageURLs:        []string{"https://example.com/bike.jpg"},
 	})
 	if err != nil {

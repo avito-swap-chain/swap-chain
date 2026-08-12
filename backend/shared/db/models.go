@@ -9,6 +9,8 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"time"
+
+	"github.com/sqlc-dev/pqtype"
 )
 
 type ChainStatus string
@@ -292,28 +294,33 @@ type ChatReadState struct {
 }
 
 type Item struct {
-	ID                  int64          `json:"id"`
-	UserID              int64          `json:"user_id"`
-	OfferTitle          string         `json:"offer_title"`
-	OfferDescription    sql.NullString `json:"offer_description"`
-	OfferCategory       sql.NullString `json:"offer_category"`
-	WantDescription     sql.NullString `json:"want_description"`
-	WantCategory        sql.NullString `json:"want_category"`
-	CreatedAt           time.Time      `json:"created_at"`
-	Status              ItemStatus     `json:"status"`
-	ImageUrls           []string       `json:"image_urls"`
-	UpdatedAt           time.Time      `json:"updated_at"`
-	OfferCategoryID     sql.NullInt32  `json:"offer_category_id"`
-	WantCategoryID      sql.NullInt32  `json:"want_category_id"`
-	VisualQuality       sql.NullString `json:"visual_quality"`
-	QualityScore        sql.NullString `json:"quality_score"`
-	ParamRichness       sql.NullString `json:"param_richness"`
-	IsCategoryManual    bool           `json:"is_category_manual"`
-	LastStatusUpdatedAt time.Time      `json:"last_status_updated_at"`
-	OfferEmbeddingLocal interface{}    `json:"offer_embedding_local"`
-	WantEmbeddingLocal  interface{}    `json:"want_embedding_local"`
-	ImageAmount         sql.NullInt32  `json:"image_amount"`
-	AnalysisVersion     int64          `json:"analysis_version"`
+	ID                     int64          `json:"id"`
+	UserID                 int64          `json:"user_id"`
+	OfferTitle             string         `json:"offer_title"`
+	OfferDescription       sql.NullString `json:"offer_description"`
+	CreatedAt              time.Time      `json:"created_at"`
+	Status                 ItemStatus     `json:"status"`
+	ImageUrls              []string       `json:"image_urls"`
+	UpdatedAt              time.Time      `json:"updated_at"`
+	OfferCategoryID        sql.NullInt32  `json:"offer_category_id"`
+	VisualQuality          sql.NullString `json:"visual_quality"`
+	QualityScore           sql.NullString `json:"quality_score"`
+	ParamRichness          sql.NullString `json:"param_richness"`
+	IsCategoryManual       bool           `json:"is_category_manual"`
+	LastStatusUpdatedAt    time.Time      `json:"last_status_updated_at"`
+	OfferEmbeddingLocal    interface{}    `json:"offer_embedding_local"`
+	ImageAmount            sql.NullInt32  `json:"image_amount"`
+	AnalysisVersion        int64          `json:"analysis_version"`
+	OfferEmbeddingExternal interface{}    `json:"offer_embedding_external"`
+}
+
+type ItemWish struct {
+	ID                    int64       `json:"id"`
+	ItemID                int64       `json:"item_id"`
+	WantCategoryID        int32       `json:"want_category_id"`
+	WantDescription       string      `json:"want_description"`
+	WantEmbeddingLocal    interface{} `json:"want_embedding_local"`
+	WantEmbeddingExternal interface{} `json:"want_embedding_external"`
 }
 
 type MatchingJob struct {
@@ -337,6 +344,22 @@ type Notification struct {
 	ItemID    sql.NullInt64 `json:"item_id"`
 	Read      bool          `json:"read"`
 	CreatedAt time.Time     `json:"created_at"`
+}
+
+type OutboxEvent struct {
+	ID               int64                 `json:"id"`
+	DeduplicationKey string                `json:"deduplication_key"`
+	EventType        string                `json:"event_type"`
+	EntityID         string                `json:"entity_id"`
+	RecipientIds     []int64               `json:"recipient_ids"`
+	Payload          pqtype.NullRawMessage `json:"payload"`
+	OccurredAt       time.Time             `json:"occurred_at"`
+	AvailableAt      time.Time             `json:"available_at"`
+	Attempts         int32                 `json:"attempts"`
+	LockedUntil      sql.NullTime          `json:"locked_until"`
+	LockedBy         sql.NullString        `json:"locked_by"`
+	PublishedAt      sql.NullTime          `json:"published_at"`
+	LastError        sql.NullString        `json:"last_error"`
 }
 
 type User struct {

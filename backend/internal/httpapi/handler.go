@@ -645,7 +645,7 @@ func (h *Handler) CreateItem(ctx context.Context, request api.CreateItemRequestO
 	item, err := h.items.Create(ctx, current.UserID, items.CreateInput{
 		OfferTitle:       request.Body.OfferTitle,
 		OfferDescription: request.Body.OfferDescription,
-		WantDescription:  request.Body.WantDescription,
+		Wishes: request.Body.Wishes,
 		ImageURLs:        imageURLs,
 		OfferCategoryID:  offerCategoryID,
 	})
@@ -700,7 +700,7 @@ func (h *Handler) UpdateItem(ctx context.Context, request api.UpdateItemRequestO
 	item, err := h.items.Update(ctx, current.UserID, request.ItemId, items.UpdateInput{
 		OfferTitle:       request.Body.OfferTitle,
 		OfferDescription: request.Body.OfferDescription,
-		WantDescription:  request.Body.WantDescription,
+		Wishes: func() []string { if request.Body.Wishes != nil { return *request.Body.Wishes } else { return nil } }(),
 		OfferCategoryID:  offerCategoryID,
 		Withdraw:         withdraw,
 	})
@@ -1384,12 +1384,25 @@ func itemModel(item items.Item) api.Item {
 		UserId:           item.UserID,
 		OfferTitle:       item.OfferTitle,
 		OfferDescription: item.OfferDescription,
-		WantDescription:  item.WantDescription,
+		Wishes: func() []api.ItemWish {
+			wishes := make([]api.ItemWish, 0, len(item.Wishes))
+			for _, w := range item.Wishes {
+				var catID int32
+				if w.CategoryID != nil {
+					catID = *w.CategoryID
+				}
+				wishes = append(wishes, api.ItemWish{
+					Id:          w.ID,
+					CategoryId:  catID,
+					Description: w.Description,
+				})
+			}
+			return wishes
+		}(),
 		ImageUrls:        append([]string{}, item.ImageURLs...),
 		Status:           api.ItemStatus(item.Status),
 		CategoryId:       item.OfferCategoryID,
 		OfferCategoryId:  item.OfferCategoryID,
-		WantCategoryId:   item.WantCategoryID,
 		CreatedAt:        item.CreatedAt,
 		UpdatedAt:        item.UpdatedAt,
 	}

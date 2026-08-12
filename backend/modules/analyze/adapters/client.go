@@ -138,6 +138,10 @@ func (f *FallbackEmbedder) Vectorize(ctx context.Context, text string) ([]float3
 		return res, nil
 	}
 
+	if err != nil {
+		log.Printf("WARN: primary embedder failed, falling back... Error: %v", err)
+	}
+
 	fallbackResult, fallbackErr := f.fallback.Vectorize(ctx, text)
 	if fallbackErr != nil {
 		return nil, errors.Join(

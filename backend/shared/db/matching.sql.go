@@ -17,9 +17,7 @@ SELECT candidate_item.id,
        candidate_item.user_id,
        candidate_item.offer_title,
        candidate_item.offer_description,
-       candidate_item.want_description,
        candidate_item.offer_category_id,
-       candidate_item.want_category_id,
        candidate_item.visual_quality,
        candidate_item.quality_score,
        candidate_item.param_richness,
@@ -28,57 +26,57 @@ SELECT candidate_item.id,
        COALESCE(candidate_reputation.rating, candidate_owner.rating) AS user_rating,
        candidate_owner.success_rate AS user_success_rate,
        candidate_item.offer_embedding_local::vector AS offer_embedding_local,
-       candidate_item.want_embedding_local::vector AS want_embedding_local,
-       (source_item.want_category_id = $3::int
-           OR candidate_item.offer_category_id = $3::int)::boolean AS uses_undefined_category,
-       (1.0 - (candidate_item.offer_embedding_local <=> source_item.want_embedding_local))::float8 AS similarity
+       candidate_item.offer_embedding_external::vector AS offer_embedding_external,
+       BOOL_OR(source_wish.want_category_id = $3::int
+           OR candidate_item.offer_category_id = $3::int) AS uses_undefined_category,
+       MAX((1.0 - COALESCE(
+           candidate_item.offer_embedding_external <=> source_wish.want_embedding_external,
+           candidate_item.offer_embedding_local <=> source_wish.want_embedding_local
+       ))::float8) AS similarity
 FROM items AS candidate_item
 JOIN users AS candidate_owner ON candidate_owner.id = candidate_item.user_id
 LEFT JOIN user_reputation AS candidate_reputation ON candidate_reputation.user_id = candidate_owner.id
-JOIN items AS source_item ON source_item.id = $1
-WHERE candidate_item.id != source_item.id
-  AND candidate_item.user_id != source_item.user_id
+JOIN item_wishes AS source_wish ON source_wish.item_id = $1
+WHERE candidate_item.id != $1
+  AND candidate_item.user_id != (SELECT user_id FROM items WHERE id = $1)
   AND candidate_item.status = 'MATCHING'
-  AND source_item.status = 'MATCHING'
-  AND (candidate_item.offer_category_id = source_item.want_category_id
+  AND (candidate_item.offer_category_id = source_wish.want_category_id
        OR candidate_item.offer_category_id = $3::int
-       OR source_item.want_category_id = $3::int)
-  AND candidate_item.offer_embedding_local IS NOT NULL
-  AND candidate_item.want_embedding_local IS NOT NULL
-  AND source_item.want_embedding_local IS NOT NULL
-ORDER BY candidate_item.offer_embedding_local <=> source_item.want_embedding_local
+       OR source_wish.want_category_id = $3::int)
+  AND (candidate_item.offer_embedding_external IS NOT NULL OR candidate_item.offer_embedding_local IS NOT NULL)
+  AND (source_wish.want_embedding_external IS NOT NULL OR source_wish.want_embedding_local IS NOT NULL)
+GROUP BY candidate_item.id, candidate_owner.id, candidate_reputation.user_id
+ORDER BY similarity DESC
 LIMIT $2
 `
 
 type FindSimilarItemsParams struct {
-	ID                  int64 `json:"id"`
+	ItemID              int64 `json:"item_id"`
 	Limit               int32 `json:"limit"`
 	UndefinedCategoryID int32 `json:"undefined_category_id"`
 }
 
 type FindSimilarItemsRow struct {
-	ID                    int64               `json:"id"`
-	UserID                int64               `json:"user_id"`
-	OfferTitle            string              `json:"offer_title"`
-	OfferDescription      sql.NullString      `json:"offer_description"`
-	WantDescription       sql.NullString      `json:"want_description"`
-	OfferCategoryID       sql.NullInt32       `json:"offer_category_id"`
-	WantCategoryID        sql.NullInt32       `json:"want_category_id"`
-	VisualQuality         sql.NullString      `json:"visual_quality"`
-	QualityScore          sql.NullString      `json:"quality_score"`
-	ParamRichness         sql.NullString      `json:"param_richness"`
-	IsCategoryManual      bool                `json:"is_category_manual"`
-	ImageAmount           sql.NullInt32       `json:"image_amount"`
-	UserRating            string              `json:"user_rating"`
-	UserSuccessRate       string              `json:"user_success_rate"`
-	OfferEmbeddingLocal   *pgvector_go.Vector `json:"offer_embedding_local"`
-	WantEmbeddingLocal    *pgvector_go.Vector `json:"want_embedding_local"`
-	UsesUndefinedCategory bool                `json:"uses_undefined_category"`
-	Similarity            float64             `json:"similarity"`
+	ID                     int64               `json:"id"`
+	UserID                 int64               `json:"user_id"`
+	OfferTitle             string              `json:"offer_title"`
+	OfferDescription       sql.NullString      `json:"offer_description"`
+	OfferCategoryID        sql.NullInt32       `json:"offer_category_id"`
+	VisualQuality          sql.NullString      `json:"visual_quality"`
+	QualityScore           sql.NullString      `json:"quality_score"`
+	ParamRichness          sql.NullString      `json:"param_richness"`
+	IsCategoryManual       bool                `json:"is_category_manual"`
+	ImageAmount            sql.NullInt32       `json:"image_amount"`
+	UserRating             string              `json:"user_rating"`
+	UserSuccessRate        string              `json:"user_success_rate"`
+	OfferEmbeddingLocal    *pgvector_go.Vector `json:"offer_embedding_local"`
+	OfferEmbeddingExternal *pgvector_go.Vector `json:"offer_embedding_external"`
+	UsesUndefinedCategory  bool                `json:"uses_undefined_category"`
+	Similarity             interface{}         `json:"similarity"`
 }
 
 func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsParams) ([]FindSimilarItemsRow, error) {
-	rows, err := q.db.QueryContext(ctx, findSimilarItems, arg.ID, arg.Limit, arg.UndefinedCategoryID)
+	rows, err := q.db.QueryContext(ctx, findSimilarItems, arg.ItemID, arg.Limit, arg.UndefinedCategoryID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,9 +89,7 @@ func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsPara
 			&i.UserID,
 			&i.OfferTitle,
 			&i.OfferDescription,
-			&i.WantDescription,
 			&i.OfferCategoryID,
-			&i.WantCategoryID,
 			&i.VisualQuality,
 			&i.QualityScore,
 			&i.ParamRichness,
@@ -102,7 +98,7 @@ func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsPara
 			&i.UserRating,
 			&i.UserSuccessRate,
 			&i.OfferEmbeddingLocal,
-			&i.WantEmbeddingLocal,
+			&i.OfferEmbeddingExternal,
 			&i.UsesUndefinedCategory,
 			&i.Similarity,
 		); err != nil {

@@ -197,15 +197,25 @@ func (r *postgresRepository) Create(ctx context.Context, userID int64, input Cre
 	defer func() { _ = tx.Rollback() }()
 
 	row := tx.QueryRowContext(ctx, `
-		INSERT INTO items (user_id, offer_title, offer_description, want_description, image_urls, offer_category_id)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, user_id, offer_title, offer_description, want_description,
-		          image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at`,
-		userID, input.OfferTitle, input.OfferDescription, input.WantDescription, pq.Array(input.ImageURLs), input.OfferCategoryID,
+		INSERT INTO items (user_id, offer_title, offer_description, image_urls, offer_category_id)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, user_id, offer_title, offer_description,
+		          image_urls, status::text, offer_category_id, created_at, updated_at`,
+		userID, input.OfferTitle, input.OfferDescription, pq.Array(input.ImageURLs), input.OfferCategoryID,
 	)
 	item, err := scanItem(row)
 	if err != nil {
 		return Item{}, fmt.Errorf("insert item: %w", err)
+	}
+	for _, wish := range input.Wishes {
+		_, err := tx.ExecContext(ctx, `INSERT INTO item_wishes (item_id, want_description) VALUES ($1, $2)`, item.ID, wish)
+		if err != nil {
+			return Item{}, fmt.Errorf("insert wish: %w", err)
+		}
+	}
+	item.Wishes, err = loadWishesTx(ctx, tx, item.ID)
+	if err != nil {
+		return Item{}, fmt.Errorf("load wishes: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Item{}, fmt.Errorf("commit create item: %w", err)
@@ -224,8 +234,8 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		return updateResult{}, fmt.Errorf("lock item %d: %w", itemID, err)
 	}
 	current, err := scanItem(tx.QueryRowContext(ctx, `
-		SELECT id, user_id, offer_title, offer_description, want_description,
-		       image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at
+		SELECT id, user_id, offer_title, offer_description,
+		       image_urls, status::text, offer_category_id, created_at, updated_at
 		FROM items WHERE id = $1 FOR UPDATE`, itemID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -252,17 +262,15 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	if input.OfferDescription != nil {
 		offerDescription = *input.OfferDescription
 	}
-	wantDescription := current.WantDescription
+	
 	status := current.Status
 	matchingChanged := false
 	offerCategoryChanged := input.OfferCategoryID != nil
 	switch {
 	case input.Withdraw:
-		wantDescription = ""
 		status = "WITHDRAWN"
 		matchingChanged = current.Status != "WITHDRAWN"
-	case input.WantDescription != nil:
-		wantDescription = *input.WantDescription
+	case input.Wishes != nil:
 		status = "ANALYZING"
 		matchingChanged = true
 	case input.OfferDescription != nil && current.Status != "WITHDRAWN":
@@ -291,27 +299,44 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 
 	row := tx.QueryRowContext(ctx, `
 		UPDATE items
-		SET offer_title = $6,
+		SET offer_title = $5,
 		    offer_description = $2,
-		    want_description = $3,
-		    status = $4::item_status,
-		    offer_category_id = CASE WHEN $7::int IS NOT NULL THEN $7::int WHEN $5 THEN NULL ELSE offer_category_id END,
-		    want_category_id = CASE WHEN $5 THEN NULL ELSE want_category_id END,
-		    param_richness = CASE WHEN $5 THEN NULL ELSE param_richness END,
-		    offer_embedding_local = CASE WHEN $5 THEN NULL ELSE offer_embedding_local END,
-		    want_embedding_local = CASE WHEN $5 THEN NULL ELSE want_embedding_local END,
-		    analysis_version = CASE WHEN $5 THEN analysis_version + 1 ELSE analysis_version END,
-		    last_status_updated_at = CASE WHEN $5 THEN now() ELSE last_status_updated_at END,
+		    status = $3::item_status,
+		    offer_category_id = CASE WHEN $6::int IS NOT NULL THEN $6::int WHEN $4 THEN NULL ELSE offer_category_id END,
+		    param_richness = CASE WHEN $4 THEN NULL ELSE param_richness END,
+		    offer_embedding_local = CASE WHEN $4 THEN NULL ELSE offer_embedding_local END,
+		    analysis_version = CASE WHEN $4 THEN analysis_version + 1 ELSE analysis_version END,
+		    last_status_updated_at = CASE WHEN $4 THEN now() ELSE last_status_updated_at END,
 		    updated_at = now()
 		WHERE id = $1
-		RETURNING id, user_id, offer_title, offer_description, want_description,
-		          image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at`,
-		itemID, offerDescription, wantDescription, status, matchingChanged, offerTitle, input.OfferCategoryID,
+		RETURNING id, user_id, offer_title, offer_description,
+		          image_urls, status::text, offer_category_id, created_at, updated_at`,
+		itemID, offerDescription, status, matchingChanged, offerTitle, input.OfferCategoryID,
 	)
 	item, err := scanItem(row)
 	if err != nil {
 		return updateResult{}, fmt.Errorf("update item: %w", err)
 	}
+	if input.Withdraw {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM item_wishes WHERE item_id = $1`, item.ID); err != nil {
+			return updateResult{}, fmt.Errorf("delete wishes: %w", err)
+		}
+	} else if input.Wishes != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM item_wishes WHERE item_id = $1`, item.ID); err != nil {
+			return updateResult{}, fmt.Errorf("delete wishes: %w", err)
+		}
+		for _, wish := range input.Wishes {
+			_, err := tx.ExecContext(ctx, `INSERT INTO item_wishes (item_id, want_description) VALUES ($1, $2)`, item.ID, wish)
+			if err != nil {
+				return updateResult{}, fmt.Errorf("insert wish: %w", err)
+			}
+		}
+	}
+	item.Wishes, err = loadWishesTx(ctx, tx, item.ID)
+	if err != nil {
+		return updateResult{}, fmt.Errorf("load wishes: %w", err)
+	}
+
 	if matchingChanged {
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE matching_jobs
@@ -384,8 +409,8 @@ func rejectPendingChainsForItem(ctx context.Context, tx *sql.Tx, actorID, itemID
 
 func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error) {
 	item, err := scanItem(r.database.QueryRowContext(ctx, `
-		SELECT id, user_id, offer_title, offer_description, want_description,
-		       image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at
+		SELECT id, user_id, offer_title, offer_description,
+		       image_urls, status::text, offer_category_id, created_at, updated_at
 		FROM items WHERE id = $1`, itemID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Item{}, ErrNotFound
@@ -393,13 +418,17 @@ func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error
 	if err != nil {
 		return Item{}, fmt.Errorf("get item: %w", err)
 	}
+		item.Wishes, err = loadWishesDB(ctx, r.database, item.ID)
+	if err != nil {
+		return Item{}, fmt.Errorf("load wishes: %w", err)
+	}
 	return item, nil
 }
 
 func (r *postgresRepository) ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error) {
 	rows, err := r.database.QueryContext(ctx, `
-		SELECT id, user_id, offer_title, offer_description, want_description,
-		       image_urls, status::text, offer_category_id, want_category_id, created_at, updated_at
+		SELECT id, user_id, offer_title, offer_description,
+		       image_urls, status::text, offer_category_id, created_at, updated_at
 		FROM items
 		WHERE user_id = $1 AND id > $2
 		ORDER BY id LIMIT $3`, userID, afterID, limit+1)
@@ -413,6 +442,10 @@ func (r *postgresRepository) ListByUser(ctx context.Context, userID, afterID int
 		item, scanErr := scanItem(rows)
 		if scanErr != nil {
 			return nil, nil, fmt.Errorf("scan listed item: %w", scanErr)
+		}
+				item.Wishes, err = loadWishesDB(ctx, r.database, item.ID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load wishes: %w", err)
 		}
 		result = append(result, item)
 	}
@@ -435,26 +468,21 @@ type rowScanner interface {
 
 func scanItem(row rowScanner) (Item, error) {
 	var item Item
-	var offerCategoryID, wantCategoryID sql.NullInt32
+	var offerCategoryID sql.NullInt32
 	var imageURLs pq.StringArray
 	err := row.Scan(
 		&item.ID,
 		&item.UserID,
 		&item.OfferTitle,
 		&item.OfferDescription,
-		&item.WantDescription,
 		&imageURLs,
 		&item.Status,
 		&offerCategoryID,
-		&wantCategoryID,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
 	if offerCategoryID.Valid {
 		item.OfferCategoryID = &offerCategoryID.Int32
-	}
-	if wantCategoryID.Valid {
-		item.WantCategoryID = &wantCategoryID.Int32
 	}
 	if imageURLs == nil {
 		item.ImageURLs = []string{}
@@ -462,4 +490,44 @@ func scanItem(row rowScanner) (Item, error) {
 		item.ImageURLs = append([]string(nil), imageURLs...)
 	}
 	return item, err
+}
+
+type queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func loadWishesTx(ctx context.Context, q queryer, itemID int64) ([]ItemWish, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT id, want_category_id, want_description
+		FROM item_wishes
+		WHERE item_id = $1
+		ORDER BY id`, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var wishes []ItemWish
+	for rows.Next() {
+		var wish ItemWish
+		var catID sql.NullInt32
+		if err := rows.Scan(&wish.ID, &catID, &wish.Description); err != nil {
+			return nil, err
+		}
+		if catID.Valid {
+			wish.CategoryID = &catID.Int32
+		}
+		wishes = append(wishes, wish)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if wishes == nil {
+		wishes = []ItemWish{}
+	}
+	return wishes, nil
+}
+
+func loadWishesDB(ctx context.Context, db *sql.DB, itemID int64) ([]ItemWish, error) {
+	return loadWishesTx(ctx, db, itemID)
 }
