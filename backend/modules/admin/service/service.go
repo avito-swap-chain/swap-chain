@@ -21,31 +21,36 @@ type Service interface {
 	ConfirmReceipt(ctx context.Context, actorID, chainID int64) (model.Receipt, error)
 }
 
+type AdminConfig struct {
+	MaxListLimit int
+}
+
 type Admin struct {
 	repository Repository
 	onDelivery OnDeliveryTransition
+	cfg        AdminConfig
 }
 
-func New(repository Repository) (*Admin, error) {
+func New(repository Repository, cfg AdminConfig) (*Admin, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("admin init: repository is required")
 	}
-	return &Admin{repository: repository}, nil
+	return &Admin{repository: repository, cfg: cfg}, nil
 }
 
-func NewWithCallback(repository Repository, onDelivery OnDeliveryTransition) (*Admin, error) {
+func NewWithCallback(repository Repository, onDelivery OnDeliveryTransition, cfg AdminConfig) (*Admin, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("admin init: repository is required")
 	}
-	return &Admin{repository: repository, onDelivery: onDelivery}, nil
+	return &Admin{repository: repository, onDelivery: onDelivery, cfg: cfg}, nil
 }
 
 func (s *Admin) ListDeliveries(ctx context.Context, actorID int64, status string, afterID int64, limit int) ([]model.Delivery, *int64, error) {
 	if actorID <= 0 {
 		return nil, nil, model.ErrForbidden
 	}
-	if limit < 1 || limit > 100 {
-		return nil, nil, &model.ValidationError{Field: "limit", Message: "must be between 1 and 100"}
+	if limit < 1 || limit > s.cfg.MaxListLimit {
+		return nil, nil, &model.ValidationError{Field: "limit", Message: fmt.Sprintf("must be between 1 and %d", s.cfg.MaxListLimit)}
 	}
 	if afterID < 0 {
 		return nil, nil, &model.ValidationError{Field: "cursor", Message: "must be a positive delivery ID"}

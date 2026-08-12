@@ -12,10 +12,10 @@ import (
 	"swap-chain/modules/chat/model"
 )
 
-const (
-	maxListLimit = 100
-	maxWait      = 25 * time.Second
-)
+type ChatConfig struct {
+	MaxListLimit int
+	MaxWait      time.Duration
+}
 
 var clientMessageIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`)
 
@@ -39,20 +39,21 @@ type Chat struct {
 	repository Repository
 	notifier   *notifier
 	onSent     OnMessageSent
+	cfg        ChatConfig
 }
 
-func New(repository Repository) (*Chat, error) {
+func New(repository Repository, cfg ChatConfig) (*Chat, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("chat init: 'repository' is required")
 	}
-	return &Chat{repository: repository, notifier: newNotifier()}, nil
+	return &Chat{repository: repository, notifier: newNotifier(), cfg: cfg}, nil
 }
 
-func NewWithCallback(repository Repository, onSent OnMessageSent) (*Chat, error) {
+func NewWithCallback(repository Repository, onSent OnMessageSent, cfg ChatConfig) (*Chat, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("chat init: 'repository' is required")
 	}
-	return &Chat{repository: repository, notifier: newNotifier(), onSent: onSent}, nil
+	return &Chat{repository: repository, notifier: newNotifier(), onSent: onSent, cfg: cfg}, nil
 }
 
 func (s *Chat) Send(ctx context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (model.Message, bool, error) {
@@ -76,7 +77,7 @@ func (s *Chat) Send(ctx context.Context, chainID, actorID, counterpartID int64, 
 
 // List подписывается до первого чтения, чтобы не потерять сообщение между чтением БД и ожиданием.
 func (s *Chat) List(ctx context.Context, chainID, actorID, counterpartID, afterID int64, limit int, wait time.Duration) ([]model.Message, error) {
-	if err := validateList(chainID, actorID, counterpartID, afterID, limit, wait); err != nil {
+	if err := validateList(chainID, actorID, counterpartID, afterID, limit, wait, s.cfg); err != nil {
 		return nil, err
 	}
 
@@ -153,17 +154,17 @@ func validateThread(chainID, actorID, counterpartID int64) error {
 	return nil
 }
 
-func validateList(chainID, actorID, counterpartID, afterID int64, limit int, wait time.Duration) error {
+func validateList(chainID, actorID, counterpartID, afterID int64, limit int, wait time.Duration, cfg ChatConfig) error {
 	if err := validateThread(chainID, actorID, counterpartID); err != nil {
 		return err
 	}
 	switch {
 	case afterID < 0:
 		return &model.ValidationError{Field: "afterId", Message: "must be non-negative"}
-	case limit < 1 || limit > maxListLimit:
-		return &model.ValidationError{Field: "limit", Message: "must be between 1 and 100"}
-	case wait < 0 || wait > maxWait:
-		return &model.ValidationError{Field: "waitSeconds", Message: "must be between 0 and 25 seconds"}
+	case limit < 1 || limit > cfg.MaxListLimit:
+		return &model.ValidationError{Field: "limit", Message: fmt.Sprintf("must be between 1 and %d", cfg.MaxListLimit)}
+	case wait < 0 || wait > cfg.MaxWait:
+		return &model.ValidationError{Field: "waitSeconds", Message: fmt.Sprintf("must be between 0 and %v", cfg.MaxWait)}
 	default:
 		return nil
 	}

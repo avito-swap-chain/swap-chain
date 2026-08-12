@@ -101,7 +101,7 @@ func TestAnalysisCompletesItem(t *testing.T) {
 			"Велосипед Городской велосипед": {1, 2},
 			"Сноуборд": {3, 4},
 		},
-	})
+	}, AnalysisConfig{Concurrency: 3})
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)
 	}
@@ -136,7 +136,7 @@ func TestAnalysisStoresUndefinedCategoryForManualDecision(t *testing.T) {
 	manual := &model.CategoryMatch{CategoryID: 99, IsManual: true}
 	analysis, err := NewAnalysis(repo, scoreStub{value: 0.5}, &tagStub{matches: []*model.CategoryMatch{manual, manual}}, &vectorStub{
 		vectors: [][]float32{{1}, {2}},
-	})
+	}, AnalysisConfig{Concurrency: 3})
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)
 	}
@@ -161,6 +161,7 @@ func TestAnalysisRejectsInvalidRichness(t *testing.T) {
 		scoreStub{value: 1.1},
 		&tagStub{matches: []*model.CategoryMatch{{CategoryID: 1}, {CategoryID: 2}}},
 		&vectorStub{vectors: [][]float32{{1}, {2}}},
+		AnalysisConfig{Concurrency: 3},
 	)
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)

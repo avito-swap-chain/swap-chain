@@ -59,7 +59,7 @@ func (r *repositoryStub) ConfirmReceipt(_ context.Context, actorID, chainID int6
 }
 
 func TestNewRequiresRepository(t *testing.T) {
-	if _, err := New(nil); err == nil {
+	if _, err := New(nil, AdminConfig{MaxListLimit: 100}); err == nil {
 		t.Fatal("New(nil) error = nil")
 	}
 }
@@ -150,7 +150,7 @@ func TestConfirmReceiptReturnsRepositoryOutcome(t *testing.T) {
 func newTestAdmin(t *testing.T, repository Repository) *Admin {
 	t.Helper()
 
-	admin, err := New(repository)
+	admin, err := New(repository, AdminConfig{MaxListLimit: 100})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

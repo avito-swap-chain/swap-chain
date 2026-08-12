@@ -21,7 +21,7 @@ type repositoryStub struct {
 }
 
 func TestNewRequiresRepository(t *testing.T) {
-	if _, err := New(nil); err == nil {
+	if _, err := New(nil, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second}); err == nil {
 		t.Fatal("New(nil) error = nil")
 	}
 }
@@ -89,7 +89,7 @@ func TestThreadsAndReadState(t *testing.T) {
 		ReceiveItem: &model.ItemSummary{ID: 44, Title: "Телефон", ImageURL: "/media/phone.jpg"},
 		UnreadCount: 2,
 	}}}
-	chat, _ := New(repository)
+	chat, _ := New(repository, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 
 	threads, err := chat.ListThreads(context.Background(), 3)
 	if err != nil || len(threads) != 1 || threads[0].Counterpart.ID != 5 || threads[0].UnreadCount != 2 ||
@@ -108,7 +108,7 @@ func TestThreadsAndReadState(t *testing.T) {
 
 func TestSendValidatesAndNormalizesMessage(t *testing.T) {
 	repository := &repositoryStub{}
-	chat, err := New(repository)
+	chat, err := New(repository, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 	if err != nil {
 		t.Fatalf("new chat: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestSendValidatesAndNormalizesMessage(t *testing.T) {
 
 func TestListReturnsExistingMessagesImmediately(t *testing.T) {
 	repository := &repositoryStub{}
-	chat, _ := New(repository)
+	chat, _ := New(repository, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 	first, _, _ := chat.Send(context.Background(), 4, 2, 3, "first", "one")
 	second, _, _ := chat.Send(context.Background(), 4, 2, 3, "second", "two")
 
@@ -151,7 +151,7 @@ func TestListReturnsExistingMessagesImmediately(t *testing.T) {
 
 func TestListWakesWhenMessageIsCreated(t *testing.T) {
 	repository := &repositoryStub{firstList: make(chan struct{})}
-	chat, _ := New(repository)
+	chat, _ := New(repository, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 	result := make(chan []model.Message, 1)
 	errorsChannel := make(chan error, 1)
 
@@ -185,7 +185,7 @@ func TestListWakesWhenMessageIsCreated(t *testing.T) {
 
 func TestListDoesNotLoseNotificationBeforeWait(t *testing.T) {
 	repository := &repositoryStub{}
-	chat, _ := New(repository)
+	chat, _ := New(repository, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 	repository.listHook = func() {
 		if _, _, err := chat.Send(context.Background(), 11, 2, 1, "between-read-and-wait", "message"); err != nil {
 			t.Errorf("send from list hook: %v", err)
@@ -202,7 +202,7 @@ func TestListDoesNotLoseNotificationBeforeWait(t *testing.T) {
 }
 
 func TestListReturnsEmptyAfterTimeout(t *testing.T) {
-	chat, _ := New(&repositoryStub{})
+	chat, _ := New(&repositoryStub{}, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 	started := time.Now()
 	messages, err := chat.List(context.Background(), 1, 1, 2, 0, 10, 20*time.Millisecond)
 	if err != nil {
@@ -217,7 +217,7 @@ func TestListReturnsEmptyAfterTimeout(t *testing.T) {
 }
 
 func TestListStopsWhenContextIsCanceled(t *testing.T) {
-	chat, _ := New(&repositoryStub{})
+	chat, _ := New(&repositoryStub{}, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := chat.List(ctx, 1, 1, 2, 0, 10, time.Second)
@@ -227,7 +227,7 @@ func TestListStopsWhenContextIsCanceled(t *testing.T) {
 }
 
 func TestChatValidationRejectsInvalidCommands(t *testing.T) {
-	chat, _ := New(&repositoryStub{})
+	chat, _ := New(&repositoryStub{}, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 	tests := []struct {
 		name string
 		call func() error
@@ -238,7 +238,7 @@ func TestChatValidationRejectsInvalidCommands(t *testing.T) {
 		{name: "negative cursor", call: func() error { _, err := chat.List(context.Background(), 1, 1, 2, -1, 10, 0); return err }},
 		{name: "zero limit", call: func() error { _, err := chat.List(context.Background(), 1, 1, 2, 0, 0, 0); return err }},
 		{name: "long wait", call: func() error {
-			_, err := chat.List(context.Background(), 1, 1, 2, 0, 10, maxWait+time.Second)
+			_, err := chat.List(context.Background(), 1, 1, 2, 0, 10, 26*time.Second)
 			return err
 		}},
 	}

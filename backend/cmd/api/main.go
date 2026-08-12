@@ -187,10 +187,11 @@ func run(logger *zap.Logger) error {
 	}
 
 	if cfg.VoyageAPIKey != "" {
-		voyageConfig := adapters.DefaultVoyageConfig(cfg.VoyageAPIKey)
-		voyageClient, err := adapters.NewVoyage(voyageConfig)
+		voyageConfig := adapters.DefaultOpenRouterConfig(cfg.VoyageAPIKey)
+		voyageConfig.Model = "voyageai/voyage-3-large"
+		voyageClient, err := adapters.NewOpenRouter(voyageConfig)
 		if err != nil {
-			return fmt.Errorf("create voyage client: %w", err)
+			return fmt.Errorf("create voyage client via openrouter: %w", err)
 		}
 		embedder, err = adapters.NewFallbackEmbedder(voyageClient, embedder)
 		if err != nil {
@@ -244,7 +245,9 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create scoring: %w", err)
 	}
-	analysis, err := analyzeservice.NewAnalysis(analysisRepo, scoring, tagging, vectorizer)
+	analysis, err := analyzeservice.NewAnalysis(analysisRepo, scoring, tagging, vectorizer, analyzeservice.AnalysisConfig{
+		Concurrency: cfg.AnalysisConcurrency,
+	})
 	if err != nil {
 		return fmt.Errorf("create analysis: %w", err)
 	}
@@ -357,6 +360,8 @@ func run(logger *zap.Logger) error {
 		case adminmodel.DeliveryInTransit:
 			notificationProducer.NotifyDeliveryInTransit(ctx, delivery.RecipientID, delivery.ItemTitle, delivery.ItemID)
 		}
+	}, adminservice.AdminConfig{
+		MaxListLimit: cfg.AdminMaxListLimit,
 	})
 	if err != nil {
 		return fmt.Errorf("create admin service: %w", err)
@@ -368,6 +373,9 @@ func run(logger *zap.Logger) error {
 	chatModule, err := chatservice.NewWithCallback(chatRepo, func(ctx context.Context, message chatmodel.Message) {
 		eventHub.PublishToUser(message.Recipient.ID, "chat.message.created", strconv.FormatInt(message.ChainID, 10), nil)
 		notificationProducer.NotifyChatMessage(ctx, message.Recipient.ID, message.Sender.Username, message.ChainID)
+	}, chatservice.ChatConfig{
+		MaxListLimit: cfg.ChatMaxListLimit,
+		MaxWait:      cfg.ChatMaxWait,
 	})
 	if err != nil {
 		return fmt.Errorf("create chat service: %w", err)

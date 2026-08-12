@@ -31,6 +31,10 @@ type AnalysisVectorizer interface {
 	EnrichAndVectorize(ctx context.Context, text string) ([]float32, error)
 }
 
+type AnalysisConfig struct {
+	Concurrency int
+}
+
 // Analysis выполняет полный повторяемый сценарий анализа уже созданной вещи.
 // Все вычисления происходят до единственной финальной записи в БД.
 type Analysis struct {
@@ -38,6 +42,7 @@ type Analysis struct {
 	scoring    ParamRichnessEvaluator
 	tagging    CategoryDefiner
 	vectorizer AnalysisVectorizer
+	cfg        AnalysisConfig
 }
 
 type analyzedText struct {
@@ -45,13 +50,12 @@ type analyzedText struct {
 	embedding  []float32
 }
 
-const analysisConcurrency = 3
-
 func NewAnalysis(
 	repo AnalysisRepository,
 	scoring ParamRichnessEvaluator,
 	tagging CategoryDefiner,
 	vectorizer AnalysisVectorizer,
+	cfg AnalysisConfig,
 ) (*Analysis, error) {
 	switch {
 	case repo == nil:
@@ -69,6 +73,7 @@ func NewAnalysis(
 		scoring:    scoring,
 		tagging:    tagging,
 		vectorizer: vectorizer,
+		cfg:        cfg,
 	}, nil
 }
 
@@ -95,7 +100,9 @@ func (s *Analysis) AnalyzeItem(ctx context.Context, itemID int64) error {
 	isCategoryManual := false
 
 	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(analysisConcurrency)
+	if s.cfg.Concurrency > 0 {
+		group.SetLimit(s.cfg.Concurrency)
+	}
 
 	group.Go(func() error {
 		result, err := s.scoring.EvaluateDescription(groupCtx, offerDescription)

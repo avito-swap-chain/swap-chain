@@ -28,6 +28,10 @@ const (
 	defaultAnalysisStale          = 6 * time.Minute
 	defaultAnalysisBatch          = 100
 	defaultAnalysisBootstrap      = 5 * time.Minute
+	defaultAnalysisConcurrency    = 3
+	defaultAdminMaxListLimit      = 100
+	defaultChatMaxListLimit       = 100
+	defaultChatMaxWait            = 25 * time.Second
 	defaultCORSAllowedOrigin      = "http://localhost:5173"
 	defaultSessionTTL             = 24 * time.Hour
 	defaultOllamaBaseURL          = "http://localhost:11434"
@@ -65,6 +69,10 @@ type Config struct {
 	AnalysisStaleAfter              time.Duration
 	AnalysisBatchSize               int
 	AnalysisBootstrapTimeout        time.Duration
+	AnalysisConcurrency             int
+	AdminMaxListLimit               int
+	ChatMaxListLimit                int
+	ChatMaxWait                     time.Duration
 	CORSAllowedOrigin               string
 	SessionTTL                      time.Duration
 	CookieSecure                    bool
@@ -196,6 +204,18 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.AnalysisBootstrapTimeout, err = durationFromEnv("ANALYSIS_BOOTSTRAP_TIMEOUT", defaultAnalysisBootstrap); err != nil {
+		return Config{}, err
+	}
+	if cfg.AnalysisConcurrency, err = positiveIntFromEnv("ANALYSIS_CONCURRENCY", defaultAnalysisConcurrency); err != nil {
+		return Config{}, err
+	}
+	if cfg.AdminMaxListLimit, err = positiveIntFromEnv("ADMIN_MAX_LIST_LIMIT", defaultAdminMaxListLimit); err != nil {
+		return Config{}, err
+	}
+	if cfg.ChatMaxListLimit, err = positiveIntFromEnv("CHAT_MAX_LIST_LIMIT", defaultChatMaxListLimit); err != nil {
+		return Config{}, err
+	}
+	if cfg.ChatMaxWait, err = durationFromEnv("CHAT_MAX_WAIT", defaultChatMaxWait); err != nil {
 		return Config{}, err
 	}
 	if cfg.OllamaEmbeddingsDimensions, err = positiveIntFromEnv("OLLAMA_EMBEDDINGS_DIMENSIONS", defaultOllamaEmbedDimensions); err != nil {
