@@ -1367,6 +1367,8 @@ paths:
       responses:
         "204":
           description: Unblocked (or nothing to unblock)
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1487,6 +1489,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReportDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1520,6 +1524,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":

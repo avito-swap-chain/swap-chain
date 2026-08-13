@@ -1478,9 +1478,13 @@ func (h *Handler) ListBlocks(ctx context.Context, request api.ListBlocksRequestO
 
 	blocks, next, err := h.blocklist.List(ctx, current.UserID, afterID, limit)
 	if err != nil {
+		mapped := blocklistErrorModel(ctx, err)
+		if isBlocklistValidationError(err) {
+			return api.ListBlocks400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		}
 		h.logger.Error("list blocks", zap.Int64("actor_id", current.UserID), zap.Error(err))
 		return api.ListBlocks500JSONResponse{
-			InternalErrorJSONResponse: api.InternalErrorJSONResponse(blocklistErrorModel(ctx, err)),
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped),
 		}, nil
 	}
 
@@ -1536,7 +1540,10 @@ func (h *Handler) UnblockUser(ctx context.Context, request api.UnblockUserReques
 
 	if err := h.blocklist.Unblock(ctx, current.UserID, request.BlockedUserId); err != nil {
 		mapped := blocklistErrorModel(ctx, err)
-		if errors.Is(err, blocklistmodel.ErrTargetNotFound) {
+		switch {
+		case isBlocklistValidationError(err):
+			return api.UnblockUser400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, blocklistmodel.ErrTargetNotFound):
 			return api.UnblockUser404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
 		}
 		h.logger.Error("unblock user", zap.Int64("actor_id", current.UserID), zap.Int64("blocked_id", request.BlockedUserId), zap.Error(err))
@@ -1660,6 +1667,8 @@ func (h *Handler) GetAdminReport(ctx context.Context, request api.GetAdminReport
 	if err != nil {
 		mapped := moderationErrorModel(ctx, err)
 		switch {
+		case isModerationValidationError(err):
+			return api.GetAdminReport400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
 		case errors.Is(err, moderationmodel.ErrForbidden):
 			return api.GetAdminReport403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
 		case errors.Is(err, moderationmodel.ErrNotFound):
@@ -1685,6 +1694,8 @@ func (h *Handler) AssignReport(ctx context.Context, request api.AssignReportRequ
 	if err != nil {
 		mapped := moderationErrorModel(ctx, err)
 		switch {
+		case isModerationValidationError(err):
+			return api.AssignReport400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
 		case errors.Is(err, moderationmodel.ErrForbidden):
 			return api.AssignReport403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
 		case errors.Is(err, moderationmodel.ErrNotFound):
