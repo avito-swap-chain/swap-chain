@@ -7,11 +7,58 @@ package db
 import (
 	"database/sql"
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/sqlc-dev/pqtype"
 )
+
+type AuditAction string
+
+const (
+	AuditActionREPORTASSIGNED        AuditAction = "REPORT_ASSIGNED"
+	AuditActionREPORTRESOLVED        AuditAction = "REPORT_RESOLVED"
+	AuditActionREPORTREJECTED        AuditAction = "REPORT_REJECTED"
+	AuditActionUSERBLOCKED           AuditAction = "USER_BLOCKED"
+	AuditActionCHAINCANCELLED        AuditAction = "CHAIN_CANCELLED"
+	AuditActionDELIVERYSTATUSCHANGED AuditAction = "DELIVERY_STATUS_CHANGED"
+)
+
+func (e *AuditAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AuditAction(s)
+	case string:
+		*e = AuditAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AuditAction: %T", src)
+	}
+	return nil
+}
+
+type NullAuditAction struct {
+	AuditAction AuditAction `json:"audit_action"`
+	Valid       bool        `json:"valid"` // Valid is true if AuditAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAuditAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.AuditAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AuditAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAuditAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AuditAction), nil
+}
 
 type ChainStatus string
 
@@ -189,6 +236,92 @@ func (ns NullParticipantStatus) Value() (driver.Value, error) {
 	return string(ns.ParticipantStatus), nil
 }
 
+type ReportReason string
+
+const (
+	ReportReasonSpam  ReportReason = "spam"
+	ReportReasonAbuse ReportReason = "abuse"
+	ReportReasonOther ReportReason = "other"
+)
+
+func (e *ReportReason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ReportReason(s)
+	case string:
+		*e = ReportReason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ReportReason: %T", src)
+	}
+	return nil
+}
+
+type NullReportReason struct {
+	ReportReason ReportReason `json:"report_reason"`
+	Valid        bool         `json:"valid"` // Valid is true if ReportReason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullReportReason) Scan(value interface{}) error {
+	if value == nil {
+		ns.ReportReason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ReportReason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullReportReason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ReportReason), nil
+}
+
+type ReportStatus string
+
+const (
+	ReportStatusOpen     ReportStatus = "open"
+	ReportStatusResolved ReportStatus = "resolved"
+	ReportStatusRejected ReportStatus = "rejected"
+)
+
+func (e *ReportStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ReportStatus(s)
+	case string:
+		*e = ReportStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ReportStatus: %T", src)
+	}
+	return nil
+}
+
+type NullReportStatus struct {
+	ReportStatus ReportStatus `json:"report_status"`
+	Valid        bool         `json:"valid"` // Valid is true if ReportStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullReportStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.ReportStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ReportStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullReportStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ReportStatus), nil
+}
+
 type UserRole string
 
 const (
@@ -229,6 +362,16 @@ func (ns NullUserRole) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.UserRole), nil
+}
+
+type AdminAuditLog struct {
+	ID          int64           `json:"id"`
+	AdminUserID int64           `json:"admin_user_id"`
+	Action      AuditAction     `json:"action"`
+	TargetType  string          `json:"target_type"`
+	TargetID    int64           `json:"target_id"`
+	Metadata    json.RawMessage `json:"metadata"`
+	CreatedAt   time.Time       `json:"created_at"`
 }
 
 type AdminDeliveryEvent struct {
@@ -337,6 +480,19 @@ type MatchingJob struct {
 	UpdatedAt   time.Time      `json:"updated_at"`
 }
 
+type MessageReport struct {
+	ID              int64          `json:"id"`
+	ReporterUserID  int64          `json:"reporter_user_id"`
+	MessageID       int64          `json:"message_id"`
+	Reason          ReportReason   `json:"reason"`
+	Comment         sql.NullString `json:"comment"`
+	Status          ReportStatus   `json:"status"`
+	AssigneeUserID  sql.NullInt64  `json:"assignee_user_id"`
+	DecisionComment sql.NullString `json:"decision_comment"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+}
+
 type Notification struct {
 	ID        int64         `json:"id"`
 	UserID    int64         `json:"user_id"`
@@ -374,6 +530,13 @@ type User struct {
 	SuccessRate string         `json:"success_rate"`
 	Role        UserRole       `json:"role"`
 	AvatarUrl   sql.NullString `json:"avatar_url"`
+}
+
+type UserBlock struct {
+	ID            int64     `json:"id"`
+	BlockerUserID int64     `json:"blocker_user_id"`
+	BlockedUserID int64     `json:"blocked_user_id"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type UserReputation struct {

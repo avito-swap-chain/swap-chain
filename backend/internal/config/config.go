@@ -34,6 +34,8 @@ const (
 	defaultAdminMaxListLimit      = 100
 	defaultChatMaxListLimit       = 100
 	defaultChatMaxWait            = 25 * time.Second
+	defaultBlocklistMaxListLimit  = 100
+	defaultModerationMaxListLimit = 100
 	defaultCORSAllowedOrigin      = "http://localhost:5173"
 	defaultSessionTTL             = 24 * time.Hour
 	defaultOllamaBaseURL          = "http://localhost:11434"
@@ -77,6 +79,8 @@ type Config struct {
 	AdminMaxListLimit               int
 	ChatMaxListLimit                int
 	ChatMaxWait                     time.Duration
+	BlocklistMaxListLimit           int
+	ModerationMaxListLimit          int
 	CORSAllowedOrigin               string
 	SessionTTL                      time.Duration
 	CookieSecure                    bool
@@ -226,6 +230,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.ChatMaxWait, err = durationFromEnv("CHAT_MAX_WAIT", defaultChatMaxWait); err != nil {
+		return Config{}, err
+	}
+	if cfg.BlocklistMaxListLimit, err = positiveIntFromEnv("BLOCKLIST_MAX_LIST_LIMIT", defaultBlocklistMaxListLimit); err != nil {
+		return Config{}, err
+	}
+	if cfg.ModerationMaxListLimit, err = positiveIntFromEnv("MODERATION_MAX_LIST_LIMIT", defaultModerationMaxListLimit); err != nil {
 		return Config{}, err
 	}
 	if cfg.OllamaEmbeddingsDimensions, err = positiveIntFromEnv("OLLAMA_EMBEDDINGS_DIMENSIONS", defaultOllamaEmbedDimensions); err != nil {

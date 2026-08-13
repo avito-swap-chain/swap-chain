@@ -25,6 +25,14 @@ LEFT JOIN user_reputation AS candidate_reputation ON candidate_reputation.user_i
 JOIN item_wishes AS source_wish ON source_wish.item_id = $1
 WHERE candidate_item.id != $1
   AND candidate_item.user_id != (SELECT user_id FROM items WHERE id = $1)
+  AND NOT EXISTS (
+      SELECT 1
+      FROM user_blocks AS block
+      WHERE (block.blocker_user_id = candidate_item.user_id
+             AND block.blocked_user_id = (SELECT user_id FROM items WHERE id = $1))
+         OR (block.blocker_user_id = (SELECT user_id FROM items WHERE id = $1)
+             AND block.blocked_user_id = candidate_item.user_id)
+  )
   AND candidate_item.status = 'MATCHING'
   AND (candidate_item.offer_category_id = source_wish.want_category_id
        OR candidate_item.offer_category_id = sqlc.arg(undefined_category_id)::int

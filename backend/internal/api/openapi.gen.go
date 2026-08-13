@@ -70,6 +70,36 @@ func (e AdminDeliveryTransitionStatus) Valid() bool {
 	}
 }
 
+// Defines values for AuditAction.
+const (
+	CHAINCANCELLED        AuditAction = "CHAIN_CANCELLED"
+	DELIVERYSTATUSCHANGED AuditAction = "DELIVERY_STATUS_CHANGED"
+	REPORTASSIGNED        AuditAction = "REPORT_ASSIGNED"
+	REPORTREJECTED        AuditAction = "REPORT_REJECTED"
+	REPORTRESOLVED        AuditAction = "REPORT_RESOLVED"
+	USERBLOCKED           AuditAction = "USER_BLOCKED"
+)
+
+// Valid indicates whether the value is a known member of the AuditAction enum.
+func (e AuditAction) Valid() bool {
+	switch e {
+	case CHAINCANCELLED:
+		return true
+	case DELIVERYSTATUSCHANGED:
+		return true
+	case REPORTASSIGNED:
+		return true
+	case REPORTREJECTED:
+		return true
+	case REPORTRESOLVED:
+		return true
+	case USERBLOCKED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChainDecision.
 const (
 	ChainDecisionAPPROVED ChainDecision = "APPROVED"
@@ -114,6 +144,7 @@ func (e ChainStatus) Valid() bool {
 
 // Defines values for FunnelRejectionReasonReason.
 const (
+	Blocked         FunnelRejectionReasonReason = "blocked"
 	Declined        FunnelRejectionReasonReason = "declined"
 	Expired         FunnelRejectionReasonReason = "expired"
 	ItemChanged     FunnelRejectionReasonReason = "item_changed"
@@ -125,6 +156,8 @@ const (
 // Valid indicates whether the value is a known member of the FunnelRejectionReasonReason enum.
 func (e FunnelRejectionReasonReason) Valid() bool {
 	switch e {
+	case Blocked:
+		return true
 	case Declined:
 		return true
 	case Expired:
@@ -295,6 +328,66 @@ func (e ParticipantStatus) Valid() bool {
 	}
 }
 
+// Defines values for ReportDecision.
+const (
+	ReportDecisionRejected ReportDecision = "rejected"
+	ReportDecisionResolved ReportDecision = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the ReportDecision enum.
+func (e ReportDecision) Valid() bool {
+	switch e {
+	case ReportDecisionRejected:
+		return true
+	case ReportDecisionResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReportReason.
+const (
+	Abuse ReportReason = "abuse"
+	Other ReportReason = "other"
+	Spam  ReportReason = "spam"
+)
+
+// Valid indicates whether the value is a known member of the ReportReason enum.
+func (e ReportReason) Valid() bool {
+	switch e {
+	case Abuse:
+		return true
+	case Other:
+		return true
+	case Spam:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReportStatus.
+const (
+	ReportStatusOpen     ReportStatus = "open"
+	ReportStatusRejected ReportStatus = "rejected"
+	ReportStatusResolved ReportStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the ReportStatus enum.
+func (e ReportStatus) Valid() bool {
+	switch e {
+	case ReportStatusOpen:
+		return true
+	case ReportStatusRejected:
+		return true
+	case ReportStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for UserRole.
 const (
 	ADMIN UserRole = "ADMIN"
@@ -354,6 +447,49 @@ type AppNotification struct {
 	Read      bool             `json:"read"`
 	Text      string           `json:"text"`
 	Title     string           `json:"title"`
+}
+
+// AuditAction defines model for AuditAction.
+type AuditAction string
+
+// AuditLogEntry defines model for AuditLogEntry.
+type AuditLogEntry struct {
+	Action    AuditAction `json:"action"`
+	Admin     UserSummary `json:"admin"`
+	CreatedAt time.Time   `json:"createdAt"`
+	Id        int64       `json:"id"`
+
+	// Metadata Structural identifiers and before/after state only; never a message body, decision comment, secret or arbitrary personal data.
+	Metadata map[string]interface{} `json:"metadata"`
+	TargetId int64                  `json:"targetId"`
+
+	// TargetType Structural target kind (e.g. report, delivery). No message body or personal data.
+	TargetType string `json:"targetType"`
+}
+
+// AuditLogList defines model for AuditLogList.
+type AuditLogList struct {
+	Entries    []AuditLogEntry `json:"entries"`
+	NextCursor *string         `json:"nextCursor,omitempty"`
+}
+
+// Block defines model for Block.
+type Block struct {
+	BlockedUser UserSummary `json:"blockedUser"`
+	CreatedAt   time.Time   `json:"createdAt"`
+	Id          int64       `json:"id"`
+}
+
+// BlockList defines model for BlockList.
+type BlockList struct {
+	Blocks     []Block `json:"blocks"`
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// BlockRequest defines model for BlockRequest.
+type BlockRequest struct {
+	// BlockedUserId User to block. Must differ from the current user.
+	BlockedUserId int64 `json:"blockedUserId"`
 }
 
 // Category defines model for Category.
@@ -489,6 +625,14 @@ type CreateItemRequest struct {
 
 	// Wishes A list of items the user wants in exchange for this item
 	Wishes []string `json:"wishes"`
+}
+
+// CreateReportRequest defines model for CreateReportRequest.
+type CreateReportRequest struct {
+	// Comment Optional for spam/abuse, required for other.
+	Comment   *string      `json:"comment,omitempty"`
+	MessageId int64        `json:"messageId"`
+	Reason    ReportReason `json:"reason"`
 }
 
 // CreateUserRequest defines model for CreateUserRequest.
@@ -666,6 +810,26 @@ type MediaUpload struct {
 // MediaUploadContentType defines model for MediaUpload.ContentType.
 type MediaUploadContentType string
 
+// MessageReport defines model for MessageReport.
+type MessageReport struct {
+	Assignee        *UserSummary `json:"assignee,omitempty"`
+	Comment         *string      `json:"comment,omitempty"`
+	CreatedAt       time.Time    `json:"createdAt"`
+	DecisionComment *string      `json:"decisionComment,omitempty"`
+	Id              int64        `json:"id"`
+	MessageId       int64        `json:"messageId"`
+	Reason          ReportReason `json:"reason"`
+	Reporter        UserSummary  `json:"reporter"`
+	Status          ReportStatus `json:"status"`
+	UpdatedAt       time.Time    `json:"updatedAt"`
+}
+
+// MessageReportList defines model for MessageReportList.
+type MessageReportList struct {
+	NextCursor *string         `json:"nextCursor,omitempty"`
+	Reports    []MessageReport `json:"reports"`
+}
+
 // NotificationKind defines model for NotificationKind.
 type NotificationKind string
 
@@ -678,6 +842,30 @@ type NotificationList struct {
 
 // ParticipantStatus defines model for ParticipantStatus.
 type ParticipantStatus string
+
+// ReportDecision defines model for ReportDecision.
+type ReportDecision string
+
+// ReportDecisionRequest defines model for ReportDecisionRequest.
+type ReportDecisionRequest struct {
+	// Comment Mandatory non-empty internal decision rationale.
+	Comment  string         `json:"comment"`
+	Decision ReportDecision `json:"decision"`
+}
+
+// ReportDetail defines model for ReportDetail.
+type ReportDetail struct {
+	// Context Full thread context (chain + message sender/recipient) in ascending message ID order.
+	Context         []ChatMessage `json:"context"`
+	Report          MessageReport `json:"report"`
+	ReportedMessage ChatMessage   `json:"reportedMessage"`
+}
+
+// ReportReason defines model for ReportReason.
+type ReportReason string
+
+// ReportStatus defines model for ReportStatus.
+type ReportStatus string
 
 // ResolveItemCategoriesRequest defines model for ResolveItemCategoriesRequest.
 type ResolveItemCategoriesRequest struct {
@@ -803,12 +991,49 @@ type Unauthorized = Error
 // ValidationError defines model for ValidationError.
 type ValidationError = Error
 
+// ListAdminAuditParams defines parameters for ListAdminAudit.
+type ListAdminAuditParams struct {
+	Action *AuditAction `form:"action,omitempty" json:"action,omitempty"`
+
+	// AdminId Filter to audit entries written by this administrator.
+	AdminId    *int64  `form:"adminId,omitempty" json:"adminId,omitempty"`
+	TargetType *string `form:"targetType,omitempty" json:"targetType,omitempty"`
+	Limit      *int    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Audit entry ID returned as nextCursor by the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListAdminDeliveriesParams defines parameters for ListAdminDeliveries.
 type ListAdminDeliveriesParams struct {
 	Status *AdminDeliveryStatus `form:"status,omitempty" json:"status,omitempty"`
 	Limit  *int                 `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Delivery ID returned as nextCursor by the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListAdminReportsParams defines parameters for ListAdminReports.
+type ListAdminReportsParams struct {
+	Status *ReportStatus `form:"status,omitempty" json:"status,omitempty"`
+	Reason *ReportReason `form:"reason,omitempty" json:"reason,omitempty"`
+
+	// AssigneeId Filter to reports assigned to this administrator.
+	AssigneeId *int64 `form:"assigneeId,omitempty" json:"assigneeId,omitempty"`
+
+	// Unassigned When true, return only reports without an assignee.
+	Unassigned *bool `form:"unassigned,omitempty" json:"unassigned,omitempty"`
+	Limit      *int  `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Report ID returned as nextCursor by the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListBlocksParams defines parameters for ListBlocks.
+type ListBlocksParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Block ID returned as nextCursor by the previous page.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
@@ -869,6 +1094,12 @@ type AnalyzePhotoJSONBody struct {
 // TransitionAdminDeliveryJSONRequestBody defines body for TransitionAdminDelivery for application/json ContentType.
 type TransitionAdminDeliveryJSONRequestBody = AdminDeliveryTransitionRequest
 
+// DecideReportJSONRequestBody defines body for DecideReport for application/json ContentType.
+type DecideReportJSONRequestBody = ReportDecisionRequest
+
+// BlockUserJSONRequestBody defines body for BlockUser for application/json ContentType.
+type BlockUserJSONRequestBody = BlockRequest
+
 // CreateChainJSONRequestBody defines body for CreateChain for application/json ContentType.
 type CreateChainJSONRequestBody = CreateChainRequest
 
@@ -899,6 +1130,9 @@ type UploadMediaMultipartRequestBody UploadMediaMultipartBody
 // MarkNotificationsReadJSONRequestBody defines body for MarkNotificationsRead for application/json ContentType.
 type MarkNotificationsReadJSONRequestBody = MarkNotificationsReadRequest
 
+// CreateReportJSONRequestBody defines body for CreateReport for application/json ContentType.
+type CreateReportJSONRequestBody = CreateReportRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -913,6 +1147,9 @@ type AnalyzePhotoJSONRequestBody AnalyzePhotoJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListAdminAudit List the append-only administrator audit log
+	// (GET /api/v1/admin/audit)
+	ListAdminAudit(w http.ResponseWriter, r *http.Request, params ListAdminAuditParams)
 	// ListAdminDeliveries List assembled-chain item deliveries for pickup-point staff
 	// (GET /api/v1/admin/deliveries)
 	ListAdminDeliveries(w http.ResponseWriter, r *http.Request, params ListAdminDeliveriesParams)
@@ -922,6 +1159,27 @@ type ServerInterface interface {
 	// GetAdminFunnelMetrics Get the current product funnel snapshot
 	// (GET /api/v1/admin/metrics/funnel)
 	GetAdminFunnelMetrics(w http.ResponseWriter, r *http.Request)
+	// ListAdminReports List message reports in the moderation queue
+	// (GET /api/v1/admin/reports)
+	ListAdminReports(w http.ResponseWriter, r *http.Request, params ListAdminReportsParams)
+	// GetAdminReport Get one report with the reported message and full chat context
+	// (GET /api/v1/admin/reports/{reportId})
+	GetAdminReport(w http.ResponseWriter, r *http.Request, reportId int64)
+	// AssignReport Assign an open report to the current administrator
+	// (POST /api/v1/admin/reports/{reportId}/assign)
+	AssignReport(w http.ResponseWriter, r *http.Request, reportId int64)
+	// DecideReport Resolve or reject an open report assigned to the current administrator
+	// (POST /api/v1/admin/reports/{reportId}/decision)
+	DecideReport(w http.ResponseWriter, r *http.Request, reportId int64)
+	// ListBlocks List the current user's personal blacklist
+	// (GET /api/v1/blocks)
+	ListBlocks(w http.ResponseWriter, r *http.Request, params ListBlocksParams)
+	// BlockUser Block another user
+	// (POST /api/v1/blocks)
+	BlockUser(w http.ResponseWriter, r *http.Request)
+	// UnblockUser Remove a user from the personal blacklist
+	// (DELETE /api/v1/blocks/{blockedUserId})
+	UnblockUser(w http.ResponseWriter, r *http.Request, blockedUserId int64)
 	// ListCategories List all available item categories
 	// (GET /api/v1/categories)
 	ListCategories(w http.ResponseWriter, r *http.Request)
@@ -991,6 +1249,9 @@ type ServerInterface interface {
 	// MarkNotificationsRead Mark selected or all notifications as read
 	// (POST /api/v1/notifications/read)
 	MarkNotificationsRead(w http.ResponseWriter, r *http.Request)
+	// CreateReport Report a specific message in an accessible chat
+	// (POST /api/v1/reports)
+	CreateReport(w http.ResponseWriter, r *http.Request)
 	// Logout Revoke the current session
 	// (DELETE /api/v1/session)
 	Logout(w http.ResponseWriter, r *http.Request)
@@ -1029,6 +1290,12 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// ListAdminAudit List the append-only administrator audit log
+// (GET /api/v1/admin/audit)
+func (_ Unimplemented) ListAdminAudit(w http.ResponseWriter, r *http.Request, params ListAdminAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListAdminDeliveries List assembled-chain item deliveries for pickup-point staff
 // (GET /api/v1/admin/deliveries)
 func (_ Unimplemented) ListAdminDeliveries(w http.ResponseWriter, r *http.Request, params ListAdminDeliveriesParams) {
@@ -1044,6 +1311,48 @@ func (_ Unimplemented) TransitionAdminDelivery(w http.ResponseWriter, r *http.Re
 // GetAdminFunnelMetrics Get the current product funnel snapshot
 // (GET /api/v1/admin/metrics/funnel)
 func (_ Unimplemented) GetAdminFunnelMetrics(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListAdminReports List message reports in the moderation queue
+// (GET /api/v1/admin/reports)
+func (_ Unimplemented) ListAdminReports(w http.ResponseWriter, r *http.Request, params ListAdminReportsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetAdminReport Get one report with the reported message and full chat context
+// (GET /api/v1/admin/reports/{reportId})
+func (_ Unimplemented) GetAdminReport(w http.ResponseWriter, r *http.Request, reportId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AssignReport Assign an open report to the current administrator
+// (POST /api/v1/admin/reports/{reportId}/assign)
+func (_ Unimplemented) AssignReport(w http.ResponseWriter, r *http.Request, reportId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DecideReport Resolve or reject an open report assigned to the current administrator
+// (POST /api/v1/admin/reports/{reportId}/decision)
+func (_ Unimplemented) DecideReport(w http.ResponseWriter, r *http.Request, reportId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListBlocks List the current user's personal blacklist
+// (GET /api/v1/blocks)
+func (_ Unimplemented) ListBlocks(w http.ResponseWriter, r *http.Request, params ListBlocksParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// BlockUser Block another user
+// (POST /api/v1/blocks)
+func (_ Unimplemented) BlockUser(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UnblockUser Remove a user from the personal blacklist
+// (DELETE /api/v1/blocks/{blockedUserId})
+func (_ Unimplemented) UnblockUser(w http.ResponseWriter, r *http.Request, blockedUserId int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1185,6 +1494,12 @@ func (_ Unimplemented) MarkNotificationsRead(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// CreateReport Report a specific message in an accessible chat
+// (POST /api/v1/reports)
+func (_ Unimplemented) CreateReport(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Logout Revoke the current session
 // (DELETE /api/v1/session)
 func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
@@ -1255,6 +1570,91 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListAdminAudit operation middleware
+func (siw *ServerInterfaceWrapper) ListAdminAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAdminAuditParams
+
+	// ------------- Optional query parameter "action" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "action", r.URL.Query(), &params.Action, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "action"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "action", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "adminId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "adminId", r.URL.Query(), &params.AdminId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "adminId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "adminId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "targetType" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "targetType", r.URL.Query(), &params.TargetType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "targetType"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "targetType", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAdminAudit(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListAdminDeliveries operation middleware
 func (siw *ServerInterfaceWrapper) ListAdminDeliveries(w http.ResponseWriter, r *http.Request) {
@@ -1346,6 +1746,268 @@ func (siw *ServerInterfaceWrapper) GetAdminFunnelMetrics(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAdminFunnelMetrics(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAdminReports operation middleware
+func (siw *ServerInterfaceWrapper) ListAdminReports(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAdminReportsParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "reason" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "reason", r.URL.Query(), &params.Reason, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "reason"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reason", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "assigneeId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "assigneeId", r.URL.Query(), &params.AssigneeId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "assigneeId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "assigneeId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "unassigned" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unassigned", r.URL.Query(), &params.Unassigned, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unassigned"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unassigned", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAdminReports(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAdminReport operation middleware
+func (siw *ServerInterfaceWrapper) GetAdminReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reportId" -------------
+	var reportId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reportId", chi.URLParam(r, "reportId"), &reportId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reportId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAdminReport(w, r, reportId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AssignReport operation middleware
+func (siw *ServerInterfaceWrapper) AssignReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reportId" -------------
+	var reportId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reportId", chi.URLParam(r, "reportId"), &reportId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reportId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AssignReport(w, r, reportId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DecideReport operation middleware
+func (siw *ServerInterfaceWrapper) DecideReport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reportId" -------------
+	var reportId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reportId", chi.URLParam(r, "reportId"), &reportId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reportId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DecideReport(w, r, reportId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBlocks operation middleware
+func (siw *ServerInterfaceWrapper) ListBlocks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBlocksParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBlocks(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BlockUser operation middleware
+func (siw *ServerInterfaceWrapper) BlockUser(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BlockUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnblockUser operation middleware
+func (siw *ServerInterfaceWrapper) UnblockUser(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "blockedUserId" -------------
+	var blockedUserId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "blockedUserId", chi.URLParam(r, "blockedUserId"), &blockedUserId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "blockedUserId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnblockUser(w, r, blockedUserId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1999,6 +2661,20 @@ func (siw *ServerInterfaceWrapper) MarkNotificationsRead(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// CreateReport operation middleware
+func (siw *ServerInterfaceWrapper) CreateReport(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateReport(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Logout operation middleware
 func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
 
@@ -2466,6 +3142,33 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/events", wrapper.SubscribeEvents)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/blocks", wrapper.ListBlocks)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/blocks", wrapper.BlockUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/blocks/{blockedUserId}", wrapper.UnblockUser)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/reports", wrapper.CreateReport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/admin/reports", wrapper.ListAdminReports)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/admin/reports/{reportId}", wrapper.GetAdminReport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/admin/reports/{reportId}/assign", wrapper.AssignReport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/admin/reports/{reportId}/decision", wrapper.DecideReport)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/admin/audit", wrapper.ListAdminAudit)
+	})
 
 	return r
 }
@@ -2487,6 +3190,84 @@ type ServiceUnavailableJSONResponse Error
 type UnauthorizedJSONResponse Error
 
 type ValidationErrorJSONResponse Error
+
+type ListAdminAuditRequestObject struct {
+	Params ListAdminAuditParams
+}
+
+type ListAdminAuditResponseObject interface {
+	VisitListAdminAuditResponse(w http.ResponseWriter) error
+}
+
+type ListAdminAudit200JSONResponse AuditLogList
+
+func (response ListAdminAudit200JSONResponse) VisitListAdminAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListAdminAudit400JSONResponse) VisitListAdminAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminAudit401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListAdminAudit401JSONResponse) VisitListAdminAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListAdminAudit403JSONResponse) VisitListAdminAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminAudit500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ListAdminAudit500JSONResponse) VisitListAdminAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListAdminDeliveriesRequestObject struct {
 	Params ListAdminDeliveriesParams
@@ -2725,6 +3506,561 @@ func (response GetAdminFunnelMetrics403JSONResponse) VisitGetAdminFunnelMetricsR
 type GetAdminFunnelMetrics500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response GetAdminFunnelMetrics500JSONResponse) VisitGetAdminFunnelMetricsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminReportsRequestObject struct {
+	Params ListAdminReportsParams
+}
+
+type ListAdminReportsResponseObject interface {
+	VisitListAdminReportsResponse(w http.ResponseWriter) error
+}
+
+type ListAdminReports200JSONResponse MessageReportList
+
+func (response ListAdminReports200JSONResponse) VisitListAdminReportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminReports400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListAdminReports400JSONResponse) VisitListAdminReportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminReports401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListAdminReports401JSONResponse) VisitListAdminReportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminReports403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListAdminReports403JSONResponse) VisitListAdminReportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminReports500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ListAdminReports500JSONResponse) VisitListAdminReportsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminReportRequestObject struct {
+	ReportId int64 `json:"reportId"`
+}
+
+type GetAdminReportResponseObject interface {
+	VisitGetAdminReportResponse(w http.ResponseWriter) error
+}
+
+type GetAdminReport200JSONResponse ReportDetail
+
+func (response GetAdminReport200JSONResponse) VisitGetAdminReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminReport401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAdminReport401JSONResponse) VisitGetAdminReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminReport403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetAdminReport403JSONResponse) VisitGetAdminReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminReport404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAdminReport404JSONResponse) VisitGetAdminReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAdminReport500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response GetAdminReport500JSONResponse) VisitGetAdminReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignReportRequestObject struct {
+	ReportId int64 `json:"reportId"`
+}
+
+type AssignReportResponseObject interface {
+	VisitAssignReportResponse(w http.ResponseWriter) error
+}
+
+type AssignReport200JSONResponse MessageReport
+
+func (response AssignReport200JSONResponse) VisitAssignReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignReport401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response AssignReport401JSONResponse) VisitAssignReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignReport403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response AssignReport403JSONResponse) VisitAssignReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignReport404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AssignReport404JSONResponse) VisitAssignReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignReport409JSONResponse struct{ ConflictJSONResponse }
+
+func (response AssignReport409JSONResponse) VisitAssignReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignReport500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response AssignReport500JSONResponse) VisitAssignReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideReportRequestObject struct {
+	ReportId int64 `json:"reportId"`
+	Body     *DecideReportJSONRequestBody
+}
+
+type DecideReportResponseObject interface {
+	VisitDecideReportResponse(w http.ResponseWriter) error
+}
+
+type DecideReport200JSONResponse MessageReport
+
+func (response DecideReport200JSONResponse) VisitDecideReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideReport400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DecideReport400JSONResponse) VisitDecideReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideReport401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DecideReport401JSONResponse) VisitDecideReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideReport403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DecideReport403JSONResponse) VisitDecideReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideReport404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DecideReport404JSONResponse) VisitDecideReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideReport409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DecideReport409JSONResponse) VisitDecideReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DecideReport500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response DecideReport500JSONResponse) VisitDecideReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBlocksRequestObject struct {
+	Params ListBlocksParams
+}
+
+type ListBlocksResponseObject interface {
+	VisitListBlocksResponse(w http.ResponseWriter) error
+}
+
+type ListBlocks200JSONResponse BlockList
+
+func (response ListBlocks200JSONResponse) VisitListBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBlocks400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListBlocks400JSONResponse) VisitListBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBlocks401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListBlocks401JSONResponse) VisitListBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBlocks500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ListBlocks500JSONResponse) VisitListBlocksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockUserRequestObject struct {
+	Body *BlockUserJSONRequestBody
+}
+
+type BlockUserResponseObject interface {
+	VisitBlockUserResponse(w http.ResponseWriter) error
+}
+
+type BlockUser200JSONResponse Block
+
+func (response BlockUser200JSONResponse) VisitBlockUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockUser400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response BlockUser400JSONResponse) VisitBlockUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockUser401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response BlockUser401JSONResponse) VisitBlockUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockUser404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response BlockUser404JSONResponse) VisitBlockUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BlockUser500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response BlockUser500JSONResponse) VisitBlockUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnblockUserRequestObject struct {
+	BlockedUserId int64 `json:"blockedUserId"`
+}
+
+type UnblockUserResponseObject interface {
+	VisitUnblockUserResponse(w http.ResponseWriter) error
+}
+
+type UnblockUser204Response struct {
+}
+
+func (response UnblockUser204Response) VisitUnblockUserResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnblockUser401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UnblockUser401JSONResponse) VisitUnblockUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnblockUser404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UnblockUser404JSONResponse) VisitUnblockUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnblockUser500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response UnblockUser500JSONResponse) VisitUnblockUserResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4707,6 +6043,98 @@ func (response MarkNotificationsRead500JSONResponse) VisitMarkNotificationsReadR
 	return err
 }
 
+type CreateReportRequestObject struct {
+	Body *CreateReportJSONRequestBody
+}
+
+type CreateReportResponseObject interface {
+	VisitCreateReportResponse(w http.ResponseWriter) error
+}
+
+type CreateReport200JSONResponse MessageReport
+
+func (response CreateReport200JSONResponse) VisitCreateReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateReport201JSONResponse MessageReport
+
+func (response CreateReport201JSONResponse) VisitCreateReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateReport400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateReport400JSONResponse) VisitCreateReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateReport401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateReport401JSONResponse) VisitCreateReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateReport404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateReport404JSONResponse) VisitCreateReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateReport500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response CreateReport500JSONResponse) VisitCreateReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LogoutRequestObject struct {
 }
 
@@ -5399,6 +6827,9 @@ func (response GetLegacyHealth200JSONResponse) VisitGetLegacyHealthResponse(w ht
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListAdminAudit List the append-only administrator audit log
+	// (GET /api/v1/admin/audit)
+	ListAdminAudit(ctx context.Context, request ListAdminAuditRequestObject) (ListAdminAuditResponseObject, error)
 	// ListAdminDeliveries List assembled-chain item deliveries for pickup-point staff
 	// (GET /api/v1/admin/deliveries)
 	ListAdminDeliveries(ctx context.Context, request ListAdminDeliveriesRequestObject) (ListAdminDeliveriesResponseObject, error)
@@ -5408,6 +6839,27 @@ type StrictServerInterface interface {
 	// GetAdminFunnelMetrics Get the current product funnel snapshot
 	// (GET /api/v1/admin/metrics/funnel)
 	GetAdminFunnelMetrics(ctx context.Context, request GetAdminFunnelMetricsRequestObject) (GetAdminFunnelMetricsResponseObject, error)
+	// ListAdminReports List message reports in the moderation queue
+	// (GET /api/v1/admin/reports)
+	ListAdminReports(ctx context.Context, request ListAdminReportsRequestObject) (ListAdminReportsResponseObject, error)
+	// GetAdminReport Get one report with the reported message and full chat context
+	// (GET /api/v1/admin/reports/{reportId})
+	GetAdminReport(ctx context.Context, request GetAdminReportRequestObject) (GetAdminReportResponseObject, error)
+	// AssignReport Assign an open report to the current administrator
+	// (POST /api/v1/admin/reports/{reportId}/assign)
+	AssignReport(ctx context.Context, request AssignReportRequestObject) (AssignReportResponseObject, error)
+	// DecideReport Resolve or reject an open report assigned to the current administrator
+	// (POST /api/v1/admin/reports/{reportId}/decision)
+	DecideReport(ctx context.Context, request DecideReportRequestObject) (DecideReportResponseObject, error)
+	// ListBlocks List the current user's personal blacklist
+	// (GET /api/v1/blocks)
+	ListBlocks(ctx context.Context, request ListBlocksRequestObject) (ListBlocksResponseObject, error)
+	// BlockUser Block another user
+	// (POST /api/v1/blocks)
+	BlockUser(ctx context.Context, request BlockUserRequestObject) (BlockUserResponseObject, error)
+	// UnblockUser Remove a user from the personal blacklist
+	// (DELETE /api/v1/blocks/{blockedUserId})
+	UnblockUser(ctx context.Context, request UnblockUserRequestObject) (UnblockUserResponseObject, error)
 	// ListCategories List all available item categories
 	// (GET /api/v1/categories)
 	ListCategories(ctx context.Context, request ListCategoriesRequestObject) (ListCategoriesResponseObject, error)
@@ -5477,6 +6929,9 @@ type StrictServerInterface interface {
 	// MarkNotificationsRead Mark selected or all notifications as read
 	// (POST /api/v1/notifications/read)
 	MarkNotificationsRead(ctx context.Context, request MarkNotificationsReadRequestObject) (MarkNotificationsReadResponseObject, error)
+	// CreateReport Report a specific message in an accessible chat
+	// (POST /api/v1/reports)
+	CreateReport(ctx context.Context, request CreateReportRequestObject) (CreateReportResponseObject, error)
 	// Logout Revoke the current session
 	// (DELETE /api/v1/session)
 	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
@@ -5548,6 +7003,32 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListAdminAudit operation middleware
+func (sh *strictHandler) ListAdminAudit(w http.ResponseWriter, r *http.Request, params ListAdminAuditParams) {
+	var request ListAdminAuditRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAdminAudit(ctx, request.(ListAdminAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAdminAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAdminAuditResponseObject); ok {
+		if err := validResponse.VisitListAdminAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListAdminDeliveries operation middleware
@@ -5626,6 +7107,200 @@ func (sh *strictHandler) GetAdminFunnelMetrics(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetAdminFunnelMetricsResponseObject); ok {
 		if err := validResponse.VisitGetAdminFunnelMetricsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAdminReports operation middleware
+func (sh *strictHandler) ListAdminReports(w http.ResponseWriter, r *http.Request, params ListAdminReportsParams) {
+	var request ListAdminReportsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAdminReports(ctx, request.(ListAdminReportsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAdminReports")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAdminReportsResponseObject); ok {
+		if err := validResponse.VisitListAdminReportsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAdminReport operation middleware
+func (sh *strictHandler) GetAdminReport(w http.ResponseWriter, r *http.Request, reportId int64) {
+	var request GetAdminReportRequestObject
+
+	request.ReportId = reportId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAdminReport(ctx, request.(GetAdminReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAdminReport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAdminReportResponseObject); ok {
+		if err := validResponse.VisitGetAdminReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AssignReport operation middleware
+func (sh *strictHandler) AssignReport(w http.ResponseWriter, r *http.Request, reportId int64) {
+	var request AssignReportRequestObject
+
+	request.ReportId = reportId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AssignReport(ctx, request.(AssignReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AssignReport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AssignReportResponseObject); ok {
+		if err := validResponse.VisitAssignReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DecideReport operation middleware
+func (sh *strictHandler) DecideReport(w http.ResponseWriter, r *http.Request, reportId int64) {
+	var request DecideReportRequestObject
+
+	request.ReportId = reportId
+
+	var body DecideReportJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DecideReport(ctx, request.(DecideReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DecideReport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DecideReportResponseObject); ok {
+		if err := validResponse.VisitDecideReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListBlocks operation middleware
+func (sh *strictHandler) ListBlocks(w http.ResponseWriter, r *http.Request, params ListBlocksParams) {
+	var request ListBlocksRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBlocks(ctx, request.(ListBlocksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBlocks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBlocksResponseObject); ok {
+		if err := validResponse.VisitListBlocksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BlockUser operation middleware
+func (sh *strictHandler) BlockUser(w http.ResponseWriter, r *http.Request) {
+	var request BlockUserRequestObject
+
+	var body BlockUserJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BlockUser(ctx, request.(BlockUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BlockUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BlockUserResponseObject); ok {
+		if err := validResponse.VisitBlockUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnblockUser operation middleware
+func (sh *strictHandler) UnblockUser(w http.ResponseWriter, r *http.Request, blockedUserId int64) {
+	var request UnblockUserRequestObject
+
+	request.BlockedUserId = blockedUserId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnblockUser(ctx, request.(UnblockUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnblockUser")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnblockUserResponseObject); ok {
+		if err := validResponse.VisitUnblockUserResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -6292,6 +7967,37 @@ func (sh *strictHandler) MarkNotificationsRead(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// CreateReport operation middleware
+func (sh *strictHandler) CreateReport(w http.ResponseWriter, r *http.Request) {
+	var request CreateReportRequestObject
+
+	var body CreateReportJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateReport(ctx, request.(CreateReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateReport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateReportResponseObject); ok {
+		if err := validResponse.VisitCreateReportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Logout operation middleware
 func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	var request LogoutRequestObject
@@ -6575,147 +8281,178 @@ func (sh *strictHandler) GetLegacyHealth(w http.ResponseWriter, r *http.Request)
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"bXjBVroHV6qpB8EPliCvX1//vwAAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

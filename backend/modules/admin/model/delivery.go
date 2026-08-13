@@ -16,6 +16,9 @@ const (
 
 	ChainAccepted  = "ACCEPTED"
 	ChainCompleted = "COMPLETED"
+
+	// AuditDeliveryStatusChanged is the admin audit action for delivery transitions.
+	AuditDeliveryStatusChanged = "DELIVERY_STATUS_CHANGED"
 )
 
 var (

@@ -65,6 +65,14 @@ func (s *PostgresService) Create(ctx context.Context, userID int64, input Create
 		return Chain{}, ErrForbidden
 	}
 
+	ownerIDs := distinctOwnerIDs(owners)
+	if err := lockUsersForChain(ctx, tx, ownerIDs); err != nil {
+		return Chain{}, err
+	}
+	if err := ensureNoBlockedPair(ctx, tx, ownerIDs); err != nil {
+		return Chain{}, err
+	}
+
 	var chainID int64
 	expiresAt := s.now().UTC().Add(proposalLifetime)
 	if err := tx.QueryRowContext(ctx, `
@@ -422,13 +430,83 @@ func (s *PostgresService) expireOne(ctx context.Context, chainID int64) (Chain, 
 }
 
 func (s *PostgresService) rejectAndCommit(ctx context.Context, tx *sql.Tx, chainID int64, reason string, actorID int64) (Chain, error) {
+	chain, err := s.rejectInTx(ctx, tx, chainID, reason, actorID)
+	if err != nil {
+		return Chain{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Chain{}, fmt.Errorf("commit rejected chain: %w", err)
+	}
+	s.notify(chain, "chain.rejected", map[string]any{"reason": reason})
+	return chain, nil
+}
+
+// rejectInTx marks a chain REJECTED and records the standard rejection side
+// effects (rejection row + durable chain.rejected event) inside tx without
+// committing. Returns the reloaded chain.
+func (s *PostgresService) rejectInTx(ctx context.Context, tx *sql.Tx, chainID int64, reason string, actorID int64) (Chain, error) {
 	if _, err := tx.ExecContext(ctx, `UPDATE chains SET status = 'REJECTED', updated_at = now() WHERE id = $1`, chainID); err != nil {
 		return Chain{}, fmt.Errorf("reject chain: %w", err)
 	}
 	if err := recordChainRejection(ctx, tx, chainID, reason, actorID, 0); err != nil {
 		return Chain{}, err
 	}
-	return s.commitUpdated(ctx, tx, chainID, "chain.rejected", "rejected", map[string]any{"reason": reason})
+	chain, err := loadChain(ctx, tx, chainID)
+	if err != nil {
+		return Chain{}, err
+	}
+	if err := s.enqueueChainEvent(ctx, tx, chain, "chain.rejected", "rejected", map[string]any{"reason": reason}); err != nil {
+		return Chain{}, err
+	}
+	return chain, nil
+}
+
+// CancelPendingBetween rejects every PENDING chain that contains both users.
+// It runs inside tx (without committing) and returns the cancelled chains so
+// the caller can commit and then publish rejections. Reuses the standard
+// rejection side effects.
+func (s *PostgresService) CancelPendingBetween(ctx context.Context, tx *sql.Tx, userA, userB int64) ([]Chain, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT c.id
+		FROM chains c
+		JOIN chain_items ci1 ON ci1.chain_id = c.id AND ci1.user_id = $1
+		JOIN chain_items ci2 ON ci2.chain_id = c.id AND ci2.user_id = $2
+		WHERE c.status = 'PENDING'
+		ORDER BY c.id
+		FOR UPDATE OF c`, userA, userB)
+	if err != nil {
+		return nil, fmt.Errorf("find pending chains between users: %w", err)
+	}
+	defer closeRows(rows)
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan pending chain between users: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending chains between users: %w", err)
+	}
+
+	cancelled := make([]Chain, 0, len(ids))
+	for _, id := range ids {
+		chain, err := s.rejectInTx(ctx, tx, id, "blocked", 0)
+		if err != nil {
+			return nil, err
+		}
+		cancelled = append(cancelled, chain)
+	}
+	return cancelled, nil
+}
+
+// PublishRejections notifies participants of the given rejected chains.
+func (s *PostgresService) PublishRejections(cancelled []Chain, reason string) {
+	for _, chain := range cancelled {
+		s.notify(chain, "chain.rejected", map[string]any{"reason": reason})
+	}
 }
 
 func recordChainRejection(ctx context.Context, tx *sql.Tx, chainID int64, reason string, actorID, itemID int64) error {
@@ -703,6 +781,69 @@ func containsOwner(owners map[int64]int64, userID int64) bool {
 		}
 	}
 	return false
+}
+
+// distinctOwnerIDs returns the sorted set of distinct chain item owners.
+func distinctOwnerIDs(owners map[int64]int64) []int64 {
+	seen := make(map[int64]struct{}, len(owners))
+	ids := make([]int64, 0, len(owners))
+	for _, ownerID := range owners {
+		if _, ok := seen[ownerID]; ok {
+			continue
+		}
+		seen[ownerID] = struct{}{}
+		ids = append(ids, ownerID)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+// lockUsersForChain locks the participant user rows so a concurrent block
+// serializes against chain creation/acceptance on the same rows.
+func lockUsersForChain(ctx context.Context, tx *sql.Tx, ownerIDs []int64) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE`, pq.Array(ownerIDs))
+	if err != nil {
+		return fmt.Errorf("lock chain participant users: %w", err)
+	}
+	defer closeRows(rows)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan locked chain participant user: %w", err)
+		}
+	}
+	return rows.Err()
+}
+
+// ensureNoBlockedPair rejects chain creation when any pair of participants has
+// a directed block between them (matching treats blocks symmetrically).
+func ensureNoBlockedPair(ctx context.Context, tx *sql.Tx, ownerIDs []int64) error {
+	for i := 0; i < len(ownerIDs); i++ {
+		for j := i + 1; j < len(ownerIDs); j++ {
+			blocked, err := pairBlocked(ctx, tx, ownerIDs[i], ownerIDs[j])
+			if err != nil {
+				return err
+			}
+			if blocked {
+				return ErrConflict
+			}
+		}
+	}
+	return nil
+}
+
+func pairBlocked(ctx context.Context, tx *sql.Tx, userA, userB int64) (bool, error) {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM user_blocks
+			WHERE (blocker_user_id = $1 AND blocked_user_id = $2)
+			   OR (blocker_user_id = $2 AND blocked_user_id = $1)
+		)`, userA, userB).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check blocked pair: %w", err)
+	}
+	return exists, nil
 }
 
 func hasParticipant(chain Chain, userID int64) bool {

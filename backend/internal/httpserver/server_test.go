@@ -31,9 +31,11 @@ import (
 	"swap-chain/internal/users"
 	adminmodel "swap-chain/modules/admin/model"
 	analyzemodel "swap-chain/modules/analyze/model"
+	blocklistmodel "swap-chain/modules/blocklist/model"
 	chatmodel "swap-chain/modules/chat/model"
 	"swap-chain/modules/matching/model"
 	metricsmodel "swap-chain/modules/metrics/model"
+	moderationmodel "swap-chain/modules/moderation/model"
 	notificationmodel "swap-chain/modules/notifications/model"
 	notificationservice "swap-chain/modules/notifications/service"
 	reputationmodel "swap-chain/modules/reputation/model"
@@ -106,6 +108,8 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		users.NewMemoryService(testUser(1)),
 		&testAdminService{},
 		newTestChatService(),
+		&testBlocklistService{},
+		&testModerationService{},
 		nil,
 		&testReputationService{},
 		&testMetricsService{},
@@ -1192,7 +1196,7 @@ func newTestServerWithAllServicesAndVision(t *testing.T, chainService chains.Ser
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, &testReputationService{}, &testMetricsService{}, vision)
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), &testBlocklistService{}, &testModerationService{}, nil, &testReputationService{}, &testMetricsService{}, vision)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1447,6 +1451,65 @@ type testChainService struct {
 }
 
 type testAdminService struct{}
+
+type testBlocklistService struct{}
+
+type testModerationService struct{}
+
+func (*testBlocklistService) Block(_ context.Context, blockerID, blockedID int64) (blocklistmodel.Block, error) {
+	if blockerID == blockedID {
+		return blocklistmodel.Block{}, blocklistmodel.ErrSelfBlock
+	}
+	return blocklistmodel.Block{
+		ID: 1,
+		BlockedUser: blocklistmodel.BlockedUser{
+			ID:       blockedID,
+			Username: fmt.Sprintf("user-%d", blockedID),
+		},
+		BlockedAt: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
+	}, nil
+}
+
+func (*testBlocklistService) Unblock(_ context.Context, _, _ int64) error {
+	return nil
+}
+
+func (*testBlocklistService) List(_ context.Context, _ int64, _ int64, _ int) ([]blocklistmodel.Block, *int64, error) {
+	return []blocklistmodel.Block{}, nil, nil
+}
+
+func (*testModerationService) CreateReport(_ context.Context, reporterID, messageID int64, reason, _ string) (moderationmodel.Report, bool, error) {
+	return moderationmodel.Report{
+		ID:        1,
+		Reporter:  moderationmodel.User{ID: reporterID, Username: fmt.Sprintf("user-%d", reporterID)},
+		MessageID: messageID,
+		Reason:    reason,
+		Status:    moderationmodel.ReportOpen,
+		CreatedAt: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
+	}, true, nil
+}
+
+func (*testModerationService) ListReports(_ context.Context, _ int64, _ moderationmodel.ReportFilter, _ int64, _ int) ([]moderationmodel.Report, *int64, error) {
+	return []moderationmodel.Report{}, nil, nil
+}
+
+func (*testModerationService) GetReport(_ context.Context, _, _ int64) (moderationmodel.ReportDetail, error) {
+	return moderationmodel.ReportDetail{}, nil
+}
+
+func (*testModerationService) Assign(_ context.Context, _, reportID int64) (moderationmodel.Report, error) {
+	return moderationmodel.Report{ID: reportID, Status: moderationmodel.ReportOpen}, nil
+}
+
+func (*testModerationService) Decide(_ context.Context, _, reportID int64, decision, comment string) (moderationmodel.Report, error) {
+	commentValue := comment
+	return moderationmodel.Report{ID: reportID, Status: decision, DecisionComment: &commentValue}, nil
+}
+
+func (*testModerationService) ListAudit(_ context.Context, _ int64, _ moderationmodel.AuditFilter, _ *int64, _ int) ([]moderationmodel.AuditEntry, *int64, error) {
+	return []moderationmodel.AuditEntry{}, nil, nil
+}
 
 type testReputationService struct{}
 
@@ -1876,6 +1939,8 @@ func newTestServerWithNotifications(t *testing.T, notificationService notificati
 		userService,
 		&testAdminService{},
 		newTestChatService(),
+		&testBlocklistService{},
+		&testModerationService{},
 		notificationService,
 		&testReputationService{},
 		&testMetricsService{},
@@ -1915,6 +1980,91 @@ func TestMarkNotificationsReadRequiresSession(t *testing.T) {
 	defer closeBody(t, resp.Body)
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestBlocklistAndModerationRoutesRequireSession(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	paths := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/blocks"},
+		{method: http.MethodPost, path: "/api/v1/blocks", body: `{"blockedUserId":2}`},
+		{method: http.MethodDelete, path: "/api/v1/blocks/2"},
+		{method: http.MethodPost, path: "/api/v1/reports", body: `{"messageId":1,"reason":"spam"}`},
+		{method: http.MethodGet, path: "/api/v1/admin/reports"},
+		{method: http.MethodGet, path: "/api/v1/admin/reports/1"},
+		{method: http.MethodPost, path: "/api/v1/admin/reports/1/assign"},
+		{method: http.MethodPost, path: "/api/v1/admin/reports/1/decision", body: `{"decision":"resolved","comment":"ok"}`},
+		{method: http.MethodGet, path: "/api/v1/admin/audit"},
+	}
+	for _, test := range paths {
+		func() {
+			var request *http.Request
+			var err error
+			if test.body == "" {
+				request, err = http.NewRequest(test.method, server.URL+test.path, nil)
+			} else {
+				request, err = http.NewRequest(test.method, server.URL+test.path, strings.NewReader(test.body))
+				request.Header.Set("Content-Type", "application/json")
+			}
+			if err != nil {
+				t.Fatalf("new request: %v", err)
+			}
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatalf("%s %s: %v", test.method, test.path, err)
+			}
+			defer closeBody(t, response.Body)
+			if response.StatusCode != http.StatusUnauthorized {
+				t.Fatalf("%s %s status = %d, want 401; body=%s", test.method, test.path, response.StatusCode, readBody(t, response.Body))
+			}
+		}()
+	}
+}
+
+func TestBlockAndReportRoutesWithSession(t *testing.T) {
+	server := newTestServer(t)
+	defer server.Close()
+
+	client := newSessionClient(t, server.URL, 1)
+
+	blockResponse := postJSON(t, client, server.URL+"/api/v1/blocks", `{"blockedUserId":2}`)
+	defer closeBody(t, blockResponse.Body)
+	if blockResponse.StatusCode != http.StatusOK {
+		t.Fatalf("POST blocks status = %d, want 200; body=%s", blockResponse.StatusCode, readBody(t, blockResponse.Body))
+	}
+	var block api.Block
+	if err := json.NewDecoder(blockResponse.Body).Decode(&block); err != nil {
+		t.Fatalf("decode block: %v", err)
+	}
+	if block.BlockedUser.Id != 2 {
+		t.Fatalf("blocked user = %d, want 2", block.BlockedUser.Id)
+	}
+
+	listResponse, err := client.Get(server.URL + "/api/v1/blocks")
+	if err != nil {
+		t.Fatalf("GET blocks: %v", err)
+	}
+	defer closeBody(t, listResponse.Body)
+	if listResponse.StatusCode != http.StatusOK {
+		t.Fatalf("GET blocks status = %d, want 200", listResponse.StatusCode)
+	}
+
+	selfResponse := postJSON(t, client, server.URL+"/api/v1/blocks", `{"blockedUserId":1}`)
+	defer closeBody(t, selfResponse.Body)
+	if selfResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("self-block status = %d, want 400; body=%s", selfResponse.StatusCode, readBody(t, selfResponse.Body))
+	}
+
+	reportResponse := postJSON(t, client, server.URL+"/api/v1/reports", `{"messageId":7,"reason":"spam"}`)
+	defer closeBody(t, reportResponse.Body)
+	if reportResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("POST reports status = %d, want 201; body=%s", reportResponse.StatusCode, readBody(t, reportResponse.Body))
 	}
 }
 

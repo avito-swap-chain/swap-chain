@@ -23,11 +23,15 @@ import (
 	"swap-chain/internal/users"
 	adminmodel "swap-chain/modules/admin/model"
 	adminservice "swap-chain/modules/admin/service"
+	blocklistmodel "swap-chain/modules/blocklist/model"
+	blocklistservice "swap-chain/modules/blocklist/service"
 	chatmodel "swap-chain/modules/chat/model"
 	chatservice "swap-chain/modules/chat/service"
 	"swap-chain/modules/matching/model"
 	metricsmodel "swap-chain/modules/metrics/model"
 	metricsservice "swap-chain/modules/metrics/service"
+	moderationmodel "swap-chain/modules/moderation/model"
+	moderationservice "swap-chain/modules/moderation/service"
 	notificationmodel "swap-chain/modules/notifications/model"
 	notificationservice "swap-chain/modules/notifications/service"
 	reputationmodel "swap-chain/modules/reputation/model"
@@ -65,6 +69,8 @@ type Handler struct {
 	users         users.Service
 	admin         adminservice.Service
 	chat          chatservice.Service
+	blocklist     blocklistservice.Service
+	moderation    moderationservice.Service
 	notifications notificationservice.Service
 	reputation    reputationservice.Service
 	metrics       metricsservice.Service
@@ -87,6 +93,8 @@ func NewHandler(
 	userService users.Service,
 	adminService adminservice.Service,
 	chatService chatservice.Service,
+	blocklistService blocklistservice.Service,
+	moderationService moderationservice.Service,
 	notificationService notificationservice.Service,
 	reputationService reputationservice.Service,
 	metricsService metricsservice.Service,
@@ -106,6 +114,8 @@ func NewHandler(
 		users:         userService,
 		admin:         adminService,
 		chat:          chatService,
+		blocklist:     blocklistService,
+		moderation:    moderationService,
 		notifications: notificationService,
 		reputation:    reputationService,
 		metrics:       metricsService,
@@ -1442,6 +1452,451 @@ func (h *Handler) SubscribeEvents(ctx context.Context, _ api.SubscribeEventsRequ
 	}, nil
 }
 
+// ListBlocks returns the current user's personal blacklist.
+func (h *Handler) ListBlocks(ctx context.Context, request api.ListBlocksRequestObject) (api.ListBlocksResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ListBlocks401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	limit := 20
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	afterID := int64(0)
+	if request.Params.Cursor != nil {
+		parsed, err := strconv.ParseInt(*request.Params.Cursor, 10, 64)
+		if err != nil || parsed < 0 {
+			return api.ListBlocks400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_CURSOR", "cursor must be a non-negative integer", nil)),
+			}, nil
+		}
+		afterID = parsed
+	}
+
+	blocks, next, err := h.blocklist.List(ctx, current.UserID, afterID, limit)
+	if err != nil {
+		h.logger.Error("list blocks", zap.Int64("actor_id", current.UserID), zap.Error(err))
+		return api.ListBlocks500JSONResponse{
+			InternalErrorJSONResponse: api.InternalErrorJSONResponse(blocklistErrorModel(ctx, err)),
+		}, nil
+	}
+
+	response := api.BlockList{Blocks: make([]api.Block, 0, len(blocks))}
+	for _, block := range blocks {
+		response.Blocks = append(response.Blocks, blockModel(block))
+	}
+	if next != nil {
+		cursor := strconv.FormatInt(*next, 10)
+		response.NextCursor = &cursor
+	}
+	return api.ListBlocks200JSONResponse(response), nil
+}
+
+// BlockUser blocks another user and cancels shared non-terminal chains.
+func (h *Handler) BlockUser(ctx context.Context, request api.BlockUserRequestObject) (api.BlockUserResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.BlockUser401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.BlockUser400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	block, err := h.blocklist.Block(ctx, current.UserID, request.Body.BlockedUserId)
+	if err != nil {
+		mapped := blocklistErrorModel(ctx, err)
+		switch {
+		case isBlocklistValidationError(err), errors.Is(err, blocklistmodel.ErrSelfBlock):
+			return api.BlockUser400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, blocklistmodel.ErrTargetNotFound):
+			return api.BlockUser404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("block user", zap.Int64("actor_id", current.UserID), zap.Int64("blocked_id", request.Body.BlockedUserId), zap.Error(err))
+			return api.BlockUser500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	return api.BlockUser200JSONResponse(blockModel(block)), nil
+}
+
+// UnblockUser removes a user from the personal blacklist.
+func (h *Handler) UnblockUser(ctx context.Context, request api.UnblockUserRequestObject) (api.UnblockUserResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.UnblockUser401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	if err := h.blocklist.Unblock(ctx, current.UserID, request.BlockedUserId); err != nil {
+		mapped := blocklistErrorModel(ctx, err)
+		if errors.Is(err, blocklistmodel.ErrTargetNotFound) {
+			return api.UnblockUser404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		}
+		h.logger.Error("unblock user", zap.Int64("actor_id", current.UserID), zap.Int64("blocked_id", request.BlockedUserId), zap.Error(err))
+		return api.UnblockUser500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+	}
+	return api.UnblockUser204Response{}, nil
+}
+
+// CreateReport creates or returns an idempotent message report.
+func (h *Handler) CreateReport(ctx context.Context, request api.CreateReportRequestObject) (api.CreateReportResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.CreateReport401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateReport400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	var comment string
+	if request.Body.Comment != nil {
+		comment = *request.Body.Comment
+	}
+	report, created, err := h.moderation.CreateReport(ctx, current.UserID, request.Body.MessageId, string(request.Body.Reason), comment)
+	if err != nil {
+		mapped := moderationErrorModel(ctx, err)
+		switch {
+		case isModerationValidationError(err), errors.Is(err, moderationmodel.ErrSelfReport):
+			return api.CreateReport400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrNotFound), errors.Is(err, moderationmodel.ErrReportUnavailable):
+			return api.CreateReport404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("create report", zap.Int64("reporter_id", current.UserID), zap.Int64("message_id", request.Body.MessageId), zap.Error(err))
+			return api.CreateReport500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+
+	response := reportModel(report)
+	if !created {
+		return api.CreateReport200JSONResponse(response), nil
+	}
+	return api.CreateReport201JSONResponse(response), nil
+}
+
+// ListAdminReports returns the moderation queue.
+func (h *Handler) ListAdminReports(ctx context.Context, request api.ListAdminReportsRequestObject) (api.ListAdminReportsResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ListAdminReports401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	limit := 20
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	afterID := int64(0)
+	if request.Params.Cursor != nil {
+		parsed, err := strconv.ParseInt(*request.Params.Cursor, 10, 64)
+		if err != nil || parsed < 0 {
+			return api.ListAdminReports400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_CURSOR", "cursor must be a non-negative integer", nil)),
+			}, nil
+		}
+		afterID = parsed
+	}
+
+	filter := moderationmodel.ReportFilter{}
+	if request.Params.Status != nil {
+		filter.Status = string(*request.Params.Status)
+	}
+	if request.Params.Reason != nil {
+		filter.Reason = string(*request.Params.Reason)
+	}
+	if request.Params.AssigneeId != nil {
+		filter.AssigneeID = *request.Params.AssigneeId
+	}
+	if request.Params.Unassigned != nil {
+		filter.Unassigned = *request.Params.Unassigned
+	}
+
+	reports, next, err := h.moderation.ListReports(ctx, current.UserID, filter, afterID, limit)
+	if err != nil {
+		mapped := moderationErrorModel(ctx, err)
+		switch {
+		case isModerationValidationError(err):
+			return api.ListAdminReports400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrForbidden):
+			return api.ListAdminReports403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("list admin reports", zap.Int64("actor_id", current.UserID), zap.Error(err))
+			return api.ListAdminReports500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+
+	response := api.MessageReportList{Reports: make([]api.MessageReport, 0, len(reports))}
+	for _, report := range reports {
+		response.Reports = append(response.Reports, reportModel(report))
+	}
+	if next != nil {
+		cursor := strconv.FormatInt(*next, 10)
+		response.NextCursor = &cursor
+	}
+	return api.ListAdminReports200JSONResponse(response), nil
+}
+
+// GetAdminReport returns one report with the reported message and thread context.
+func (h *Handler) GetAdminReport(ctx context.Context, request api.GetAdminReportRequestObject) (api.GetAdminReportResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.GetAdminReport401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	detail, err := h.moderation.GetReport(ctx, current.UserID, request.ReportId)
+	if err != nil {
+		mapped := moderationErrorModel(ctx, err)
+		switch {
+		case errors.Is(err, moderationmodel.ErrForbidden):
+			return api.GetAdminReport403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrNotFound):
+			return api.GetAdminReport404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("get admin report", zap.Int64("actor_id", current.UserID), zap.Int64("report_id", request.ReportId), zap.Error(err))
+			return api.GetAdminReport500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	return api.GetAdminReport200JSONResponse(reportDetailModel(detail)), nil
+}
+
+// AssignReport assigns an open report to the current administrator.
+func (h *Handler) AssignReport(ctx context.Context, request api.AssignReportRequestObject) (api.AssignReportResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.AssignReport401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	report, err := h.moderation.Assign(ctx, current.UserID, request.ReportId)
+	if err != nil {
+		mapped := moderationErrorModel(ctx, err)
+		switch {
+		case errors.Is(err, moderationmodel.ErrForbidden):
+			return api.AssignReport403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrNotFound):
+			return api.AssignReport404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrAlreadyAssigned), errors.Is(err, moderationmodel.ErrStateConflict):
+			return api.AssignReport409JSONResponse{ConflictJSONResponse: api.ConflictJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("assign report", zap.Int64("actor_id", current.UserID), zap.Int64("report_id", request.ReportId), zap.Error(err))
+			return api.AssignReport500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	return api.AssignReport200JSONResponse(reportModel(report)), nil
+}
+
+// DecideReport resolves or rejects an assigned open report.
+func (h *Handler) DecideReport(ctx context.Context, request api.DecideReportRequestObject) (api.DecideReportResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.DecideReport401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.DecideReport400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	report, err := h.moderation.Decide(ctx, current.UserID, request.ReportId, string(request.Body.Decision), request.Body.Comment)
+	if err != nil {
+		mapped := moderationErrorModel(ctx, err)
+		switch {
+		case isModerationValidationError(err):
+			return api.DecideReport400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrForbidden):
+			return api.DecideReport403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrNotFound):
+			return api.DecideReport404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrStateConflict):
+			return api.DecideReport409JSONResponse{ConflictJSONResponse: api.ConflictJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("decide report", zap.Int64("actor_id", current.UserID), zap.Int64("report_id", request.ReportId), zap.Error(err))
+			return api.DecideReport500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	return api.DecideReport200JSONResponse(reportModel(report)), nil
+}
+
+// ListAdminAudit returns the newest-first audit log.
+func (h *Handler) ListAdminAudit(ctx context.Context, request api.ListAdminAuditRequestObject) (api.ListAdminAuditResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ListAdminAudit401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+
+	limit := 20
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	var beforeID *int64
+	if request.Params.Cursor != nil {
+		parsed, err := strconv.ParseInt(*request.Params.Cursor, 10, 64)
+		if err != nil || parsed <= 0 {
+			return api.ListAdminAudit400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_CURSOR", "cursor must be a positive integer", nil)),
+			}, nil
+		}
+		beforeID = &parsed
+	}
+
+	filter := moderationmodel.AuditFilter{}
+	if request.Params.Action != nil {
+		filter.Action = string(*request.Params.Action)
+	}
+	if request.Params.AdminId != nil {
+		filter.AdminID = *request.Params.AdminId
+	}
+	if request.Params.TargetType != nil {
+		filter.TargetType = *request.Params.TargetType
+	}
+
+	entries, next, err := h.moderation.ListAudit(ctx, current.UserID, filter, beforeID, limit)
+	if err != nil {
+		mapped := moderationErrorModel(ctx, err)
+		switch {
+		case isModerationValidationError(err):
+			return api.ListAdminAudit400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrForbidden):
+			return api.ListAdminAudit403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("list admin audit", zap.Int64("actor_id", current.UserID), zap.Error(err))
+			return api.ListAdminAudit500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+
+	response := api.AuditLogList{Entries: make([]api.AuditLogEntry, 0, len(entries))}
+	for _, entry := range entries {
+		response.Entries = append(response.Entries, auditModel(entry))
+	}
+	if next != nil {
+		cursor := strconv.FormatInt(*next, 10)
+		response.NextCursor = &cursor
+	}
+	return api.ListAdminAudit200JSONResponse(response), nil
+}
+
+func blockModel(block blocklistmodel.Block) api.Block {
+	return api.Block{
+		Id: block.ID,
+		BlockedUser: api.UserSummary{
+			Id:       block.BlockedUser.ID,
+			Username: block.BlockedUser.Username,
+		},
+		CreatedAt: block.BlockedAt,
+	}
+}
+
+func reportModel(report moderationmodel.Report) api.MessageReport {
+	model := api.MessageReport{
+		Id:        report.ID,
+		Reporter:  api.UserSummary{Id: report.Reporter.ID, Username: report.Reporter.Username},
+		MessageId: report.MessageID,
+		Reason:    api.ReportReason(report.Reason),
+		Status:    api.ReportStatus(report.Status),
+		CreatedAt: report.CreatedAt,
+		UpdatedAt: report.UpdatedAt,
+	}
+	if report.Comment != nil {
+		model.Comment = report.Comment
+	}
+	if report.Assignee != nil {
+		assignee := api.UserSummary{Id: report.Assignee.ID, Username: report.Assignee.Username}
+		model.Assignee = &assignee
+	}
+	if report.DecisionComment != nil {
+		model.DecisionComment = report.DecisionComment
+	}
+	return model
+}
+
+func reportDetailModel(detail moderationmodel.ReportDetail) api.ReportDetail {
+	context := make([]api.ChatMessage, 0, len(detail.Context))
+	for _, message := range detail.Context {
+		context = append(context, chatMessageModel(message))
+	}
+	return api.ReportDetail{
+		Report:          reportModel(detail.Report),
+		ReportedMessage: chatMessageModel(detail.ReportedMessage),
+		Context:         context,
+	}
+}
+
+func auditModel(entry moderationmodel.AuditEntry) api.AuditLogEntry {
+	return api.AuditLogEntry{
+		Id:         entry.ID,
+		Admin:      api.UserSummary{Id: entry.Admin.ID, Username: entry.Admin.Username},
+		Action:     api.AuditAction(entry.Action),
+		TargetType: entry.TargetType,
+		TargetId:   entry.TargetID,
+		Metadata:   entry.Metadata,
+		CreatedAt:  entry.CreatedAt,
+	}
+}
+
+func blocklistErrorModel(ctx context.Context, err error) api.Error {
+	switch {
+	case isBlocklistValidationError(err):
+		return errorModel(ctx, "VALIDATION_ERROR", err.Error(), nil)
+	case errors.Is(err, blocklistmodel.ErrSelfBlock):
+		return errorModel(ctx, "SELF_BLOCK", "cannot block yourself", nil)
+	case errors.Is(err, blocklistmodel.ErrTargetNotFound):
+		return errorModel(ctx, "USER_NOT_FOUND", "target user not found", nil)
+	case errors.Is(err, blocklistmodel.ErrForbidden):
+		return errorModel(ctx, "FORBIDDEN", "block list is not available to the current user", nil)
+	default:
+		return errorModel(ctx, "INTERNAL_ERROR", "block list operation failed", nil)
+	}
+}
+
+func moderationErrorModel(ctx context.Context, err error) api.Error {
+	switch {
+	case isModerationValidationError(err):
+		return errorModel(ctx, "VALIDATION_ERROR", err.Error(), nil)
+	case errors.Is(err, moderationmodel.ErrForbidden):
+		return errorModel(ctx, "MODERATION_ACCESS_REQUIRED", "administrator access is required", nil)
+	case errors.Is(err, moderationmodel.ErrNotFound):
+		return errorModel(ctx, "NOT_FOUND", "report not found", nil)
+	case errors.Is(err, moderationmodel.ErrSelfReport):
+		return errorModel(ctx, "SELF_REPORT", "cannot report your own message", nil)
+	case errors.Is(err, moderationmodel.ErrReportUnavailable):
+		return errorModel(ctx, "NOT_FOUND", "message is not available to the current user", nil)
+	case errors.Is(err, moderationmodel.ErrStateConflict):
+		return errorModel(ctx, "REPORT_STATE_CONFLICT", "report cannot change in its current state", nil)
+	case errors.Is(err, moderationmodel.ErrAlreadyAssigned):
+		return errorModel(ctx, "REPORT_ALREADY_ASSIGNED", "report is already assigned to another administrator", nil)
+	default:
+		return errorModel(ctx, "INTERNAL_ERROR", "moderation operation failed", nil)
+	}
+}
+
+func isBlocklistValidationError(err error) bool {
+	var validationError *blocklistmodel.ValidationError
+	return errors.As(err, &validationError)
+}
+
+func isModerationValidationError(err error) bool {
+	var validationError *moderationmodel.ValidationError
+	return errors.As(err, &validationError)
+}
+
 func notificationModel(n notificationmodel.Notification) api.AppNotification {
 	model := api.AppNotification{
 		Id:        n.ID,
@@ -1477,12 +1932,12 @@ func itemModel(item items.Item) api.Item {
 			}
 			return wishes
 		}(),
-		ImageUrls:                 append([]string{}, item.ImageURLs...),
-		Status:                    api.ItemStatus(item.Status),
-		CategoryId:                item.OfferCategoryID,
-		OfferCategoryId:           item.OfferCategoryID,
-		CreatedAt:                 item.CreatedAt,
-		UpdatedAt:                 item.UpdatedAt,
+		ImageUrls:       append([]string{}, item.ImageURLs...),
+		Status:          api.ItemStatus(item.Status),
+		CategoryId:      item.OfferCategoryID,
+		OfferCategoryId: item.OfferCategoryID,
+		CreatedAt:       item.CreatedAt,
+		UpdatedAt:       item.UpdatedAt,
 	}
 }
 

@@ -31,6 +31,8 @@ import (
 	"swap-chain/modules/analyze/adapters"
 	analyzerepository "swap-chain/modules/analyze/repository"
 	analyzeservice "swap-chain/modules/analyze/service"
+	blocklistrepository "swap-chain/modules/blocklist/repository"
+	blocklistservice "swap-chain/modules/blocklist/service"
 	chatmodel "swap-chain/modules/chat/model"
 	chatrepository "swap-chain/modules/chat/repository"
 	chatservice "swap-chain/modules/chat/service"
@@ -38,6 +40,8 @@ import (
 	"swap-chain/modules/matching/service"
 	metricsrepository "swap-chain/modules/metrics/repository"
 	metricsservice "swap-chain/modules/metrics/service"
+	moderationrepository "swap-chain/modules/moderation/repository"
+	moderationservice "swap-chain/modules/moderation/service"
 	notificationrepository "swap-chain/modules/notifications/repository"
 	notificationservice "swap-chain/modules/notifications/service"
 	reputationrepository "swap-chain/modules/reputation/repository"
@@ -392,6 +396,28 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("create chat service: %w", err)
 	}
 
+	blocklistRepo, err := blocklistrepository.NewPostgreSQL(database, chainService)
+	if err != nil {
+		return fmt.Errorf("create blocklist repository: %w", err)
+	}
+	blocklistModule, err := blocklistservice.New(blocklistRepo, blocklistservice.BlocklistConfig{
+		MaxListLimit: cfg.BlocklistMaxListLimit,
+	})
+	if err != nil {
+		return fmt.Errorf("create blocklist service: %w", err)
+	}
+
+	moderationRepo, err := moderationrepository.NewPostgreSQL(database)
+	if err != nil {
+		return fmt.Errorf("create moderation repository: %w", err)
+	}
+	moderationModule, err := moderationservice.New(moderationRepo, moderationservice.ModerationConfig{
+		MaxListLimit: cfg.ModerationMaxListLimit,
+	})
+	if err != nil {
+		return fmt.Errorf("create moderation service: %w", err)
+	}
+
 	categoriesService := categories.NewPostgresService(queries, cfg.UndefinedCategoryID)
 
 	handler := httpapi.NewHandler(
@@ -407,6 +433,8 @@ func run(logger *zap.Logger) error {
 		userService,
 		adminModule,
 		chatModule,
+		blocklistModule,
+		moderationModule,
 		notificationService,
 		reputationModule,
 		metricsModule,

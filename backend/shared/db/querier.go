@@ -9,6 +9,8 @@ import (
 )
 
 type Querier interface {
+	AssignMessageReport(ctx context.Context, arg AssignMessageReportParams) error
+	BlockUser(ctx context.Context, arg BlockUserParams) error
 	ChatMessageBelongsToThread(ctx context.Context, arg ChatMessageBelongsToThreadParams) (bool, error)
 	ClaimStaleAnalyzingItems(ctx context.Context, arg ClaimStaleAnalyzingItemsParams) ([]int64, error)
 	CompleteAdminChain(ctx context.Context, id int64) (int64, error)
@@ -19,6 +21,7 @@ type Querier interface {
 	CountUnreadChatMessages(ctx context.Context, arg CountUnreadChatMessagesParams) (int64, error)
 	CountUnreceivedAdminDeliveries(ctx context.Context, chainID int64) (int64, error)
 	CreateAdminDeliveryEvent(ctx context.Context, arg CreateAdminDeliveryEventParams) error
+	DecideMessageReport(ctx context.Context, arg DecideMessageReportParams) (int64, error)
 	FindAdminDeliveryChain(ctx context.Context, id int64) (int64, error)
 	FindCategory(ctx context.Context, arg FindCategoryParams) ([]FindCategoryRow, error)
 	FindSimilarItems(ctx context.Context, arg FindSimilarItemsParams) ([]FindSimilarItemsRow, error)
@@ -29,20 +32,32 @@ type Querier interface {
 	GetItemForAnalysis(ctx context.Context, id int64) (GetItemForAnalysisRow, error)
 	GetItemWishesForAnalysis(ctx context.Context, itemID int64) ([]GetItemWishesForAnalysisRow, error)
 	GetMatchingSourceItem(ctx context.Context, id int64) (GetMatchingSourceItemRow, error)
+	GetMessageReportByReporterMessage(ctx context.Context, arg GetMessageReportByReporterMessageParams) (GetMessageReportByReporterMessageRow, error)
+	GetModerationReport(ctx context.Context, reportID int64) (GetModerationReportRow, error)
+	GetUserBlock(ctx context.Context, arg GetUserBlockParams) (GetUserBlockRow, error)
+	InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) error
 	InsertChatMessage(ctx context.Context, arg InsertChatMessageParams) (int64, error)
+	InsertMessageReport(ctx context.Context, arg InsertMessageReportParams) (int64, error)
 	IsAdminUser(ctx context.Context, id int64) (bool, error)
 	ListAdminDeliveries(ctx context.Context, arg ListAdminDeliveriesParams) ([]ListAdminDeliveriesRow, error)
+	ListAuditLog(ctx context.Context, arg ListAuditLogParams) ([]ListAuditLogRow, error)
 	ListCategories(ctx context.Context, undefinedCategoryID int32) ([]ListCategoriesRow, error)
 	ListCategoriesMissingEmbedding(ctx context.Context) ([]ListCategoriesMissingEmbeddingRow, error)
 	ListChatMessages(ctx context.Context, arg ListChatMessagesParams) ([]ListChatMessagesRow, error)
 	ListChatThreads(ctx context.Context, actorID int64) ([]ListChatThreadsRow, error)
+	ListMessageReports(ctx context.Context, arg ListMessageReportsParams) ([]ListMessageReportsRow, error)
+	ListThreadMessages(ctx context.Context, arg ListThreadMessagesParams) ([]ListThreadMessagesRow, error)
+	ListUserBlocks(ctx context.Context, arg ListUserBlocksParams) ([]ListUserBlocksRow, error)
 	LockAdminChain(ctx context.Context, id int64) (string, error)
 	LockAdminDelivery(ctx context.Context, id int64) (LockAdminDeliveryRow, error)
+	LockMessageReport(ctx context.Context, reportID int64) (LockMessageReportRow, error)
 	LockRecipientDelivery(ctx context.Context, arg LockRecipientDeliveryParams) (LockRecipientDeliveryRow, error)
 	SetCategoryEmbedding(ctx context.Context, arg SetCategoryEmbeddingParams) (int64, error)
+	UnblockUser(ctx context.Context, arg UnblockUserParams) (int64, error)
 	UpdateAdminDeliveryStatus(ctx context.Context, arg UpdateAdminDeliveryStatusParams) error
 	UpdateItemWishAnalysis(ctx context.Context, arg UpdateItemWishAnalysisParams) (int64, error)
 	UpsertChatReadState(ctx context.Context, arg UpsertChatReadStateParams) (int64, error)
+	UserExists(ctx context.Context, userID int64) (bool, error)
 }
 
 var _ Querier = (*Queries)(nil)

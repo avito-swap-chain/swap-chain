@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -111,6 +112,9 @@ func (r *PostgreSQL) TransitionDelivery(
 	changed := currentStatus != targetStatus
 	if changed {
 		if err := updateDelivery(ctx, queries, actorID, deliveryID, currentStatus, targetStatus); err != nil {
+			return model.Delivery{}, err
+		}
+		if err := recordDeliveryAudit(ctx, queries, actorID, deliveryID, currentStatus, targetStatus); err != nil {
 			return model.Delivery{}, err
 		}
 	}
@@ -305,6 +309,37 @@ func updateDelivery(
 		return fmt.Errorf("record delivery event: %w", err)
 	}
 
+	return nil
+}
+
+// recordDeliveryAudit writes a DELIVERY_STATUS_CHANGED entry into the
+// append-only admin audit log within the current transaction. Only admin
+// delivery transitions call it; the recipient receipt path does not.
+func recordDeliveryAudit(
+	ctx context.Context,
+	queries *db.Queries,
+	actorID int64,
+	deliveryID int64,
+	fromStatus string,
+	toStatus string,
+) error {
+	raw, err := json.Marshal(map[string]any{
+		"deliveryId": deliveryID,
+		"fromStatus": fromStatus,
+		"toStatus":   toStatus,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal delivery audit metadata: %w", err)
+	}
+	if err := queries.InsertAuditLog(ctx, db.InsertAuditLogParams{
+		AdminID:    actorID,
+		Action:     db.AuditAction(model.AuditDeliveryStatusChanged),
+		TargetType: "delivery",
+		TargetID:   deliveryID,
+		Metadata:   raw,
+	}); err != nil {
+		return fmt.Errorf("insert delivery audit log: %w", err)
+	}
 	return nil
 }
 
