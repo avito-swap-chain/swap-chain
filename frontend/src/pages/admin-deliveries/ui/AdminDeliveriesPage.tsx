@@ -24,7 +24,7 @@ function AdvanceButton({ delivery, to }: { delivery: Delivery; to: DeliveryTrans
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Button variant="dark" disabled={isPending} onClick={() => mutate()}>
+      <Button disabled={isPending} onClick={() => mutate()}>
         {ACTION_LABEL[to]}
       </Button>
       {/* Отказ здесь возможен и без ошибки сотрудника: ту же вещь мог провести коллега. */}

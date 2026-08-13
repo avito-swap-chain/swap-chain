@@ -25,7 +25,7 @@ export function DealsList() {
         description="Включите обмен у объявления и опишите желание — сервис соберёт цепочку, как только найдёт подходящих участников."
         action={
           <Link to="/">
-            <Button variant="dark">К моим объявлениям</Button>
+            <Button>К моим объявлениям</Button>
           </Link>
         }
       />

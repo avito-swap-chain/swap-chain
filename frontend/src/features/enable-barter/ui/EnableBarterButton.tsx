@@ -8,7 +8,7 @@ export function EnableBarterButton({ itemId }: { itemId: string }) {
   return (
     <Link
       to={`/items/${itemId}/barter`}
-      className="shrink-0 rounded-btn bg-brand px-3 py-2 text-[13px] font-bold text-on-brand transition-colors hover:bg-brand-press focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      className="shrink-0 rounded-btn bg-dark px-3 py-2 text-[13px] font-bold text-white transition-colors hover:bg-dark-press focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
     >
       Готов обменять
     </Link>

@@ -4,7 +4,7 @@ import { describeError } from '@/shared/api/describeError'
 import { ApiError } from '@/shared/api/fetcher'
 import { normalizePhone } from '@/shared/lib'
 import { DEMO_USERS, login, register } from '@/shared/model/session'
-import { Button, Field, Input } from '@/shared/ui'
+import { Button, Input } from '@/shared/ui'
 
 /**
  * Вход в кабинет. Пароля в контракте нет: бэкенд выдаёт сессию в обмен на телефон,
@@ -77,35 +77,37 @@ export function LoginPage() {
         onSubmit={submit}
         className="flex w-full max-w-[380px] flex-col gap-3.5 rounded-2xl bg-card p-6"
       >
-        <h1 className="text-[24px] leading-7 font-bold">Вход в обмен</h1>
+        <h1 className="text-[26px] leading-8 font-bold">Вход в обмен</h1>
         <p className="text-[15px] leading-5 text-ink-2">
-          Сессия живёт в куке — номер телефона нужен, чтобы бэкенд знал, чьи это вещи.
+          По номеру телефона сервис узнаёт, чьи это вещи и с кем вы меняетесь. Пароль не нужен.
         </p>
 
-        <Field label="Телефон">
-          <Input
-            value={phone}
-            onChange={(event) => editPhone(event.target.value)}
-            placeholder="+79001000001"
-            type="tel"
-            autoComplete="tel"
-            required
-          />
-        </Field>
+        {/* Поля без подписей и рамок, на серой заливке — как на входе в мобильном вебе Авито:
+            их здесь два, и что вводить, видно по плейсхолдеру. */}
+        <Input
+          tone="soft"
+          value={phone}
+          onChange={(event) => editPhone(event.target.value)}
+          placeholder="Телефон"
+          type="tel"
+          autoComplete="tel"
+          aria-label="Телефон"
+          required
+        />
 
         {isNewUser && (
           <>
             <p className="text-[13px] leading-4 font-semibold text-ink-3">
               Такого номера ещё нет — заполните имя, и мы вас заведём
             </p>
-            <Field label="Имя">
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Как вас зовут"
-                required
-              />
-            </Field>
+            <Input
+              tone="soft"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Как вас зовут"
+              aria-label="Имя"
+              required
+            />
           </>
         )}
 

@@ -9,7 +9,7 @@ import type { Item as ApiItem, ItemList, MediaUpload } from '@/shared/api/genera
 import { isBackendConnected } from '@/shared/config/backend'
 import * as mock from './itemMocks'
 import { mapItem } from './mapItem'
-import type { Item, ItemDraft, Wish } from '../model/types'
+import type { Item, ItemDraft } from '../model/types'
 
 /** Ключи кэша TanStack Query для вещей. */
 export const itemKeys = {
@@ -24,7 +24,7 @@ export const itemKeys = {
 /** Что человек меняет в уже размещённом объявлении. */
 export interface ItemEdit {
   /** Желание целиком: форма отдаёт все варианты сразу, правки одного отдельно нет. */
-  wish: Wish[]
+  wish: string[]
   /**
    * Пустое описание не отправляем: в контракте у него `minLength: 1`, и стереть его нельзя.
    * Значит поле, оставленное пустым, — это «не трогать», а не «убрать».
@@ -41,21 +41,18 @@ export interface ItemEdit {
  * добавить строку и передумать — нормальный ход, ошибкой это делать незачем.
  * Повтор того же описания — то же самое ребро, второй раз оно шансов не добавляет.
  */
-function usableWishes(wish: Wish[]): Wish[] {
+function usableWishes(wish: string[]): string[] {
   const seen = new Set<string>()
 
   return wish
-    .map((variant) => ({ ...variant, description: variant.description.trim() }))
+    .map((variant) => variant.trim())
     .filter((variant) => {
-      const key = variant.description.toLowerCase()
-      if (variant.description === '' || seen.has(key)) return false
+      const key = variant.toLowerCase()
+      if (variant === '' || seen.has(key)) return false
       seen.add(key)
       return true
     })
 }
-
-/** В контракт уезжают только формулировки: идентификаторы и категории вариантов заводит бэкенд. */
-const asWishes = (wish: Wish[]) => wish.map((variant) => variant.description)
 
 export async function getMyItems(): Promise<Item[]> {
   if (!isBackendConnected) return mock.listMyItems()
@@ -87,7 +84,7 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
       // обмен — служебным словам вроде «good» не место ни там, ни там. Категория едет
       // отдельным полем, для подбора она и нужна.
       offerDescription: draft.description?.trim() || draft.title,
-      wishes: asWishes(wish),
+      wishes: wish,
       imageUrls: imageUrl ? [imageUrl] : [],
       // Категорию бэкенд принимает и учитывает в подборе; если человек её не выбрал,
       // поле не отправляем — модель определит сама при разборе описания.
@@ -122,7 +119,7 @@ export async function editItem(
   return mapItem(
     unwrap<ApiItem>(
       await updateItem(Number(id), {
-        wishes: asWishes(usable),
+        wishes: usable,
         ...(text ? { offerDescription: text } : {}),
         ...(name ? { offerTitle: name } : {}),
         ...(categoryId ? { categoryId } : {}),
@@ -136,7 +133,7 @@ export async function editItem(
  * вещь заново, а указывает, что готов её обменять. Описание у такого объявления уже есть,
  * меняется только желание.
  */
-export const setItemWish = (id: string, wish: Wish[]): Promise<Item> => editItem(id, { wish })
+export const setItemWish = (id: string, wish: string[]): Promise<Item> => editItem(id, { wish })
 
 /**
  * Снять вещь с обмена. Не удаление: желание убирается, вещь уходит из подбора и снова

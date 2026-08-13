@@ -22,7 +22,7 @@ export function WishesList() {
         description="Желание указывают у объявления, когда включают обмен. Чем больше вариантов — тем выше шанс, что цепочка соберётся."
         action={
           <Link to="/">
-            <Button variant="dark">К моим объявлениям</Button>
+            <Button>К моим объявлениям</Button>
           </Link>
         }
       />

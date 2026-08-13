@@ -1,9 +1,25 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
+import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
 import { getMyProfile, getProfile, getReviews, userKeys, type Profile } from '@/entities/user'
 import { EditProfile } from '@/features/edit-profile'
 import { exchangesLabel, reviewsLabel } from '@/shared/lib'
-import { Avatar, IconStar, Notice, Screen, ScreenHeader } from '@/shared/ui'
+import {
+  Avatar,
+  IconBell,
+  IconBox,
+  IconChat,
+  IconPencil,
+  IconSwap,
+  Notice,
+  Screen,
+  ScreenHeader,
+  Stars,
+  Tile,
+  TileGroup,
+  TileRow,
+} from '@/shared/ui'
 
 // Месяцы в родительном падеже: `toLocaleDateString` отдаёт именительный, и выходило
 // «На Авито с март 2026».
@@ -34,6 +50,10 @@ const registered = (iso: string) => {
  *
  * Чужой профиль нужен не ради полноты: вещь отдают незнакомому человеку, и «кто он такой»
  * — вопрос, который возникает до согласия. Отсюда на него и ведут ссылки с участников цепочки.
+ *
+ * Раскладка — мобильного кабинета Авито: крупный аватар, имя, две плитки-метрики и разделы
+ * группами строк на серой подложке. Разделов у нас меньше — денег в продукте нет, — но
+ * каждая строка ведёт туда, где что-то есть.
  */
 export function ProfilePage({ mine = false }: { mine?: boolean }) {
   const { id = '' } = useParams()
@@ -48,7 +68,7 @@ export function ProfilePage({ mine = false }: { mine?: boolean }) {
     <Screen>
       <ScreenHeader title={mine ? 'Мой профиль' : 'Профиль'} onBack={() => navigate(-1)} />
 
-      <main className="flex flex-1 flex-col gap-4 p-4">
+      <main className="flex flex-1 flex-col gap-5 p-4">
         {isPending && <Notice>Загрузка…</Notice>}
         {isError && <Notice tone="error">Не удалось загрузить профиль</Notice>}
 
@@ -59,37 +79,106 @@ export function ProfilePage({ mine = false }: { mine?: boolean }) {
 }
 
 function ProfileBody({ profile, mine }: { profile: Profile; mine: boolean }) {
+  const [editing, setEditing] = useState(false)
+
   return (
     <>
-      <div className="flex items-center gap-4">
-        <Avatar name={profile.name} src={profile.avatarUrl} className="size-20 text-[28px]" />
+      <div className="flex flex-col gap-3">
+        {/* Кольцо вокруг аватара — как у выбранного профиля в кабинете Авито: экран
+            открывается с ответа «кто я здесь», а в демо ещё и «за кого смотрят». */}
+        <Avatar
+          name={profile.name}
+          src={profile.avatarUrl}
+          className={
+            mine ? 'size-20 text-[28px] ring-3 ring-brand ring-offset-3' : 'size-20 text-[28px]'
+          }
+        />
 
-        <div className="min-w-0">
-          <p className="truncate text-[22px] leading-7 font-bold">{profile.name}</p>
+        <div>
+          <p className="text-[22px] leading-7 font-bold">{profile.name}</p>
           <p className="text-[13px] text-ink-2">На Авито с {registered(profile.registeredAt)}</p>
-
-          {/* Рейтинг показываем только там, где он настоящий: пока человека никто не оценил,
-              его нет вовсе, и «5,0» из воздуха врал бы ровно там, где на него смотрят. */}
-          {profile.rating !== undefined && (
-            <p className="mt-1 flex items-center gap-1 text-[13px] text-ink-2">
-              <IconStar size={15} />
-              <b className="font-bold text-ink">{profile.rating.toFixed(1).replace('.', ',')}</b>
-              {profile.reviews !== undefined && <span>· {reviewsLabel(profile.reviews)}</span>}
-            </p>
-          )}
-
-          {/* Число завершённых обменов — довод сильнее рейтинга: он про то, что человек
-              доводит сделку до конца, а не про то, как о нём отозвались. */}
-          {profile.completedExchanges !== undefined && profile.completedExchanges > 0 && (
-            <p className="text-[13px] text-ink-2">{exchangesLabel(profile.completedExchanges)}</p>
-          )}
         </div>
       </div>
 
-      {mine && <EditProfile profile={profile} />}
+      {/* Две метрики в ряд. Рейтинг показываем даже нулевым: подпись «Нет отзывов» говорит
+          прямо, что за ним ничего не стоит, — а пустое место на его месте выглядит поломкой. */}
+      <div className="grid grid-cols-2 gap-2">
+        <Tile
+          value={
+            <>
+              {(profile.rating ?? 0).toFixed(1).replace('.', ',')}
+              <Stars rating={profile.rating} />
+            </>
+          }
+          label={profile.reviews ? reviewsLabel(profile.reviews) : 'Нет отзывов'}
+        />
+
+        {/* Число завершённых обменов — довод сильнее рейтинга: он про то, что человек
+            доводит сделку до конца, а не про то, как о нём отозвались. */}
+        <Tile
+          value={profile.completedExchanges ?? 0}
+          label={
+            profile.completedExchanges
+              ? exchangesLabel(profile.completedExchanges).replace(/^\d+\s/, '')
+              : 'Обменов пока нет'
+          }
+        />
+      </div>
+
+      {mine && <Cabinet onEdit={() => setEditing((open) => !open)} editing={editing} />}
+
+      {mine && editing && <EditProfile profile={profile} />}
 
       <Reviews userId={profile.id} count={profile.reviews} />
     </>
+  )
+}
+
+/**
+ * Разделы кабинета строками — как «Инструменты» у Авито. Дублируют меню оболочки намеренно:
+ * на узком экране меню сворачивается в нижнюю панель, и профиль остаётся местом, откуда
+ * видно всё сразу.
+ */
+function Cabinet({ onEdit, editing }: { onEdit: () => void; editing: boolean }) {
+  const { data } = useQuery({ queryKey: chainKeys.my(), queryFn: getMyChains })
+  const waiting = data?.filter(needsMyAction).length ?? 0
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-[19px] leading-6 font-bold">Кабинет</h2>
+
+      <TileGroup>
+        <TileRow icon={<IconBox size={19} />} to="/">
+          Мои объявления
+        </TileRow>
+
+        <TileRow
+          icon={<IconSwap size={19} />}
+          to="/exchange"
+          trailing={
+            waiting > 0 && (
+              <span className="rounded-chip bg-stop px-1.5 py-0.5 font-sans text-[12px] leading-4 font-bold text-white">
+                {waiting}
+              </span>
+            )
+          }
+        >
+          Обмены
+        </TileRow>
+
+        <TileRow icon={<IconChat size={19} />} to="/messages">
+          Сообщения
+        </TileRow>
+
+        <TileRow icon={<IconBell size={19} />} to="/notifications">
+          Уведомления
+        </TileRow>
+
+        <TileRow icon={<IconPencil size={19} />} onClick={onEdit}>
+          {editing ? 'Свернуть правку профиля' : 'Изменить имя и фотографию'}
+        </TileRow>
+      </TileGroup>
+    </section>
   )
 }
 
@@ -118,7 +207,7 @@ function Reviews({ userId, count }: { userId: string; count?: number }) {
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-[17px] font-bold">
+      <h2 className="text-[19px] leading-6 font-bold">
         Отзывы{count !== undefined && count > 0 && <span className="text-ink-2"> · {count}</span>}
       </h2>
 
@@ -127,15 +216,21 @@ function Reviews({ userId, count }: { userId: string; count?: number }) {
           Отзывов пока нет — их оставляют соседи по кругу после завершённого обмена.
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
+        <TileGroup>
           {data.map((review) => (
-            <li key={review.id} className="flex flex-col gap-1.5 rounded-lg bg-surface-2 p-3">
+            <div
+              key={review.id}
+              className="flex flex-col gap-1.5 px-4 py-3.5 not-first:border-t not-first:border-card"
+            >
               <div className="flex items-center gap-2">
-                <Avatar name={review.author.name} src={review.author.avatarUrl} className="size-7" />
+                <Avatar
+                  name={review.author.name}
+                  src={review.author.avatarUrl}
+                  className="size-7"
+                />
                 <b className="text-[13px] font-bold">{review.author.name}</b>
-                <span className="flex items-center gap-0.5 text-[13px] text-ink-2">
-                  <IconStar size={14} />
-                  {review.rating}
+                <span className="flex items-center gap-1 text-[13px] text-ink-2">
+                  <Stars rating={review.rating} size={13} />
                 </span>
                 <span className="ml-auto text-[12.5px] text-ink-3">
                   {reviewDate(review.createdAt)}
@@ -144,9 +239,9 @@ function Reviews({ userId, count }: { userId: string; count?: number }) {
 
               {/* Отзыв без текста — обычное дело: оценку ставят чаще, чем пишут. */}
               {review.text && <p className="text-[13px] leading-relaxed">{review.text}</p>}
-            </li>
+            </div>
           ))}
-        </ul>
+        </TileGroup>
       )}
     </section>
   )

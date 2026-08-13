@@ -39,7 +39,8 @@ export function EditProfile({ profile }: { profile: Profile }) {
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3.5 border-t border-line pt-4">
+    // Форма раскрывается строкой кабинета — своей черты сверху ей больше не нужно.
+    <form onSubmit={submit} className="flex flex-col gap-3.5">
       {/* Аватар не повторяем — он стоит крупным над формой. Здесь только действия над ним.
           Пустую строку бэкенд понимает как «убрать фотографию», поэтому предлагаем это
           отдельно и только тогда, когда убирать есть что. */}

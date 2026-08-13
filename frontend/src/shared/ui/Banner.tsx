@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { cx } from '../lib'
 
-type Tone = 'info' | 'ok' | 'stop'
+type Tone = 'info' | 'ok' | 'attention' | 'stop'
 
 const tones: Record<Tone, string> = {
   info: 'bg-brand-soft [&_svg]:text-brand',
   ok: 'bg-ok-bg [&_svg]:text-ok',
+  attention: 'bg-attention-bg [&_svg]:text-attention',
   stop: 'bg-stop-bg [&_svg]:text-stop',
 }
 

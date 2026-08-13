@@ -16,10 +16,13 @@ export function ItemCard({ item, action }: ItemCardProps) {
     // Кнопка до 400px переезжает под название: рядом с ней на заголовок остаётся полстроки,
     // и «Монитор LG 27" IPS» обрезается до «Монитор L…». Статус-подпись узкая — она
     // остаётся в строке всегда, отдельная строка ради неё вдвое растила бы карточку.
+    //
+    // Выше 400px строка переносится, если действий несколько: у вещи в подборе их три —
+    // статус, правка и снятие, — и они съедали заголовок целиком, до пустого места.
     <Card
       className={cx(
         'grid grid-cols-[auto_1fr] items-center gap-x-3 p-3',
-        action ? 'gap-y-2.5 min-[400px]:flex' : 'grid-cols-[auto_1fr_auto]',
+        action ? 'gap-y-2.5 min-[400px]:flex min-[400px]:flex-wrap' : 'grid-cols-[auto_1fr_auto]',
       )}
     >
       {item.photoUrl ? (
@@ -35,7 +38,9 @@ export function ItemCard({ item, action }: ItemCardProps) {
         </div>
       )}
 
-      <div className="min-w-0 flex-1">
+      {/* Нижняя граница ширины — то, что заставляет строку перенестись, а не схлопнуть
+          заголовок: без неё flex-1 сжимается до нуля, и название пропадает вовсе. */}
+      <div className="min-w-0 flex-1 min-[400px]:min-w-30">
         <b className="block truncate text-[14.5px] font-bold">{item.title}</b>
         {/* Подпись собирается из того, что известно: по данным бэкенда категории и состояния
             нет, и строка «·» без частей выглядела бы поломкой. */}
@@ -51,7 +56,9 @@ export function ItemCard({ item, action }: ItemCardProps) {
       <div
         className={cx(
           'flex justify-end',
-          action ? 'col-span-2 min-[400px]:col-span-1 min-[400px]:shrink-0' : undefined,
+          action
+            ? 'col-span-2 min-[400px]:col-span-1 min-[400px]:ml-auto min-[400px]:shrink-0'
+            : undefined,
         )}
       >
         {action ?? <ItemStatusLabel status={item.status} />}

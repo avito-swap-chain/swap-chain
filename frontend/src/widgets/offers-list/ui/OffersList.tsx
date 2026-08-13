@@ -4,19 +4,13 @@ import {
   countVariantsWithItem,
   findMe,
   getMyChains,
-  isOpenOffer,
+  isInboxOffer,
   type Chain,
 } from '@/entities/chain'
 import { getMyItems, itemKeys } from '@/entities/item'
 import { OfferCard } from './OfferCard'
 import { isBackendConnected } from '@/shared/config/backend'
 import { Notice } from '@/shared/ui'
-
-/**
- * Что человеку нужно увидеть в блоке предложений: варианты, ждущие ответа, и те, что
- * отменились, — вторые остаются, пока их не объяснили, иначе вариант просто исчезнет.
- */
-const isInbox = (chain: Chain): boolean => isOpenOffer(chain) || chain.status === 'cancelled'
 
 /** Отменённые уходят вниз: сначала то, на что можно ответить. */
 const answerableFirst = (a: Chain, b: Chain): number =>
@@ -61,7 +55,7 @@ export function OffersList() {
   // обидный вывод, который человек может сделать из упавшего запроса.
   if (isError) return <Notice tone="error">Не удалось загрузить предложения обмена</Notice>
 
-  const offers = data?.filter(isInbox).sort(answerableFirst) ?? []
+  const offers = data?.filter(isInboxOffer).sort(answerableFirst) ?? []
   if (offers.length === 0) return null
 
   return (

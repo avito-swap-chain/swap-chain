@@ -10,14 +10,20 @@ export function BrandMark({ label = 'Обмен' }: { label?: string }) {
   return (
     /* Размеры сняты с шапки Авито: знак 30×30, надпись вровень с ним по оптическому весу. */
     <span className="flex items-center gap-2.5 text-[26px] leading-none font-bold">
-      <svg viewBox="0 0 410 380" className="h-[30px] w-auto shrink-0" aria-hidden="true">
-        <circle cx="122.965" cy="256.711" r="122.559" className="fill-accent-green" />
-        <circle cx="306.803" cy="100.051" r="99.645" className="fill-brand" />
-        <circle cx="335.574" cy="289.745" r="74.058" className="fill-accent-red" />
-        <circle cx="146.404" cy="72.347" r="45.829" className="fill-accent-violet" />
-      </svg>
-
+      <BrandDots className="h-[30px] w-auto shrink-0" />
       <span className="tracking-tight">Avito {label}</span>
     </span>
+  )
+}
+
+/** Один знак, без названия: им подписан служебный канал сервиса в списке переписок. */
+export function BrandDots({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 410 380" className={className} aria-hidden="true">
+      <circle cx="122.965" cy="256.711" r="122.559" className="fill-accent-green" />
+      <circle cx="306.803" cy="100.051" r="99.645" className="fill-brand" />
+      <circle cx="335.574" cy="289.745" r="74.058" className="fill-accent-red" />
+      <circle cx="146.404" cy="72.347" r="45.829" className="fill-accent-violet" />
+    </svg>
   )
 }

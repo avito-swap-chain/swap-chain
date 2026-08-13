@@ -125,7 +125,11 @@ let chains: Chain[] = [
     status: 'active',
     participants: [
       {
-        ...of(DASHA, { id: '5', title: 'Кофеварка', photoUrl: '/mock/items/coffee.jpg' }, 'confirmed'),
+        ...of(
+          DASHA,
+          { id: '5', title: 'Кофеварка', photoUrl: '/mock/items/coffee.jpg' },
+          'confirmed',
+        ),
         // Даше уже везут гитару — на её экране видно «Вам везут: едет получателю».
         incomingDelivery: 'IN_DELIVERY',
       },

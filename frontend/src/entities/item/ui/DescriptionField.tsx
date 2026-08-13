@@ -15,6 +15,8 @@ interface DescriptionFieldProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  /** Пустая подпись — когда поле стоит внутри блока, у которого заголовок уже есть. */
+  label?: string
 }
 
 /**
@@ -22,11 +24,16 @@ interface DescriptionFieldProps {
  * в обоих местах одинаково, а бэкенд ищет обмен по `title + description` — это единственное,
  * из чего подбор узнаёт о вещи что-то сверх названия.
  */
-export function DescriptionField({ value, onChange, disabled }: DescriptionFieldProps) {
+export function DescriptionField({
+  value,
+  onChange,
+  disabled,
+  label = 'Описание',
+}: DescriptionFieldProps) {
   const quality = value.trim() ? QUALITY[descriptionQuality(value)] : undefined
 
   return (
-    <Field label="Описание">
+    <Field label={label}>
       <Textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}

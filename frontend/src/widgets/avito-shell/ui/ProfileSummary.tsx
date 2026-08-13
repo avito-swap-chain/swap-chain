@@ -2,9 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { getCurrentUser, sessionKeys } from '@/shared/model/session'
 import { asset, cx, reviewsLabel } from '@/shared/lib'
-import { IconStar } from '@/shared/ui'
-
-const STARS = [1, 2, 3, 4, 5]
+import { Stars } from '@/shared/ui'
 
 /**
  * Шапка кабинета Авито: крупный аватар, имя, рейтинг со звёздами и отзывы — и только
@@ -18,8 +16,6 @@ const STARS = [1, 2, 3, 4, 5]
 export function ProfileSummary({ className }: { className?: string }) {
   const { data: user } = useQuery({ queryKey: sessionKeys.current(), queryFn: getCurrentUser })
   if (!user) return null
-
-  const filled = user.rating === undefined ? 0 : Math.round(user.rating)
 
   return (
     <div className={cx('border-b border-line pb-4', className)}>
@@ -53,15 +49,7 @@ export function ProfileSummary({ className }: { className?: string }) {
           <span className="text-[15px] leading-5 font-bold">
             {user.rating.toLocaleString('ru-RU')}
           </span>
-          <span aria-hidden className="flex gap-0.5">
-            {STARS.map((star) => (
-              <IconStar
-                key={star}
-                size={15}
-                className={star <= filled ? 'text-attention-dot' : 'text-line'}
-              />
-            ))}
-          </span>
+          <Stars rating={user.rating} />
           {user.reviews !== undefined && (
             <span className="text-[15px] leading-5 text-brand">{reviewsLabel(user.reviews)}</span>
           )}

@@ -1,27 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import { recognitionPatch, type RecognizedField } from './recognitionPatch'
+import { recognitionPatch } from './recognitionPatch'
 
 const RECOGNIZED = {
   title: 'Горный велосипед',
-  category: 'Спорт и отдых',
   condition: 'good',
+  description: 'Рама 19", катался два сезона',
 } as const
 
-const edited = (...fields: RecognizedField[]) => new Set(fields)
-
-describe('recognitionPatch — подстановка распознанного в форму', () => {
-  it('заполняет все поля, если человек ничего не правил', () => {
-    expect(recognitionPatch(RECOGNIZED, edited())).toEqual(RECOGNIZED)
+describe('recognitionPatch — подстановка распознанного в сводку', () => {
+  it('заполняет пустые поля целиком', () => {
+    expect(recognitionPatch(RECOGNIZED, {})).toEqual(RECOGNIZED)
   })
 
-  it('не перетирает поле, которое человек заполнил сам', () => {
-    const patch = recognitionPatch(RECOGNIZED, edited('title'))
+  it('не перетирает то, что человек уже написал', () => {
+    const patch = recognitionPatch(RECOGNIZED, { title: 'Велосипед Stels' })
 
     expect(patch.title).toBeUndefined()
-    expect(patch).toEqual({ category: 'Спорт и отдых', condition: 'good' })
+    expect(patch.description).toBe(RECOGNIZED.description)
   })
 
-  it('если правили всё, подставлять нечего', () => {
-    expect(recognitionPatch(RECOGNIZED, edited('title', 'category', 'condition'))).toEqual({})
+  // Пробелы в поле — это пустое поле: иначе случайный пробел лишал бы человека подсказки.
+  it('поле из одних пробелов считается пустым', () => {
+    expect(recognitionPatch(RECOGNIZED, { title: '   ' }).title).toBe('Горный велосипед')
+  })
+
+  it('если заполнено всё, подставлять нечего', () => {
+    expect(recognitionPatch(RECOGNIZED, RECOGNIZED)).toEqual({})
+  })
+
+  it('чего модель не дала, того и не подставляем', () => {
+    expect(recognitionPatch({ description: 'Тёмный деним' }, {})).toEqual({
+      description: 'Тёмный деним',
+    })
   })
 })
