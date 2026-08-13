@@ -21,6 +21,8 @@ sql:
       - "migrations/000017_add_chain_rejections.up.sql"
       - "migrations/000018_item_wishes.up.sql"
       - "migrations/000019_categories_external.up.sql"
+      - "migrations/000020_add_category_decisions.up.sql"
+      - "migrations/000021_migrate_undefined_categories.up.sql"
     queries: "sql/queries"
     gen:
       go:

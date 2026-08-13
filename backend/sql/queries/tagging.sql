@@ -2,14 +2,15 @@
 SELECT category.id,
        category.name,
        (1.0 - COALESCE(
-           category.embedding_external <=> sqlc.arg(embedding)::vector,
-           category.embedding_local <=> sqlc.arg(embedding)::vector
+           category.embedding_external <=> sqlc.arg(embedding_external)::vector,
+           category.embedding_local <=> sqlc.arg(embedding_local)::vector
        ))::float8 AS similarity
 FROM categories AS category
 WHERE (category.embedding_local IS NOT NULL OR category.embedding_external IS NOT NULL)
+  AND (sqlc.arg(embedding_external)::vector IS NOT NULL OR sqlc.arg(embedding_local)::vector IS NOT NULL)
   AND category.id != sqlc.arg(undefined_category_id)
 ORDER BY similarity DESC
-LIMIT 2;
+;
 
 -- name: ListCategoriesMissingEmbedding :many
 SELECT category.id, category.name
@@ -19,8 +20,8 @@ ORDER BY category.id;
 
 -- name: SetCategoryEmbedding :execrows
 UPDATE categories
-SET embedding_local = sqlc.arg(embedding)::vector,
-    embedding_external = sqlc.arg(embedding)::vector
+SET embedding_local = sqlc.arg(embedding_local)::vector,
+    embedding_external = sqlc.arg(embedding_external)::vector
 WHERE id = sqlc.arg(id)
   AND (embedding_local IS NULL OR embedding_external IS NULL);
 

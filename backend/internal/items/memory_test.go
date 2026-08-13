@@ -7,12 +7,26 @@ import (
 	"testing"
 )
 
+func TestMemoryServiceRequiresOfferCategory(t *testing.T) {
+	service := NewMemoryService()
+	_, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Горный велосипед",
+		Wishes:           []string{"Телефон"},
+	})
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) || validationError.Fields["categoryId"] == "" {
+		t.Fatalf("Create() error = %v, want categoryId validation error", err)
+	}
+}
+
 func TestMemoryServiceWithdrawsItemWithoutDeletingIt(t *testing.T) {
 	service := NewMemoryService()
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -39,7 +53,8 @@ func TestMemoryServiceRestartsAnalysisWhenWishChanges(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -61,7 +76,8 @@ func TestMemoryServiceRefusesLockedOrForeignItemUpdate(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -85,7 +101,8 @@ func TestMemoryServiceUpdatesOfferTitle(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -110,7 +127,8 @@ func TestMemoryServiceRejectsBlankOfferTitle(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -131,7 +149,8 @@ func TestMemoryServiceRejectsLongOfferTitle(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -152,7 +171,8 @@ func TestMemoryServiceNoOpOnSameOfferTitle(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -174,7 +194,8 @@ func TestMemoryServiceForeignOwnerTitleUpdate(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -191,7 +212,8 @@ func TestMemoryServiceLockedItemTitleUpdate(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Горный велосипед",
-		Wishes: []string{"Телефон"},
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -206,4 +228,66 @@ func TestMemoryServiceLockedItemTitleUpdate(t *testing.T) {
 	if !errors.Is(err, ErrConflict) {
 		t.Fatalf("Update() error = %v, want ErrConflict", err)
 	}
+}
+
+func TestMemoryServiceResolvesRequiredCategories(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Самокат",
+		OfferDescription: "Для города",
+		Wishes:           []string{"Что-то для дома"},
+		OfferCategoryID:  int32PointerForTest(4),
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	service.mu.Lock()
+	item := service.items[created.ID]
+	item.Status = "ACTION_REQUIRED"
+	service.items[created.ID] = item
+	service.mu.Unlock()
+
+	resolved, err := service.ResolveCategories(context.Background(), 7, created.ID, CategoryDecisionInput{
+		Wishes: []WishCategoryDecision{{
+			WishID:     item.Wishes[0].ID,
+			CategoryID: 3,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ResolveCategories() error = %v", err)
+	}
+	if resolved.Status != "MATCHING" || resolved.OfferCategoryID == nil || *resolved.OfferCategoryID != 4 {
+		t.Fatalf("resolved item = %+v", resolved)
+	}
+	if resolved.Wishes[0].CategoryID == nil || *resolved.Wishes[0].CategoryID != 3 {
+		t.Fatalf("resolved wish = %+v", resolved.Wishes[0])
+	}
+}
+
+func TestMemoryServiceRequiresEveryUnresolvedWishDecision(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Самокат",
+		OfferDescription: "Для города",
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	service.mu.Lock()
+	item := service.items[created.ID]
+	item.Status = "ACTION_REQUIRED"
+	service.items[created.ID] = item
+	service.mu.Unlock()
+
+	_, err = service.ResolveCategories(context.Background(), 7, created.ID, CategoryDecisionInput{})
+	var validationError *ValidationError
+	if !errors.As(err, &validationError) {
+		t.Fatalf("ResolveCategories() error = %v, want ValidationError", err)
+	}
+}
+
+func int32PointerForTest(value int32) *int32 {
+	return &value
 }

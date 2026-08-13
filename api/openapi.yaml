@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Swap Chain API
-  version: 0.8.0
+  version: 0.9.0
   description: Shared REST and realtime contract for the swap-chain MVP.
 
 servers:
@@ -561,6 +561,53 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/items/{itemId}/category-decision:
+    parameters:
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: resolveItemCategories
+      tags: [items, categories]
+      summary: Resolve categories that require the item owner's input
+      description: >
+        Applies all outstanding wish-category decisions atomically. Each value
+        must be an available user-facing category from GET /api/v1/categories.
+        offerCategoryId is retained only for resolving legacy cards created
+        before categoryId became mandatory.
+        A successful decision moves the item from ACTION_REQUIRED to MATCHING.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveItemCategoriesRequest"
+      responses:
+        "200":
+          description: Categories resolved and item returned to matching
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1397,7 +1444,7 @@ components:
 
     CreateItemRequest:
       type: object
-      required: [offerTitle, offerDescription, wishes]
+      required: [offerTitle, offerDescription, categoryId, wishes]
       properties:
         offerTitle:
           type: string
@@ -1423,7 +1470,7 @@ components:
         categoryId:
           type: integer
           format: int32
-          description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
+          description: Required user-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. Wish categories are determined by the analysis pipeline from their descriptions.
 
     UpdateItemRequest:
       type: object
@@ -1448,6 +1495,33 @@ components:
           type: integer
           format: int32
           description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
+
+    ResolveItemCategoriesRequest:
+      type: object
+      minProperties: 1
+      properties:
+        offerCategoryId:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Legacy-only decision for cards created before offer category became mandatory.
+        wishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/WishCategoryDecision"
+
+    WishCategoryDecision:
+      type: object
+      required: [wishId, categoryId]
+      properties:
+        wishId:
+          type: integer
+          format: int64
+          minimum: 1
+        categoryId:
+          type: integer
+          format: int32
+          minimum: 1
 
     MediaUpload:
       type: object
@@ -1502,12 +1576,12 @@ components:
           type: integer
           format: int32
           nullable: true
-          description: User-selected offer category; null when not explicitly set. Maps to offer_category_id.
+          description: User-selected offer category. Required for newly created cards. Maps to offer_category_id.
         offerCategoryId:
           type: integer
           format: int32
           nullable: true
-          description: Assigned by AI analysis; null until analysis completes.
+          description: Compatibility alias of categoryId backed by offer_category_id.
         wantCategoryId:
           type: integer
           format: int32
@@ -1522,7 +1596,7 @@ components:
 
     ItemWish:
       type: object
-      required: [id, categoryId, description]
+      required: [id, description]
       properties:
         id:
           type: integer
@@ -1530,6 +1604,7 @@ components:
         categoryId:
           type: integer
           format: int32
+          nullable: true
         description:
           type: string
 
@@ -1547,7 +1622,7 @@ components:
 
     ItemStatus:
       type: string
-      enum: [ANALYZING, MATCHING, LOCKED, WITHDRAWN]
+      enum: [ANALYZING, ACTION_REQUIRED, MATCHING, LOCKED, WITHDRAWN]
 
     Category:
       type: object

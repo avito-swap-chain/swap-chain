@@ -2,37 +2,54 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 
 	"swap-chain/modules/analyze/model"
+
+	"go.uber.org/zap"
 )
+
+type CategoryClassifier interface {
+	GenerateJSON(ctx context.Context, prompt string) (string, error)
+}
 
 type TaggingRepo interface {
 	FindCategories(
 		ctx context.Context,
-		embedding []float32,
+		local []float32,
+		external []float32,
 		undefinedCategoryID int32,
 	) ([]model.CategoryCandidate, error)
+	ListCategories(ctx context.Context, undefinedCategoryID int32) ([]model.CategoryCandidate, error)
 }
 
 type TaggingConfig struct {
-	SimilarityThreshold float64 // порог, не достигнув который, включается ручное тегирование
-	ConfidenceMargin    float64 // минимальный отрыв топ-1 от топ-2 категории для уверенности
-	UndefinedCategoryID int32   // fallback-категория, если уверенно определить категорию не удалось
+	SimilarityThreshold float64
+	ConfidenceMargin    float64
+	UndefinedCategoryID int32
 }
 
+// Tagging сначала классифицирует текст через Flash, затем использует embedding
+// и при неоднозначности переводит карточку к ручному выбору.
 type Tagging struct {
-	repo TaggingRepo
-	cfg  TaggingConfig
+	classifier CategoryClassifier
+	repo       TaggingRepo
+	cfg        TaggingConfig
+	logger     *zap.Logger
 }
 
-func NewTagging(repo TaggingRepo, cfg TaggingConfig) (*Tagging, error) {
+func NewTagging(classifier CategoryClassifier, repo TaggingRepo, cfg TaggingConfig, logger *zap.Logger) (*Tagging, error) {
 	switch {
 	case repo == nil:
 		return nil, fmt.Errorf("tagging init: 'tagging repo' is required")
 	case cfg.UndefinedCategoryID <= 0:
 		return nil, fmt.Errorf("tagging init: 'undefined category ID' must be positive")
+	case logger == nil:
+		return nil, fmt.Errorf("tagging init: 'logger' is required")
 	}
 
 	if math.IsNaN(cfg.SimilarityThreshold) || math.IsInf(cfg.SimilarityThreshold, 0) ||
@@ -44,62 +61,99 @@ func NewTagging(repo TaggingRepo, cfg TaggingConfig) (*Tagging, error) {
 		return nil, fmt.Errorf("tagging init: invalid 'confidence margin' %g", cfg.ConfidenceMargin)
 	}
 
-	return &Tagging{
-		repo: repo,
-		cfg:  cfg,
-	}, nil
+	return &Tagging{classifier: classifier, repo: repo, cfg: cfg, logger: logger}, nil
 }
 
-// DefineTag определяет наиболее подходящую категорию по готовому embedding.
-// Вектор рассчитывает Analysis и переиспользует его для matching.
-func (s *Tagging) DefineTag(ctx context.Context, embedding []float32) (*model.CategoryMatch, error) {
-	if len(embedding) == 0 {
-		return nil, fmt.Errorf("define category: embedding is empty")
+// DefineTag реализует цепочку Flash -> embedding -> ручной выбор.
+func (s *Tagging) DefineTag(
+	ctx context.Context,
+	text string,
+	local []float32,
+	external []float32,
+) (*model.CategoryMatch, error) {
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("define category: text is empty")
+	}
+	if len(local) == 0 && len(external) == 0 {
+		return nil, fmt.Errorf("define category: embeddings are empty")
 	}
 
-	rows, err := s.repo.FindCategories(ctx, embedding, s.cfg.UndefinedCategoryID)
+	if s.classifier != nil {
+		categoryID, err := s.defineByTextModel(ctx, text)
+		if err == nil {
+			if categoryID == s.cfg.UndefinedCategoryID {
+				return &model.CategoryMatch{RequiresInput: true}, nil
+			}
+			return &model.CategoryMatch{CategoryID: categoryID}, nil
+		}
+		s.logger.Warn("category classification via text model failed, using embeddings", zap.Error(err))
+	}
+
+	return s.defineByCosineComparison(ctx, local, external)
+}
+
+func (s *Tagging) defineByTextModel(ctx context.Context, text string) (int32, error) {
+	categories, err := s.repo.ListCategories(ctx, s.cfg.UndefinedCategoryID)
 	if err != nil {
-		return nil, fmt.Errorf("find category error: %w", err)
+		return 0, fmt.Errorf("list categories: %w", err)
 	}
-	isManual, topCategory := s.isNeedManual(rows)
-	if isManual {
-		match := &model.CategoryMatch{
-			CategoryID: s.cfg.UndefinedCategoryID,
-			IsManual:   true,
-		}
-		if topCategory != nil {
-			match.Confidence = topCategory.Similarity
-		}
-
-		return match, nil
+	if len(categories) == 0 {
+		return 0, fmt.Errorf("category list is empty")
 	}
 
-	return &model.CategoryMatch{
-		CategoryID: topCategory.ID,
-		Confidence: topCategory.Similarity,
-		IsManual:   false,
-	}, nil
+	var available strings.Builder
+	known := make(map[int32]struct{}, len(categories))
+	for _, category := range categories {
+		known[category.ID] = struct{}{}
+		available.WriteString(strconv.FormatInt(int64(category.ID), 10))
+		available.WriteString(": ")
+		available.WriteString(category.Name)
+		available.WriteByte('\n')
+	}
+	known[s.cfg.UndefinedCategoryID] = struct{}{}
+
+	raw, err := s.classifier.GenerateJSON(ctx, BuildCategoryDefinitionPrompt(available.String(), "", text))
+	if err != nil {
+		return 0, fmt.Errorf("generate category: %w", err)
+	}
+	s.logger.Info("category model response", zap.String("response", raw))
+	var response struct {
+		CategoryID int32 `json:"category_id"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&response); err != nil {
+		return 0, fmt.Errorf("decode category response: %w", err)
+	}
+	if err := ensureJSONEnd(decoder); err != nil {
+		return 0, fmt.Errorf("decode category response: %w", err)
+	}
+	if _, ok := known[response.CategoryID]; !ok {
+		return 0, fmt.Errorf("model returned unavailable category %d", response.CategoryID)
+	}
+
+	return response.CategoryID, nil
 }
 
-func (s *Tagging) isNeedManual(rows []model.CategoryCandidate) (bool, *model.CategoryCandidate) {
-	if len(rows) == 0 {
-		return true, nil
+func (s *Tagging) defineByCosineComparison(
+	ctx context.Context,
+	local []float32,
+	external []float32,
+) (*model.CategoryMatch, error) {
+	candidates, err := s.repo.FindCategories(ctx, local, external, s.cfg.UndefinedCategoryID)
+	if err != nil {
+		return nil, fmt.Errorf("find categories: %w", err)
+	}
+	if s.isNeedManual(candidates) {
+		return &model.CategoryMatch{RequiresInput: true}, nil
 	}
 
-	topCategory := rows[0]
+	return &model.CategoryMatch{CategoryID: candidates[0].ID}, nil
+}
 
-	if topCategory.Similarity < s.cfg.SimilarityThreshold {
-		return true, &topCategory
+func (s *Tagging) isNeedManual(candidates []model.CategoryCandidate) bool {
+	if len(candidates) == 0 || candidates[0].Similarity < s.cfg.SimilarityThreshold {
+		return true
 	}
-
-	if len(rows) >= 2 {
-		secondCategory := rows[1]
-		diff := topCategory.Similarity - secondCategory.Similarity
-
-		if diff < s.cfg.ConfidenceMargin {
-			return true, nil
-		}
-	}
-
-	return false, &topCategory
+	return len(candidates) > 1 && candidates[0].Similarity-candidates[1].Similarity < s.cfg.ConfidenceMargin
 }

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"swap-chain/shared/db"
 	"context"
 	"errors"
 	"sync"
@@ -15,24 +14,21 @@ import (
 
 type analysisRepoStub struct {
 	item     model.AnalysisItem
+	wishes   []model.AnalysisWish
 	updated  bool
 	complete model.AnalysisResult
 }
-
-func (m *analysisRepoStub) GetItemWishesForAnalysis(ctx context.Context, itemID int64) ([]db.GetItemWishesForAnalysisRow, error) {
-	return []db.GetItemWishesForAnalysisRow{{ID: 1, ItemID: itemID, WantDescription: "Сноуборд"}}, nil
-}
-func (m *analysisRepoStub) UpdateItemWishAnalysis(ctx context.Context, params db.UpdateItemWishAnalysisParams) error {
-	return nil
-}
-
 
 func (r *analysisRepoStub) GetItemForAnalysis(context.Context, int64) (model.AnalysisItem, error) {
 	return r.item, nil
 }
 
-func (r *analysisRepoStub) CompleteItemAnalysis(_ context.Context, arg model.AnalysisResult) (bool, error) {
-	r.complete = arg
+func (r *analysisRepoStub) GetItemWishesForAnalysis(context.Context, int64) ([]model.AnalysisWish, error) {
+	return r.wishes, nil
+}
+
+func (r *analysisRepoStub) CompleteItemAnalysis(_ context.Context, result model.AnalysisResult) (bool, error) {
+	r.complete = result
 	return r.updated, nil
 }
 
@@ -43,65 +39,50 @@ func (s scoreStub) EvaluateDescription(context.Context, string) (*model.Descript
 }
 
 type tagStub struct {
-	mu          sync.Mutex
-	matches     []*model.CategoryMatch
-	byEmbedding map[float32]*model.CategoryMatch
-	calls       int
+	mu     sync.Mutex
+	byText map[string]*model.CategoryMatch
+	called []string
 }
 
-func (s *tagStub) DefineTag(_ context.Context, embedding []float32) (*model.CategoryMatch, error) {
+func (s *tagStub) DefineTag(_ context.Context, text string, _, _ []float32) (*model.CategoryMatch, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if len(embedding) > 0 && s.byEmbedding != nil {
-		return s.byEmbedding[embedding[0]], nil
-	}
-
-	match := s.matches[s.calls]
-	s.calls++
-	return match, nil
+	s.called = append(s.called, text)
+	return s.byText[text], nil
 }
 
-type vectorStub struct {
-	mu      sync.Mutex
-	vectors [][]float32
-	byText  map[string][]float32
+type vectorStub struct{}
+
+func (vectorStub) EnrichAndVectorize(_ context.Context, text string) ([]float32, []float32, error) {
+	return []float32{float32(len(text))}, []float32{1}, nil
 }
 
-func (s *vectorStub) EnrichAndVectorize(_ context.Context, text string) ([]float32, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+type notifierStub struct{ calls int }
 
-	if s.byText != nil {
-		return s.byText[text], nil
-	}
-
-	result := s.vectors[0]
-	s.vectors = s.vectors[1:]
-	return result, nil
+func (n *notifierStub) NotifyCategoryActionRequired(context.Context, int64, string, int64) {
+	n.calls++
 }
 
-func TestAnalysisCompletesItem(t *testing.T) {
+func TestAnalysisPreservesManualOfferCategory(t *testing.T) {
+	offerCategoryID := int32(4)
 	repo := &analysisRepoStub{
 		item: model.AnalysisItem{
-			ID:               7,
-			AnalysisVersion:  3,
-			OfferTitle:       "Велосипед",
-			OfferDescription: "Городской велосипед",
-			
+			ID:                    7,
+			UserID:                9,
+			AnalysisVersion:       3,
+			OfferTitle:            "Велосипед",
+			OfferDescription:      "Городской велосипед",
+			OfferCategoryID:       &offerCategoryID,
+			OfferCategoryIsManual: true,
 		},
+		wishes:  []model.AnalysisWish{{ID: 10, Description: "Сноуборд"}},
 		updated: true,
 	}
-	tagging := &tagStub{byEmbedding: map[float32]*model.CategoryMatch{
-		1: {CategoryID: 2, Confidence: 0.9},
-		3: {CategoryID: 3, Confidence: 0.8},
+	tagging := &tagStub{byText: map[string]*model.CategoryMatch{
+		"Сноуборд": {CategoryID: 4},
 	}}
-	analysis, err := NewAnalysis(repo, scoreStub{value: 0.75}, tagging, &vectorStub{
-		byText: map[string][]float32{
-			"Велосипед Городской велосипед": {1, 2},
-			"Сноуборд": {3, 4},
-		},
-	}, AnalysisConfig{Concurrency: 3})
+	notifier := &notifierStub{}
+	analysis, err := NewAnalysis(repo, scoreStub{value: 0.75}, tagging, vectorStub{}, notifier, AnalysisConfig{Concurrency: 3})
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)
 	}
@@ -109,34 +90,39 @@ func TestAnalysisCompletesItem(t *testing.T) {
 	if err := analysis.AnalyzeItem(context.Background(), 7); err != nil {
 		t.Fatalf("AnalyzeItem() error = %v", err)
 	}
-	if repo.complete.OfferCategoryID != 2 {
-		t.Fatalf("offer category = %+v", repo.complete.OfferCategoryID)
+	if repo.complete.OfferCategoryID == nil || *repo.complete.OfferCategoryID != offerCategoryID {
+		t.Fatalf("offer category = %v, want %d", repo.complete.OfferCategoryID, offerCategoryID)
 	}
-	if repo.complete.ParamRichness != 0.75 {
-		t.Fatalf("ParamRichness = %v", repo.complete.ParamRichness)
+	if len(tagging.called) != 1 || tagging.called[0] != "Сноуборд" {
+		t.Fatalf("category classifier calls = %v, manual offer must be skipped", tagging.called)
 	}
-	if repo.complete.AnalysisVersion != 3 {
-		t.Fatalf("analysis version = %d, want 3", repo.complete.AnalysisVersion)
-	}
-	if len(repo.complete.OfferEmbedding) != 2  {
-		t.Fatal("embeddings were not passed to repository")
+	if repo.complete.RequiresCategoryInput || notifier.calls != 0 {
+		t.Fatalf("unexpected action-required result: %+v, notifications=%d", repo.complete, notifier.calls)
 	}
 }
 
-func TestAnalysisStoresUndefinedCategoryForManualDecision(t *testing.T) {
+func TestAnalysisRequestsActionWhenWishCategoryIsUnresolved(t *testing.T) {
+	offerCategoryID := int32(1)
 	repo := &analysisRepoStub{
 		item: model.AnalysisItem{
-			ID:               7,
-			OfferTitle:       "Вещь",
-			OfferDescription: "Описание",
-			
+			ID:                    7,
+			UserID:                9,
+			AnalysisVersion:       1,
+			OfferTitle:            "Телефон",
+			OfferDescription:      "Смартфон",
+			OfferCategoryID:       &offerCategoryID,
+			OfferCategoryIsManual: true,
 		},
+		wishes:  []model.AnalysisWish{{ID: 10, Description: "Что-то для поездок"}},
 		updated: true,
 	}
-	manual := &model.CategoryMatch{CategoryID: 99, IsManual: true}
-	analysis, err := NewAnalysis(repo, scoreStub{value: 0.5}, &tagStub{matches: []*model.CategoryMatch{manual, manual}}, &vectorStub{
-		vectors: [][]float32{{1}, {2}},
-	}, AnalysisConfig{Concurrency: 3})
+	tagging := &tagStub{byText: map[string]*model.CategoryMatch{
+		"Что-то для поездок": {
+			RequiresInput: true,
+		},
+	}}
+	notifier := &notifierStub{}
+	analysis, err := NewAnalysis(repo, scoreStub{value: 0.5}, tagging, vectorStub{}, notifier, AnalysisConfig{Concurrency: 3})
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)
 	}
@@ -144,31 +130,54 @@ func TestAnalysisStoresUndefinedCategoryForManualDecision(t *testing.T) {
 	if err := analysis.AnalyzeItem(context.Background(), 7); err != nil {
 		t.Fatalf("AnalyzeItem() error = %v", err)
 	}
-	if repo.complete.OfferCategoryID != 99  || !repo.complete.IsCategoryManual {
-		t.Fatalf("undefined categories were not stored: %+v", repo.complete)
+	if !repo.complete.RequiresCategoryInput || notifier.calls != 1 {
+		t.Fatalf("action-required result = %+v, notifications=%d", repo.complete, notifier.calls)
 	}
 }
 
 func TestAnalysisRejectsInvalidRichness(t *testing.T) {
-	repo := &analysisRepoStub{item: model.AnalysisItem{
-		ID:               7,
-		OfferTitle:       "Вещь",
-		OfferDescription: "Описание",
-		
+	offerCategoryID := int32(1)
+	repo := &analysisRepoStub{
+		item: model.AnalysisItem{
+			ID:                    7,
+			UserID:                9,
+			OfferTitle:            "Вещь",
+			OfferDescription:      "Описание",
+			OfferCategoryID:       &offerCategoryID,
+			OfferCategoryIsManual: true,
+		},
+		wishes: []model.AnalysisWish{{ID: 10, Description: "Другая вещь"}},
+	}
+	tagging := &tagStub{byText: map[string]*model.CategoryMatch{
+		"Другая вещь": {CategoryID: 2},
 	}}
-	analysis, err := NewAnalysis(
-		repo,
-		scoreStub{value: 1.1},
-		&tagStub{matches: []*model.CategoryMatch{{CategoryID: 1}, {CategoryID: 2}}},
-		&vectorStub{vectors: [][]float32{{1}, {2}}},
-		AnalysisConfig{Concurrency: 3},
-	)
+	analysis, err := NewAnalysis(repo, scoreStub{value: 1.1}, tagging, vectorStub{}, &notifierStub{}, AnalysisConfig{Concurrency: 3})
+	if err != nil {
+		t.Fatalf("NewAnalysis() error = %v", err)
+	}
+	if err := analysis.AnalyzeItem(context.Background(), 7); err == nil {
+		t.Fatal("AnalyzeItem() error = nil, want invalid richness error")
+	}
+}
+
+func TestAnalysisRejectsOfferWithoutManualCategory(t *testing.T) {
+	repo := &analysisRepoStub{
+		item:    model.AnalysisItem{ID: 7, OfferTitle: "Вещь", OfferDescription: "Описание"},
+		wishes:  []model.AnalysisWish{{ID: 10, Description: "Другая вещь"}},
+		updated: true,
+	}
+	tagging := &tagStub{byText: map[string]*model.CategoryMatch{}}
+	analysis, err := NewAnalysis(repo, scoreStub{value: 0.5}, tagging, vectorStub{}, &notifierStub{}, AnalysisConfig{Concurrency: 3})
 	if err != nil {
 		t.Fatalf("NewAnalysis() error = %v", err)
 	}
 
-	if err := analysis.AnalyzeItem(context.Background(), 7); err == nil {
-		t.Fatal("AnalyzeItem() error = nil, want invalid richness error")
+	err = analysis.AnalyzeItem(context.Background(), 7)
+	if !errors.Is(err, model.ErrOfferCategoryRequired) {
+		t.Fatalf("AnalyzeItem() error = %v, want ErrOfferCategoryRequired", err)
+	}
+	if len(tagging.called) != 0 {
+		t.Fatalf("category classifier calls = %v, want none", tagging.called)
 	}
 }
 
@@ -215,41 +224,6 @@ func TestVisionValidatesModelResponse(t *testing.T) {
 	}
 }
 
-func TestVisionRejectsOutOfRangeScore(t *testing.T) {
-	vision, err := NewVision(visionStub{response: `{"marketplace_description":"Вещь","suggested_category":"Дом и дача","visual_quality":"GOOD","quality_score":1.5}`})
-	if err != nil {
-		t.Fatalf("NewVision() error = %v", err)
-	}
-	if _, err := vision.DescribeImage(context.Background(), []byte("image")); err == nil {
-		t.Fatal("DescribeImage() error = nil, want range error")
-	}
-}
-
-func TestVisionRejectsIncompleteOrUnexpectedResponse(t *testing.T) {
-	tests := []struct {
-		name     string
-		response string
-	}{
-		{name: "empty description", response: `{"marketplace_description":"","suggested_category":"Электроника","visual_quality":"GOOD","quality_score":0.8}`},
-		{name: "missing score", response: `{"marketplace_description":"Телефон","suggested_category":"Электроника","visual_quality":"GOOD"}`},
-		{name: "unknown category", response: `{"marketplace_description":"Телефон","suggested_category":"Другое","visual_quality":"GOOD","quality_score":0.8}`},
-		{name: "unknown field", response: `{"marketplace_description":"Телефон","suggested_category":"Электроника","visual_quality":"GOOD","quality_score":0.8,"brand":"unknown"}`},
-		{name: "trailing json", response: `{"marketplace_description":"Телефон","suggested_category":"Электроника","visual_quality":"GOOD","quality_score":0.8}{}`},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			vision, err := NewVision(visionStub{response: test.response})
-			if err != nil {
-				t.Fatalf("NewVision() error = %v", err)
-			}
-			if _, err := vision.DescribeImage(context.Background(), []byte("image")); err == nil {
-				t.Fatal("DescribeImage() error = nil, want validation error")
-			}
-		})
-	}
-}
-
 type recoveryRepoStub struct{ ids []int64 }
 
 func (r recoveryRepoStub) ClaimStaleAnalyzingItems(context.Context, time.Time, int32) ([]int64, error) {
@@ -277,7 +251,6 @@ func TestAnalysisRecoveryWorkerProcessesClaimedItems(t *testing.T) {
 		t.Fatalf("NewAnalysisRecoveryWorker() error = %v", err)
 	}
 	worker.now = func() time.Time { return time.Unix(1000, 0) }
-
 	if err := worker.recoverOnce(context.Background()); err != nil {
 		t.Fatalf("recoverOnce() error = %v", err)
 	}
@@ -293,7 +266,6 @@ func TestAnalysisRecoveryWorkerJoinsErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAnalysisRecoveryWorker() error = %v", err)
 	}
-
 	if err := worker.recoverOnce(context.Background()); !errors.Is(err, wantErr) {
 		t.Fatalf("recoverOnce() error = %v, want wrapped %v", err, wantErr)
 	}

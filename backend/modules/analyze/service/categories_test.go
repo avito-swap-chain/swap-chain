@@ -15,7 +15,7 @@ func TestCategoryBootstrapFillsMissingEmbeddings(t *testing.T) {
 		total: 2,
 	}
 	vectorizer := categoryVectorizer{vector: make([]float32, categoryEmbeddingDimensions)}
-	bootstrap, err := NewCategoryBootstrap(repo, vectorizer)
+	bootstrap, err := NewCategoryBootstrap(repo, vectorizer, nil)
 	if err != nil {
 		t.Fatalf("create bootstrap: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestCategoryBootstrapRejectsWrongEmbeddingDimensions(t *testing.T) {
 		missing: []CategoryEmbeddingTarget{{ID: 1, Name: "Электроника"}},
 		total:   1,
 	}
-	bootstrap, err := NewCategoryBootstrap(repo, categoryVectorizer{vector: []float32{1, 2, 3}})
+	bootstrap, err := NewCategoryBootstrap(repo, categoryVectorizer{vector: []float32{1, 2, 3}}, nil)
 	if err != nil {
 		t.Fatalf("create bootstrap: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestCategoryBootstrapRejectsWrongEmbeddingDimensions(t *testing.T) {
 }
 
 func TestCategoryBootstrapReadinessRequiresPopulatedCatalogue(t *testing.T) {
-	bootstrap, err := NewCategoryBootstrap(&categoryBootstrapRepo{}, categoryVectorizer{})
+	bootstrap, err := NewCategoryBootstrap(&categoryBootstrapRepo{}, categoryVectorizer{}, nil)
 	if err != nil {
 		t.Fatalf("create bootstrap: %v", err)
 	}
@@ -80,6 +80,7 @@ func (repo *categoryBootstrapRepo) ListCategoriesMissingEmbedding(context.Contex
 func (repo *categoryBootstrapRepo) SetCategoryEmbedding(
 	_ context.Context,
 	categoryID int32,
+	_ []float32,
 	_ []float32,
 ) (bool, error) {
 	if repo.err != nil {

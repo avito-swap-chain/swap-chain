@@ -45,12 +45,13 @@ func (s *MemoryService) Create(_ context.Context, userID int64, input CreateInpu
 			}
 			return w
 		}(),
-		
-		ImageURLs:        append([]string(nil), input.ImageURLs...),
-		Status:           "ANALYZING",
-		OfferCategoryID:  copyInt32Ptr(input.OfferCategoryID),
-		CreatedAt:        now,
-		UpdatedAt:        now,
+
+		ImageURLs:             append([]string(nil), input.ImageURLs...),
+		Status:                "ANALYZING",
+		OfferCategoryID:       copyInt32Ptr(input.OfferCategoryID),
+		OfferCategoryIsManual: input.OfferCategoryID != nil,
+		CreatedAt:             now,
+		UpdatedAt:             now,
 	}
 	s.items[item.ID] = item
 	s.nextID++
@@ -93,6 +94,7 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 	}
 	if input.OfferCategoryID != nil {
 		item.OfferCategoryID = input.OfferCategoryID
+		item.OfferCategoryIsManual = true
 	}
 	switch {
 	case input.Withdraw:
@@ -116,6 +118,55 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 	if s.publish != nil {
 		s.publish(item.UserID, "item.status.updated", FormatCursor(item.ID), map[string]any{"status": item.Status})
 	}
+	return clone(item), nil
+}
+
+func (s *MemoryService) ResolveCategories(
+	_ context.Context,
+	userID, itemID int64,
+	input CategoryDecisionInput,
+) (Item, error) {
+	if err := validateCategoryDecision(input); err != nil {
+		return Item{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item, ok := s.items[itemID]
+	if !ok {
+		return Item{}, ErrNotFound
+	}
+	if item.UserID != userID {
+		return Item{}, ErrForbidden
+	}
+	if item.Status != "ACTION_REQUIRED" {
+		return Item{}, ErrConflict
+	}
+	if item.OfferCategoryID == nil {
+		if input.OfferCategoryID == nil {
+			return Item{}, &ValidationError{Fields: map[string]string{"offerCategoryId": "is required"}}
+		}
+		item.OfferCategoryID = copyInt32Ptr(input.OfferCategoryID)
+		item.OfferCategoryIsManual = true
+	}
+	decisions := make(map[int64]int32, len(input.Wishes))
+	for _, decision := range input.Wishes {
+		decisions[decision.WishID] = decision.CategoryID
+	}
+	for index := range item.Wishes {
+		if item.Wishes[index].CategoryID != nil {
+			continue
+		}
+		categoryID, ok := decisions[item.Wishes[index].ID]
+		if !ok {
+			return Item{}, &ValidationError{Fields: map[string]string{"wishes": "every unresolved wish requires a category"}}
+		}
+		selected := categoryID
+		item.Wishes[index].CategoryID = &selected
+	}
+	item.Status = "MATCHING"
+	item.UpdatedAt = time.Now().UTC()
+	s.items[itemID] = item
 	return clone(item), nil
 }
 
@@ -161,6 +212,10 @@ func clone(item Item) Item {
 	if item.OfferCategoryID != nil {
 		id := *item.OfferCategoryID
 		item.OfferCategoryID = &id
+	}
+	item.Wishes = append([]ItemWish(nil), item.Wishes...)
+	for index := range item.Wishes {
+		item.Wishes[index].CategoryID = copyInt32Ptr(item.Wishes[index].CategoryID)
 	}
 
 	return item

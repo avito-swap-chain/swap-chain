@@ -12,7 +12,8 @@ type Querier interface {
 	ChatMessageBelongsToThread(ctx context.Context, arg ChatMessageBelongsToThreadParams) (bool, error)
 	ClaimStaleAnalyzingItems(ctx context.Context, arg ClaimStaleAnalyzingItemsParams) ([]int64, error)
 	CompleteAdminChain(ctx context.Context, id int64) (int64, error)
-	CompleteItemAnalysis(ctx context.Context, arg CompleteItemAnalysisParams) (int64, error)
+	CompleteItemAnalysisActionRequired(ctx context.Context, arg CompleteItemAnalysisActionRequiredParams) (int64, error)
+	CompleteItemAnalysisMatching(ctx context.Context, arg CompleteItemAnalysisMatchingParams) (int64, error)
 	CountCategories(ctx context.Context) (int64, error)
 	CountCategoriesMissingEmbedding(ctx context.Context) (int64, error)
 	CountUnreadChatMessages(ctx context.Context, arg CountUnreadChatMessagesParams) (int64, error)
@@ -40,7 +41,7 @@ type Querier interface {
 	LockRecipientDelivery(ctx context.Context, arg LockRecipientDeliveryParams) (LockRecipientDeliveryRow, error)
 	SetCategoryEmbedding(ctx context.Context, arg SetCategoryEmbeddingParams) (int64, error)
 	UpdateAdminDeliveryStatus(ctx context.Context, arg UpdateAdminDeliveryStatusParams) error
-	UpdateItemWishAnalysis(ctx context.Context, arg UpdateItemWishAnalysisParams) error
+	UpdateItemWishAnalysis(ctx context.Context, arg UpdateItemWishAnalysisParams) (int64, error)
 	UpsertChatReadState(ctx context.Context, arg UpsertChatReadStateParams) (int64, error)
 }
 

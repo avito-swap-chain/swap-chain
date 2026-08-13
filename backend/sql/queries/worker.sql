@@ -16,26 +16,35 @@ RETURNING claimed_item.id;
 
 -- name: GetItemForAnalysis :one
 SELECT item.id,
+       item.user_id,
        item.offer_title,
        item.offer_description,
+       item.offer_category_id,
+       item.is_category_manual,
        item.status,
        item.analysis_version
 FROM items AS item
 WHERE item.id = $1;
 
 -- name: GetItemWishesForAnalysis :many
-SELECT id, item_id, want_description
+SELECT id,
+       item_id,
+       want_description,
+       want_category_id,
+       is_category_manual
 FROM item_wishes
 WHERE item_id = $1;
 
--- name: UpdateItemWishAnalysis :exec
+-- name: UpdateItemWishAnalysis :execrows
 UPDATE item_wishes
 SET want_category_id = sqlc.arg(want_category_id),
+    is_category_manual = sqlc.arg(is_category_manual),
     want_embedding_local = sqlc.arg(want_embedding_local)::vector,
     want_embedding_external = sqlc.arg(want_embedding_external)::vector
-WHERE id = $1;
+WHERE id = sqlc.arg(id)
+  AND item_id = sqlc.arg(item_id);
 
--- name: CompleteItemAnalysis :execrows
+-- name: CompleteItemAnalysisMatching :execrows
 WITH analyzed_item AS (
     UPDATE items
     SET offer_category_id = sqlc.arg(offer_category_id),
@@ -44,7 +53,8 @@ WITH analyzed_item AS (
         offer_embedding_local = sqlc.arg(offer_embedding_local)::vector,
         offer_embedding_external = sqlc.arg(offer_embedding_external)::vector,
         status = 'MATCHING',
-        last_status_updated_at = NOW()
+        last_status_updated_at = NOW(),
+        updated_at = NOW()
     WHERE id = sqlc.arg(id)
       AND status = 'ANALYZING'
       AND analysis_version = sqlc.arg(analysis_version)
@@ -68,3 +78,17 @@ SET status = 'PENDING',
     locked_at = NULL,
     last_error = NULL,
     updated_at = NOW();
+
+-- name: CompleteItemAnalysisActionRequired :execrows
+UPDATE items
+SET offer_category_id = sqlc.arg(offer_category_id),
+    param_richness = sqlc.arg(param_richness),
+    is_category_manual = sqlc.arg(is_category_manual),
+    offer_embedding_local = sqlc.arg(offer_embedding_local)::vector,
+    offer_embedding_external = sqlc.arg(offer_embedding_external)::vector,
+    status = 'ACTION_REQUIRED',
+    last_status_updated_at = NOW(),
+    updated_at = NOW()
+WHERE id = sqlc.arg(id)
+  AND status = 'ANALYZING'
+  AND analysis_version = sqlc.arg(analysis_version);

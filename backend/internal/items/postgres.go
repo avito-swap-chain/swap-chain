@@ -24,6 +24,7 @@ type analyzer interface {
 type repository interface {
 	Create(ctx context.Context, userID int64, input CreateInput) (Item, error)
 	Update(ctx context.Context, userID, itemID int64, input UpdateInput) (updateResult, error)
+	ResolveCategories(ctx context.Context, userID, itemID int64, input CategoryDecisionInput) (Item, error)
 	Get(ctx context.Context, itemID int64) (Item, error)
 	ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error)
 }
@@ -145,6 +146,24 @@ func (s *PostgresService) Update(ctx context.Context, userID, itemID int64, inpu
 	return result.Item, nil
 }
 
+// ResolveCategories применяет ручной выбор владельца и сразу возвращает
+// полностью категоризированную карточку в matching.
+func (s *PostgresService) ResolveCategories(
+	ctx context.Context,
+	userID, itemID int64,
+	input CategoryDecisionInput,
+) (Item, error) {
+	if err := validateCategoryDecision(input); err != nil {
+		return Item{}, err
+	}
+	item, err := s.repo.ResolveCategories(ctx, userID, itemID, input)
+	if err != nil {
+		return Item{}, err
+	}
+	s.notify(item, "item.status.updated")
+	return item, nil
+}
+
 // ListByUser returns a stable ID-ordered page owned by one user.
 func (s *PostgresService) ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error) {
 	return s.repo.ListByUser(ctx, userID, afterID, limit)
@@ -197,11 +216,13 @@ func (r *postgresRepository) Create(ctx context.Context, userID int64, input Cre
 	defer func() { _ = tx.Rollback() }()
 
 	row := tx.QueryRowContext(ctx, `
-		INSERT INTO items (user_id, offer_title, offer_description, image_urls, offer_category_id)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO items (user_id, offer_title, offer_description, image_urls, offer_category_id, is_category_manual)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, user_id, offer_title, offer_description,
-		          image_urls, status::text, offer_category_id, created_at, updated_at`,
+		          image_urls, status::text, offer_category_id, is_category_manual,
+		          created_at, updated_at`,
 		userID, input.OfferTitle, input.OfferDescription, pq.Array(input.ImageURLs), input.OfferCategoryID,
+		input.OfferCategoryID != nil,
 	)
 	item, err := scanItem(row)
 	if err != nil {
@@ -235,7 +256,8 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	}
 	current, err := scanItem(tx.QueryRowContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description,
-		       image_urls, status::text, offer_category_id, created_at, updated_at
+		       image_urls, status::text, offer_category_id, is_category_manual,
+		       created_at, updated_at
 		FROM items WHERE id = $1 FOR UPDATE`, itemID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -262,7 +284,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	if input.OfferDescription != nil {
 		offerDescription = *input.OfferDescription
 	}
-	
+
 	status := current.Status
 	matchingChanged := false
 	offerCategoryChanged := input.OfferCategoryID != nil
@@ -302,15 +324,22 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		SET offer_title = $5,
 		    offer_description = $2,
 		    status = $3::item_status,
-		    offer_category_id = CASE WHEN $6::int IS NOT NULL THEN $6::int WHEN $4 THEN NULL ELSE offer_category_id END,
+		    offer_category_id = CASE
+		        WHEN $6::int IS NOT NULL THEN $6::int
+		        WHEN $4 AND NOT is_category_manual THEN NULL
+		        ELSE offer_category_id
+		    END,
+		    is_category_manual = CASE WHEN $6::int IS NOT NULL THEN TRUE ELSE is_category_manual END,
 		    param_richness = CASE WHEN $4 THEN NULL ELSE param_richness END,
 		    offer_embedding_local = CASE WHEN $4 THEN NULL ELSE offer_embedding_local END,
+		    offer_embedding_external = CASE WHEN $4 THEN NULL ELSE offer_embedding_external END,
 		    analysis_version = CASE WHEN $4 THEN analysis_version + 1 ELSE analysis_version END,
 		    last_status_updated_at = CASE WHEN $4 THEN now() ELSE last_status_updated_at END,
 		    updated_at = now()
 		WHERE id = $1
 		RETURNING id, user_id, offer_title, offer_description,
-		          image_urls, status::text, offer_category_id, created_at, updated_at`,
+		          image_urls, status::text, offer_category_id, is_category_manual,
+		          created_at, updated_at`,
 		itemID, offerDescription, status, matchingChanged, offerTitle, input.OfferCategoryID,
 	)
 	item, err := scanItem(row)
@@ -349,6 +378,157 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		return updateResult{}, fmt.Errorf("commit update item: %w", err)
 	}
 	return updateResult{Item: item, Rejections: rejections}, nil
+}
+
+func (r *postgresRepository) ResolveCategories(
+	ctx context.Context,
+	userID, itemID int64,
+	input CategoryDecisionInput,
+) (Item, error) {
+	tx, err := r.database.BeginTx(ctx, nil)
+	if err != nil {
+		return Item{}, fmt.Errorf("begin category decision: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, itemID); err != nil {
+		return Item{}, fmt.Errorf("lock item %d: %w", itemID, err)
+	}
+	item, err := scanItem(tx.QueryRowContext(ctx, `
+		SELECT id, user_id, offer_title, offer_description,
+		       image_urls, status::text, offer_category_id, is_category_manual,
+		       created_at, updated_at
+		FROM items
+		WHERE id = $1
+		FOR UPDATE`, itemID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Item{}, ErrNotFound
+	}
+	if err != nil {
+		return Item{}, fmt.Errorf("lock item for category decision: %w", err)
+	}
+	if item.UserID != userID {
+		return Item{}, ErrForbidden
+	}
+	if item.Status != "ACTION_REQUIRED" {
+		return Item{}, ErrConflict
+	}
+
+	wishRows, err := tx.QueryContext(ctx, `
+		SELECT id, want_category_id
+		FROM item_wishes
+		WHERE item_id = $1
+		ORDER BY id
+		FOR UPDATE`, itemID)
+	if err != nil {
+		return Item{}, fmt.Errorf("lock wishes for category decision: %w", err)
+	}
+	defer func() { _ = wishRows.Close() }()
+
+	type wishState struct {
+		categoryID *int32
+	}
+	wishStates := make(map[int64]wishState)
+	for wishRows.Next() {
+		var wishID int64
+		var categoryID sql.NullInt32
+		if err := wishRows.Scan(&wishID, &categoryID); err != nil {
+			return Item{}, fmt.Errorf("scan wish category decision: %w", err)
+		}
+		var category *int32
+		if categoryID.Valid {
+			value := categoryID.Int32
+			category = &value
+		}
+		wishStates[wishID] = wishState{categoryID: category}
+	}
+	if err := wishRows.Err(); err != nil {
+		return Item{}, fmt.Errorf("iterate wish category decisions: %w", err)
+	}
+	if err := wishRows.Close(); err != nil {
+		return Item{}, fmt.Errorf("close wish category decisions: %w", err)
+	}
+
+	fields := make(map[string]string)
+	if item.OfferCategoryID == nil {
+		switch {
+		case input.OfferCategoryID == nil:
+			fields["offerCategoryId"] = "manual category is required"
+		}
+	} else if input.OfferCategoryID != nil {
+		fields["offerCategoryId"] = "offer category does not require a decision"
+	}
+
+	decisions := make(map[int64]int32, len(input.Wishes))
+	for _, decision := range input.Wishes {
+		state, ok := wishStates[decision.WishID]
+		switch {
+		case !ok:
+			fields["wishes"] = "contains a wish that does not belong to this item"
+		case state.categoryID != nil:
+			fields["wishes"] = "contains a wish that does not require a decision"
+		default:
+			decisions[decision.WishID] = decision.CategoryID
+		}
+	}
+	for wishID, state := range wishStates {
+		if state.categoryID == nil {
+			if _, ok := decisions[wishID]; !ok {
+				fields["wishes"] = "a category is required for every unresolved wish"
+			}
+		}
+	}
+	if len(fields) > 0 {
+		return Item{}, &ValidationError{Fields: fields}
+	}
+
+	for wishID, categoryID := range decisions {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE item_wishes
+			SET want_category_id = $1,
+			    is_category_manual = TRUE
+			WHERE id = $2 AND item_id = $3`, categoryID, wishID, itemID); err != nil {
+			return Item{}, fmt.Errorf("apply wish %d category decision: %w", wishID, err)
+		}
+	}
+
+	selectedOfferCategory := item.OfferCategoryID
+	offerManual := item.OfferCategoryIsManual
+	if input.OfferCategoryID != nil {
+		selectedOfferCategory = input.OfferCategoryID
+		offerManual = true
+	}
+	item, err = scanItem(tx.QueryRowContext(ctx, `
+		UPDATE items
+		SET offer_category_id = $2,
+		    is_category_manual = $3,
+		    status = 'MATCHING',
+		    last_status_updated_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1 AND status = 'ACTION_REQUIRED'
+		RETURNING id, user_id, offer_title, offer_description,
+		          image_urls, status::text, offer_category_id, is_category_manual,
+		          created_at, updated_at`,
+		itemID, selectedOfferCategory, offerManual))
+	if err != nil {
+		return Item{}, fmt.Errorf("complete category decision: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO matching_jobs (item_id, status, attempts, available_at, locked_at, last_error, updated_at)
+		VALUES ($1, 'PENDING', 0, NOW(), NULL, NULL, NOW())
+		ON CONFLICT (item_id) DO UPDATE
+		SET status = 'PENDING', attempts = 0, available_at = NOW(), locked_at = NULL,
+		    last_error = NULL, updated_at = NOW()`, itemID); err != nil {
+		return Item{}, fmt.Errorf("schedule matching after category decision: %w", err)
+	}
+	item.Wishes, err = loadWishesTx(ctx, tx, itemID)
+	if err != nil {
+		return Item{}, fmt.Errorf("load resolved wishes: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Item{}, fmt.Errorf("commit category decision: %w", err)
+	}
+	return item, nil
 }
 
 func rejectPendingChainsForItem(ctx context.Context, tx *sql.Tx, actorID, itemID int64, reason string) ([]chainRejection, error) {
@@ -410,7 +590,8 @@ func rejectPendingChainsForItem(ctx context.Context, tx *sql.Tx, actorID, itemID
 func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error) {
 	item, err := scanItem(r.database.QueryRowContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description,
-		       image_urls, status::text, offer_category_id, created_at, updated_at
+		       image_urls, status::text, offer_category_id, is_category_manual,
+		       created_at, updated_at
 		FROM items WHERE id = $1`, itemID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Item{}, ErrNotFound
@@ -418,7 +599,7 @@ func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error
 	if err != nil {
 		return Item{}, fmt.Errorf("get item: %w", err)
 	}
-		item.Wishes, err = loadWishesDB(ctx, r.database, item.ID)
+	item.Wishes, err = loadWishesDB(ctx, r.database, item.ID)
 	if err != nil {
 		return Item{}, fmt.Errorf("load wishes: %w", err)
 	}
@@ -428,7 +609,8 @@ func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error
 func (r *postgresRepository) ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error) {
 	rows, err := r.database.QueryContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description,
-		       image_urls, status::text, offer_category_id, created_at, updated_at
+		       image_urls, status::text, offer_category_id, is_category_manual,
+		       created_at, updated_at
 		FROM items
 		WHERE user_id = $1 AND id > $2
 		ORDER BY id LIMIT $3`, userID, afterID, limit+1)
@@ -443,7 +625,7 @@ func (r *postgresRepository) ListByUser(ctx context.Context, userID, afterID int
 		if scanErr != nil {
 			return nil, nil, fmt.Errorf("scan listed item: %w", scanErr)
 		}
-				item.Wishes, err = loadWishesDB(ctx, r.database, item.ID)
+		item.Wishes, err = loadWishesDB(ctx, r.database, item.ID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("load wishes: %w", err)
 		}
@@ -478,6 +660,7 @@ func scanItem(row rowScanner) (Item, error) {
 		&imageURLs,
 		&item.Status,
 		&offerCategoryID,
+		&item.OfferCategoryIsManual,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
@@ -527,6 +710,7 @@ func loadWishesTx(ctx context.Context, q queryer, itemID int64) ([]ItemWish, err
 	}
 	return wishes, nil
 }
+
 
 func loadWishesDB(ctx context.Context, db *sql.DB, itemID int64) ([]ItemWish, error) {
 	return loadWishesTx(ctx, db, itemID)

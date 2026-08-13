@@ -41,17 +41,18 @@ SELECT category.id,
        category.name,
        (1.0 - COALESCE(
            category.embedding_external <=> $1::vector,
-           category.embedding_local <=> $1::vector
+           category.embedding_local <=> $2::vector
        ))::float8 AS similarity
 FROM categories AS category
 WHERE (category.embedding_local IS NOT NULL OR category.embedding_external IS NOT NULL)
-  AND category.id != $2
+  AND ($1::vector IS NOT NULL OR $2::vector IS NOT NULL)
+  AND category.id != $3
 ORDER BY similarity DESC
-LIMIT 2
 `
 
 type FindCategoryParams struct {
-	Embedding           *pgvector_go.Vector `json:"embedding"`
+	EmbeddingExternal   *pgvector_go.Vector `json:"embedding_external"`
+	EmbeddingLocal      *pgvector_go.Vector `json:"embedding_local"`
 	UndefinedCategoryID int32               `json:"undefined_category_id"`
 }
 
@@ -62,7 +63,7 @@ type FindCategoryRow struct {
 }
 
 func (q *Queries) FindCategory(ctx context.Context, arg FindCategoryParams) ([]FindCategoryRow, error) {
-	rows, err := q.db.QueryContext(ctx, findCategory, arg.Embedding, arg.UndefinedCategoryID)
+	rows, err := q.db.QueryContext(ctx, findCategory, arg.EmbeddingExternal, arg.EmbeddingLocal, arg.UndefinedCategoryID)
 	if err != nil {
 		return nil, err
 	}
@@ -158,18 +159,19 @@ func (q *Queries) ListCategoriesMissingEmbedding(ctx context.Context) ([]ListCat
 const setCategoryEmbedding = `-- name: SetCategoryEmbedding :execrows
 UPDATE categories
 SET embedding_local = $1::vector,
-    embedding_external = $1::vector
-WHERE id = $2
+    embedding_external = $2::vector
+WHERE id = $3
   AND (embedding_local IS NULL OR embedding_external IS NULL)
 `
 
 type SetCategoryEmbeddingParams struct {
-	Embedding *pgvector_go.Vector `json:"embedding"`
-	ID        int32               `json:"id"`
+	EmbeddingLocal    *pgvector_go.Vector `json:"embedding_local"`
+	EmbeddingExternal *pgvector_go.Vector `json:"embedding_external"`
+	ID                int32               `json:"id"`
 }
 
 func (q *Queries) SetCategoryEmbedding(ctx context.Context, arg SetCategoryEmbeddingParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setCategoryEmbedding, arg.Embedding, arg.ID)
+	result, err := q.db.ExecContext(ctx, setCategoryEmbedding, arg.EmbeddingLocal, arg.EmbeddingExternal, arg.ID)
 	if err != nil {
 		return 0, err
 	}

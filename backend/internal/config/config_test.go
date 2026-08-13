@@ -23,6 +23,8 @@ func TestLoadDefaults(t *testing.T) {
 		"UNDEFINED_CATEGORY_ID",
 		"ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD",
 		"ANALYSIS_CATEGORY_CONFIDENCE_MARGIN",
+		"ANALYSIS_CATEGORY_MODEL",
+		"ANALYSIS_CATEGORY_MODEL_TIMEOUT",
 		"ANALYSIS_RECOVERY_POLL_INTERVAL",
 		"ANALYSIS_TIMEOUT",
 		"ANALYSIS_STALE_AFTER",
@@ -63,6 +65,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.MinIOEndpoint != defaultMinIOEndpoint || cfg.MinIOBucket != defaultMinIOBucket || cfg.MediaMaxUploadBytes != defaultMediaMaxBytes {
 		t.Fatalf("unexpected media defaults: %+v", cfg)
+	}
+	if cfg.CategoryModel != defaultCategoryModel || cfg.CategoryModelTimeout != defaultCategoryModelTimeout {
+		t.Fatalf("unexpected category model defaults: %+v", cfg)
 	}
 }
 
@@ -162,6 +167,8 @@ func TestLoadReadsMatchingSettings(t *testing.T) {
 func TestLoadReadsAnalysisSettings(t *testing.T) {
 	t.Setenv("ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD", "0.7")
 	t.Setenv("ANALYSIS_CATEGORY_CONFIDENCE_MARGIN", "0.1")
+	t.Setenv("ANALYSIS_CATEGORY_MODEL", "google/gemini-2.5-flash")
+	t.Setenv("ANALYSIS_CATEGORY_MODEL_TIMEOUT", "20s")
 	t.Setenv("ANALYSIS_RECOVERY_POLL_INTERVAL", "15s")
 	t.Setenv("ANALYSIS_TIMEOUT", "90s")
 	t.Setenv("ANALYSIS_STALE_AFTER", "2m")
@@ -175,7 +182,8 @@ func TestLoadReadsAnalysisSettings(t *testing.T) {
 	if cfg.CategorySimilarityThreshold != 0.7 || cfg.CategoryConfidenceMargin != 0.1 ||
 		cfg.AnalysisPollInterval != 15*time.Second || cfg.AnalysisTimeout != 90*time.Second ||
 		cfg.AnalysisStaleAfter != 2*time.Minute || cfg.AnalysisBatchSize != 25 ||
-		cfg.AnalysisBootstrapTimeout != 90*time.Second {
+		cfg.AnalysisBootstrapTimeout != 90*time.Second || cfg.CategoryModel != "google/gemini-2.5-flash" ||
+		cfg.CategoryModelTimeout != 20*time.Second {
 		t.Fatalf("unexpected analysis config: %+v", cfg)
 	}
 }

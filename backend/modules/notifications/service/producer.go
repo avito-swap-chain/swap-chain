@@ -94,6 +94,14 @@ func (p *Producer) NotifyItemUnavailable(ctx context.Context, userIDs []int64, i
 	}
 }
 
+func (p *Producer) NotifyCategoryActionRequired(ctx context.Context, userID int64, itemTitle string, itemID int64) {
+	iID := itemID
+	p.notifyUser(ctx, userID, model.KindOffer,
+		"Уточните категорию",
+		fmt.Sprintf("Для карточки «%s» не удалось уверенно определить категорию. Выберите один из предложенных вариантов", itemTitle),
+		nil, &iID)
+}
+
 func (p *Producer) NotifyChatMessage(ctx context.Context, recipientID int64, senderUsername string, chainID int64) {
 	cID := chainID
 	p.notifyUser(ctx, recipientID, model.KindMessage,

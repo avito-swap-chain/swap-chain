@@ -104,10 +104,11 @@ func (ns NullDeliveryStatus) Value() (driver.Value, error) {
 type ItemStatus string
 
 const (
-	ItemStatusANALYZING ItemStatus = "ANALYZING"
-	ItemStatusMATCHING  ItemStatus = "MATCHING"
-	ItemStatusLOCKED    ItemStatus = "LOCKED"
-	ItemStatusWITHDRAWN ItemStatus = "WITHDRAWN"
+	ItemStatusANALYZING      ItemStatus = "ANALYZING"
+	ItemStatusMATCHING       ItemStatus = "MATCHING"
+	ItemStatusLOCKED         ItemStatus = "LOCKED"
+	ItemStatusWITHDRAWN      ItemStatus = "WITHDRAWN"
+	ItemStatusACTIONREQUIRED ItemStatus = "ACTION_REQUIRED"
 )
 
 func (e *ItemStatus) Scan(src interface{}) error {
@@ -322,6 +323,7 @@ type ItemWish struct {
 	WantDescription       string        `json:"want_description"`
 	WantEmbeddingLocal    interface{}   `json:"want_embedding_local"`
 	WantEmbeddingExternal interface{}   `json:"want_embedding_external"`
+	IsCategoryManual      bool          `json:"is_category_manual"`
 }
 
 type MatchingJob struct {

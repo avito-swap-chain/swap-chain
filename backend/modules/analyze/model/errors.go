@@ -6,19 +6,21 @@ import (
 )
 
 var (
-	ErrItemNotFound         = errors.New("item not found")
-	ErrItemNotAnalyzable    = errors.New("item is not in analyzing status")
-	ErrAnalysisStateChanged = errors.New("item is no longer analyzing")
-	ErrEmptyChoices         = errors.New("empty choices")
+	ErrItemNotFound          = errors.New("item not found")
+	ErrItemNotAnalyzable     = errors.New("item is not in analyzing status")
+	ErrAnalysisStateChanged  = errors.New("item is no longer analyzing")
+	ErrOfferCategoryRequired = errors.New("manual offer category is required")
+	ErrEmptyChoices          = errors.New("empty choices")
 )
 
 type ItemStatus string
 
 const (
-	ItemStatusUnknown   ItemStatus = ""
-	ItemStatusAnalyzing ItemStatus = "ANALYZING"
-	ItemStatusMatching  ItemStatus = "MATCHING"
-	ItemStatusLocked    ItemStatus = "LOCKED"
+	ItemStatusUnknown        ItemStatus = ""
+	ItemStatusAnalyzing      ItemStatus = "ANALYZING"
+	ItemStatusActionRequired ItemStatus = "ACTION_REQUIRED"
+	ItemStatusMatching       ItemStatus = "MATCHING"
+	ItemStatusLocked         ItemStatus = "LOCKED"
 )
 
 // ItemStatusError сообщает, что вещь существует, но её статус не позволяет

@@ -16,15 +16,19 @@ import (
 )
 
 type Analysis struct {
-	queries *db.Queries
+	database *sql.DB
+	queries  *db.Queries
 }
 
-func NewPostgreSQLAnalysis(queries *db.Queries) (*Analysis, error) {
+func NewPostgreSQLAnalysis(database *sql.DB, queries *db.Queries) (*Analysis, error) {
+	if database == nil {
+		return nil, fmt.Errorf("postgres analysis repository init: 'database' is required")
+	}
 	if queries == nil {
 		return nil, fmt.Errorf("postgres analysis repository init: 'queries' is required")
 	}
 
-	return &Analysis{queries: queries}, nil
+	return &Analysis{database: database, queries: queries}, nil
 }
 
 func (r *Analysis) GetItemForAnalysis(ctx context.Context, itemID int64) (model.AnalysisItem, error) {
@@ -49,25 +53,73 @@ func (r *Analysis) GetItemForAnalysis(ctx context.Context, itemID int64) (model.
 }
 
 func (r *Analysis) CompleteItemAnalysis(ctx context.Context, result model.AnalysisResult) (bool, error) {
-	rowsAffected, err := r.queries.CompleteItemAnalysis(ctx, mapAnalysisResult(result))
+	tx, err := r.database.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("complete item %d analysis: %w", result.ItemID, err)
+		return false, fmt.Errorf("begin complete item %d analysis: %w", result.ItemID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	queries := r.queries.WithTx(tx)
+	for _, wish := range result.Wishes {
+		rowsAffected, updateErr := queries.UpdateItemWishAnalysis(ctx, mapWishAnalysisResult(result.ItemID, wish))
+		if updateErr != nil {
+			return false, fmt.Errorf("update wish %d analysis: %w", wish.ID, updateErr)
+		}
+		if rowsAffected != 1 {
+			return false, fmt.Errorf("update wish %d analysis: unexpected affected rows count %d", wish.ID, rowsAffected)
+		}
+	}
+
+	var rowsAffected int64
+	if result.RequiresCategoryInput {
+		rowsAffected, err = queries.CompleteItemAnalysisActionRequired(ctx, mapActionRequiredResult(result))
+	} else {
+		if result.OfferCategoryID == nil {
+			return false, fmt.Errorf("complete item %d analysis: offer category is missing", result.ItemID)
+		}
+		for _, wish := range result.Wishes {
+			if wish.CategoryID == nil {
+				return false, fmt.Errorf("complete item %d analysis: wish %d category is missing", result.ItemID, wish.ID)
+			}
+		}
+		rowsAffected, err = queries.CompleteItemAnalysisMatching(ctx, mapMatchingResult(result))
+	}
+	if err != nil {
+		return false, fmt.Errorf("finalize item %d analysis: %w", result.ItemID, err)
 	}
 	if rowsAffected > 1 {
 		return false, fmt.Errorf("complete item %d analysis: unexpected affected rows count %d", result.ItemID, rowsAffected)
 	}
+	if rowsAffected == 0 {
+		return false, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit item %d analysis: %w", result.ItemID, err)
+	}
 
-	return rowsAffected == 1, nil
+	return true, nil
 }
 
 func (r *Analysis) FindCategories(
 	ctx context.Context,
-	embedding []float32,
+	local []float32,
+	external []float32,
 	undefinedCategoryID int32,
 ) ([]model.CategoryCandidate, error) {
-	embeddingVector := pgvector.NewVector(embedding)
+	var vecLocal *pgvector.Vector
+	if local != nil {
+		v := pgvector.NewVector(local)
+		vecLocal = &v
+	}
+	var vecExternal *pgvector.Vector
+	if external != nil {
+		v := pgvector.NewVector(external)
+		vecExternal = &v
+	}
+
 	rows, err := r.queries.FindCategory(ctx, db.FindCategoryParams{
-		Embedding:           &embeddingVector,
+		EmbeddingLocal:      vecLocal,
+		EmbeddingExternal:   vecExternal,
 		UndefinedCategoryID: undefinedCategoryID,
 	})
 	if err != nil {
@@ -95,6 +147,22 @@ func (r *Analysis) CountCategoriesMissingEmbedding(ctx context.Context) (int64, 
 	return count, nil
 }
 
+func (r *Analysis) ListCategories(ctx context.Context, undefinedCategoryID int32) ([]model.CategoryCandidate, error) {
+	rows, err := r.queries.ListCategories(ctx, undefinedCategoryID)
+	if err != nil {
+		return nil, fmt.Errorf("list categories: %w", err)
+	}
+
+	candidates := make([]model.CategoryCandidate, 0, len(rows))
+	for _, row := range rows {
+		candidates = append(candidates, model.CategoryCandidate{
+			ID:   row.ID,
+			Name: row.Name,
+		})
+	}
+	return candidates, nil
+}
+
 func (r *Analysis) ListCategoriesMissingEmbedding(
 	ctx context.Context,
 ) ([]service.CategoryEmbeddingTarget, error) {
@@ -114,12 +182,23 @@ func (r *Analysis) ListCategoriesMissingEmbedding(
 func (r *Analysis) SetCategoryEmbedding(
 	ctx context.Context,
 	categoryID int32,
-	embedding []float32,
+	local []float32,
+	external []float32,
 ) (bool, error) {
-	embeddingVector := pgvector.NewVector(embedding)
+	var vecLocal *pgvector.Vector
+	if local != nil {
+		v := pgvector.NewVector(local)
+		vecLocal = &v
+	}
+	var vecExternal *pgvector.Vector
+	if external != nil {
+		v := pgvector.NewVector(external)
+		vecExternal = &v
+	}
 	rowsAffected, err := r.queries.SetCategoryEmbedding(ctx, db.SetCategoryEmbeddingParams{
-		Embedding: &embeddingVector,
-		ID:        categoryID,
+		EmbeddingLocal:    vecLocal,
+		EmbeddingExternal: vecExternal,
+		ID:                categoryID,
 	})
 	if err != nil {
 		return false, fmt.Errorf("set category %d embedding: %w", categoryID, err)
@@ -149,26 +228,48 @@ func (r *Analysis) ClaimStaleAnalyzingItems(
 
 func mapAnalysisItem(row db.GetItemForAnalysisRow) model.AnalysisItem {
 	return model.AnalysisItem{
-		ID:               row.ID,
-		AnalysisVersion:  row.AnalysisVersion,
-		OfferTitle:       row.OfferTitle,
-		OfferDescription: nullableString(row.OfferDescription),
+		ID:                    row.ID,
+		UserID:                row.UserID,
+		AnalysisVersion:       row.AnalysisVersion,
+		OfferTitle:            row.OfferTitle,
+		OfferDescription:      nullableString(row.OfferDescription),
+		OfferCategoryID:       nullableInt32(row.OfferCategoryID),
+		OfferCategoryIsManual: row.IsCategoryManual,
 	}
 }
 
-func mapAnalysisResult(result model.AnalysisResult) db.CompleteItemAnalysisParams {
-	offerEmbedding := pgvector.NewVector(result.OfferEmbedding)
-	return db.CompleteItemAnalysisParams{
-		OfferCategoryID: sql.NullInt32{Int32: result.OfferCategoryID, Valid: true},
-		ParamRichness: sql.NullString{
-			String: strconv.FormatFloat(result.ParamRichness, 'f', -1, 64),
-			Valid:  true,
-		},
-		IsCategoryManual:    result.IsCategoryManual,
-		OfferEmbeddingLocal: &offerEmbedding,
-		OfferEmbeddingExternal: &offerEmbedding,
-		AnalysisVersion:     result.AnalysisVersion,
-		ID:                  result.ItemID,
+func mapMatchingResult(result model.AnalysisResult) db.CompleteItemAnalysisMatchingParams {
+	return db.CompleteItemAnalysisMatchingParams{
+		OfferCategoryID:        nullableInt32Value(result.OfferCategoryID),
+		ParamRichness:          numeric(result.ParamRichness),
+		IsCategoryManual:       result.OfferCategoryIsManual,
+		OfferEmbeddingLocal:    vector(result.OfferEmbeddingLocal),
+		OfferEmbeddingExternal: vector(result.OfferEmbeddingExternal),
+		AnalysisVersion:        result.AnalysisVersion,
+		ID:                     result.ItemID,
+	}
+}
+
+func mapActionRequiredResult(result model.AnalysisResult) db.CompleteItemAnalysisActionRequiredParams {
+	return db.CompleteItemAnalysisActionRequiredParams{
+		OfferCategoryID:        nullableInt32Value(result.OfferCategoryID),
+		ParamRichness:             numeric(result.ParamRichness),
+		IsCategoryManual:          result.OfferCategoryIsManual,
+		OfferEmbeddingLocal:       vector(result.OfferEmbeddingLocal),
+		OfferEmbeddingExternal:    vector(result.OfferEmbeddingExternal),
+		AnalysisVersion:           result.AnalysisVersion,
+		ID:                        result.ItemID,
+	}
+}
+
+func mapWishAnalysisResult(itemID int64, result model.WishAnalysisResult) db.UpdateItemWishAnalysisParams {
+	return db.UpdateItemWishAnalysisParams{
+		WantCategoryID:        nullableInt32Value(result.CategoryID),
+		IsCategoryManual:      result.CategoryIsManual,
+		WantEmbeddingLocal:    vector(result.WantEmbeddingLocal),
+		WantEmbeddingExternal: vector(result.WantEmbeddingExternal),
+		ID:                    result.ID,
+		ItemID:                itemID,
 	}
 }
 
@@ -193,6 +294,33 @@ func nullableString(value sql.NullString) string {
 	return value.String
 }
 
+func nullableInt32(value sql.NullInt32) *int32 {
+	if !value.Valid {
+		return nil
+	}
+	result := value.Int32
+	return &result
+}
+
+func nullableInt32Value(value *int32) sql.NullInt32 {
+	if value == nil {
+		return sql.NullInt32{}
+	}
+	return sql.NullInt32{Int32: *value, Valid: true}
+}
+
+func numeric(value float64) sql.NullString {
+	return sql.NullString{String: strconv.FormatFloat(value, 'f', -1, 64), Valid: true}
+}
+
+func vector(value []float32) *pgvector.Vector {
+	if len(value) == 0 {
+		return nil
+	}
+	result := pgvector.NewVector(value)
+	return &result
+}
+
 func mapItemStatus(status db.ItemStatus) model.ItemStatus {
 	return model.ItemStatus(status)
 }
@@ -204,10 +332,20 @@ var (
 	_ service.CategoryBootstrapRepository = (*Analysis)(nil)
 )
 
-func (r *Analysis) GetItemWishesForAnalysis(ctx context.Context, itemID int64) ([]db.GetItemWishesForAnalysisRow, error) {
-	return r.queries.GetItemWishesForAnalysis(ctx, itemID)
-}
+func (r *Analysis) GetItemWishesForAnalysis(ctx context.Context, itemID int64) ([]model.AnalysisWish, error) {
+	rows, err := r.queries.GetItemWishesForAnalysis(ctx, itemID)
+	if err != nil {
+		return nil, fmt.Errorf("get wishes for item %d: %w", itemID, err)
+	}
 
-func (r *Analysis) UpdateItemWishAnalysis(ctx context.Context, params db.UpdateItemWishAnalysisParams) error {
-	return r.queries.UpdateItemWishAnalysis(ctx, params)
+	wishes := make([]model.AnalysisWish, 0, len(rows))
+	for _, row := range rows {
+		wishes = append(wishes, model.AnalysisWish{
+			ID:               row.ID,
+			Description:      row.WantDescription,
+			CategoryID:       nullableInt32(row.WantCategoryID),
+			CategoryIsManual: row.IsCategoryManual,
+		})
+	}
+	return wishes, nil
 }

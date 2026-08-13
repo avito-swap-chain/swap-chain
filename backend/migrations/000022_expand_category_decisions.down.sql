@@ -1,0 +1,3 @@
+-- This migration removes an artificial candidate-count limit. Reintroducing it
+-- would either reject existing valid decisions or destroy stored candidates, so
+-- rollback intentionally leaves the unconstrained representation intact.

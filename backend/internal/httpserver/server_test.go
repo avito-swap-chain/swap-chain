@@ -1005,13 +1005,13 @@ func TestMediaUploadAndPublicRead(t *testing.T) {
 		t.Fatalf("read media status=%d content-type=%q", read.StatusCode, read.Header.Get("Content-Type"))
 	}
 
-	created := postJSON(t, client, server.URL+"/api/v1/items", fmt.Sprintf(`{"offerTitle":"Bike","offerDescription":"Good bike","wishes": ["Board"],"imageUrls":[%q]}`, result.Url))
+	created := postJSON(t, client, server.URL+"/api/v1/items", fmt.Sprintf(`{"offerTitle":"Bike","offerDescription":"Good bike","categoryId":1,"wishes": ["Board"],"imageUrls":[%q]}`, result.Url))
 	defer closeBody(t, created.Body)
 	if created.StatusCode != http.StatusCreated {
 		t.Fatalf("create item status = %d, want %d; body=%s", created.StatusCode, http.StatusCreated, readBody(t, created.Body))
 	}
 
-	invalid := postJSON(t, client, server.URL+"/api/v1/items", `{"offerTitle":"Bike","offerDescription":"Good bike","wishes": ["Board"],"imageUrls":["/api/v1/media/not-an-object.png"]}`)
+	invalid := postJSON(t, client, server.URL+"/api/v1/items", `{"offerTitle":"Bike","offerDescription":"Good bike","categoryId":1,"wishes": ["Board"],"imageUrls":["/api/v1/media/not-an-object.png"]}`)
 	defer closeBody(t, invalid.Body)
 	if invalid.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid media URL status = %d, want %d; body=%s", invalid.StatusCode, http.StatusUnprocessableEntity, readBody(t, invalid.Body))
@@ -1721,6 +1721,7 @@ func testChain() chains.Chain {
 const validItemPayload = `{
   "offerTitle": "Books",
   "offerDescription": "A set of science fiction books",
+  "categoryId": 1,
   "wishes": ["A strategy board game"]
 }`
 

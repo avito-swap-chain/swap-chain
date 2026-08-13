@@ -33,24 +33,25 @@ func (e *ValidationError) Error() string {
 
 // ItemWish represents a single user wish for an item.
 type ItemWish struct {
-	ID          int64
-	CategoryID  *int32
-	Description string
-	Vector      []float32
+	ID                   int64
+	CategoryID           *int32
+	Description          string
+	Vector               []float32
 }
 
 // Item is the transport-independent item representation.
 type Item struct {
-	ID               int64
-	UserID           int64
-	OfferTitle       string
-	OfferDescription string
-	Wishes           []ItemWish
-	ImageURLs        []string
-	Status           string
-	OfferCategoryID  *int32
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                        int64
+	UserID                    int64
+	OfferTitle                string
+	OfferDescription          string
+	Wishes                    []ItemWish
+	ImageURLs                 []string
+	Status                    string
+	OfferCategoryID           *int32
+	OfferCategoryIsManual     bool
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 }
 
 // CreateInput contains normalized user-provided item fields.
@@ -72,12 +73,50 @@ type UpdateInput struct {
 	Withdraw         bool
 }
 
+type WishCategoryDecision struct {
+	WishID     int64
+	CategoryID int32
+}
+
+type CategoryDecisionInput struct {
+	OfferCategoryID *int32
+	Wishes          []WishCategoryDecision
+}
+
 // Service defines item operations required by the HTTP handler.
 type Service interface {
 	Create(ctx context.Context, userID int64, input CreateInput) (Item, error)
 	Update(ctx context.Context, userID, itemID int64, input UpdateInput) (Item, error)
+	ResolveCategories(ctx context.Context, userID, itemID int64, input CategoryDecisionInput) (Item, error)
 	Get(ctx context.Context, itemID int64) (Item, error)
 	ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error)
+}
+
+func validateCategoryDecision(input CategoryDecisionInput) error {
+	fields := make(map[string]string)
+	if input.OfferCategoryID == nil && len(input.Wishes) == 0 {
+		fields["request"] = "must contain at least one category decision"
+	}
+	if input.OfferCategoryID != nil && *input.OfferCategoryID <= 0 {
+		fields["offerCategoryId"] = "must be positive"
+	}
+	seen := make(map[int64]struct{}, len(input.Wishes))
+	for _, wish := range input.Wishes {
+		switch {
+		case wish.WishID <= 0:
+			fields["wishes"] = "wishId must be positive"
+		case wish.CategoryID <= 0:
+			fields["wishes"] = "categoryId must be positive"
+		}
+		if _, ok := seen[wish.WishID]; ok {
+			fields["wishes"] = "wishId must be unique"
+		}
+		seen[wish.WishID] = struct{}{}
+	}
+	if len(fields) > 0 {
+		return &ValidationError{Fields: fields}
+	}
+	return nil
 }
 
 func normalizeUpdate(input UpdateInput) UpdateInput {
@@ -177,7 +216,12 @@ func validate(input CreateInput) error {
 	fields := make(map[string]string)
 	validateText(fields, "offerTitle", input.OfferTitle, 255)
 	validateText(fields, "offerDescription", input.OfferDescription, 4000)
-	
+	if input.OfferCategoryID == nil {
+		fields["categoryId"] = "is required"
+	} else if *input.OfferCategoryID <= 0 {
+		fields["categoryId"] = "must be positive"
+	}
+
 	if len(input.Wishes) < 1 || len(input.Wishes) > 10 {
 		fields["wishes"] = "must contain between 1 and 10 wishes"
 	} else {

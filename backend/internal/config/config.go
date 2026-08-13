@@ -23,6 +23,8 @@ const (
 	defaultUndefinedThreshold     = 0.60
 	defaultCategorySimilarity     = 0.65
 	defaultCategoryMargin         = 0.05
+	defaultCategoryModel          = "google/gemini-2.5-flash"
+	defaultCategoryModelTimeout   = 30 * time.Second
 	defaultAnalysisPoll           = 30 * time.Second
 	defaultAnalysisTimeout        = 5 * time.Minute
 	defaultAnalysisStale          = 6 * time.Minute
@@ -64,6 +66,8 @@ type Config struct {
 	DisableMatchingWorker           bool
 	CategorySimilarityThreshold     float64
 	CategoryConfidenceMargin        float64
+	CategoryModel                   string
+	CategoryModelTimeout            time.Duration
 	AnalysisPollInterval            time.Duration
 	AnalysisTimeout                 time.Duration
 	AnalysisStaleAfter              time.Duration
@@ -139,6 +143,7 @@ func Load() (Config, error) {
 	}
 	cfg.OpenRouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
 	cfg.OpenRouterModel = os.Getenv("OPENROUTER_MODEL")
+	cfg.CategoryModel = envOrDefault("ANALYSIS_CATEGORY_MODEL", defaultCategoryModel)
 	cfg.VoyageAPIKey = os.Getenv("VOYAGE_API_KEY")
 	cfg.VoyageModel = os.Getenv("VOYAGE_MODEL")
 	cfg.GigaChatAuthKey = os.Getenv("GIGACHAT_AUTH_KEY")
@@ -188,6 +193,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if cfg.CategoryConfidenceMargin, err = boundedFloatFromEnv("ANALYSIS_CATEGORY_CONFIDENCE_MARGIN", defaultCategoryMargin, 0, 1); err != nil {
+		return Config{}, err
+	}
+	if cfg.CategoryModelTimeout, err = durationFromEnv("ANALYSIS_CATEGORY_MODEL_TIMEOUT", defaultCategoryModelTimeout); err != nil {
 		return Config{}, err
 	}
 	if cfg.AnalysisPollInterval, err = durationFromEnv("ANALYSIS_RECOVERY_POLL_INTERVAL", defaultAnalysisPoll); err != nil {

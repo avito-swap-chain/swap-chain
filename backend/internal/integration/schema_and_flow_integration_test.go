@@ -316,23 +316,35 @@ func TestCompletingAnalysisAtomicallyEnqueuesMatchingJob(t *testing.T) {
 			VALUES ('analysis-job-integration', '+79990007777')
 			RETURNING id
 		)
-		INSERT INTO items (user_id, offer_title, offer_description, want_description)
-		SELECT id, 'Телефон', 'Описание телефона', 'Хочу велосипед' FROM created_user
+		INSERT INTO items (user_id, offer_title, offer_description)
+		SELECT id, 'Телефон', 'Описание телефона' FROM created_user
 		RETURNING id`).Scan(&itemID); err != nil {
 		t.Fatalf("create analyzing item: %v", err)
 	}
+	var wishID int64
+	if err := database.QueryRowContext(ctx, `
+		INSERT INTO item_wishes (item_id, want_description)
+		VALUES ($1, 'Хочу велосипед')
+		RETURNING id`, itemID).Scan(&wishID); err != nil {
+		t.Fatalf("create item wish: %v", err)
+	}
 
-	repository, err := analyzerepository.NewPostgreSQLAnalysis(db.New(database))
+	repository, err := analyzerepository.NewPostgreSQLAnalysis(database, db.New(database))
 	if err != nil {
 		t.Fatalf("create analysis repository: %v", err)
 	}
 	updated, err := repository.CompleteItemAnalysis(ctx, analyzemodel.AnalysisResult{
-		ItemID:          itemID,
-		AnalysisVersion: 1,
-		OfferCategoryID: categoryID,
-				ParamRichness:   0.7,
-		OfferEmbedding:  unitVector(0),
-			})
+		ItemID:              itemID,
+		AnalysisVersion:     1,
+		OfferCategoryID:     &categoryID,
+		ParamRichness:       0.7,
+		OfferEmbeddingLocal: unitVector(0),
+		Wishes: []analyzemodel.WishAnalysisResult{{
+			ID:                 wishID,
+			CategoryID:         &categoryID,
+			WantEmbeddingLocal: unitVector(1),
+		}},
+	})
 	if err != nil {
 		t.Fatalf("complete item analysis: %v", err)
 	}

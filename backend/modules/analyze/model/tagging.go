@@ -1,9 +1,8 @@
 package model
 
 type CategoryMatch struct {
-	CategoryID int32
-	Confidence float64
-	IsManual   bool // назначается, если система не уверена в категории
+	CategoryID    int32
+	RequiresInput bool
 }
 
 type CategoryCandidate struct {

@@ -19,7 +19,7 @@ type CategoryBootstrapRepository interface {
 	CountCategories(ctx context.Context) (int64, error)
 	CountCategoriesMissingEmbedding(ctx context.Context) (int64, error)
 	ListCategoriesMissingEmbedding(ctx context.Context) ([]CategoryEmbeddingTarget, error)
-	SetCategoryEmbedding(ctx context.Context, categoryID int32, embedding []float32) (bool, error)
+	SetCategoryEmbedding(ctx context.Context, categoryID int32, local []float32, external []float32) (bool, error)
 }
 
 // CategoryEmbeddingVectorizer рассчитывает embedding без дополнительного enrichment.
@@ -29,22 +29,28 @@ type CategoryEmbeddingVectorizer interface {
 
 // CategoryBootstrap заполняет отсутствующие embeddings версионированного справочника категорий.
 type CategoryBootstrap struct {
-	repo       CategoryBootstrapRepository
-	vectorizer CategoryEmbeddingVectorizer
+	repo               CategoryBootstrapRepository
+	localVectorizer    CategoryEmbeddingVectorizer
+	externalVectorizer CategoryEmbeddingVectorizer
 }
 
 // NewCategoryBootstrap создаёт сценарий подготовки справочника категорий.
 func NewCategoryBootstrap(
 	repo CategoryBootstrapRepository,
-	vectorizer CategoryEmbeddingVectorizer,
+	localVectorizer CategoryEmbeddingVectorizer,
+	externalVectorizer CategoryEmbeddingVectorizer,
 ) (*CategoryBootstrap, error) {
 	switch {
 	case repo == nil:
 		return nil, fmt.Errorf("category bootstrap: repository is required")
-	case vectorizer == nil:
-		return nil, fmt.Errorf("category bootstrap: vectorizer is required")
+	case localVectorizer == nil:
+		return nil, fmt.Errorf("category bootstrap: local vectorizer is required")
 	default:
-		return &CategoryBootstrap{repo: repo, vectorizer: vectorizer}, nil
+		return &CategoryBootstrap{
+			repo:               repo,
+			localVectorizer:    localVectorizer,
+			externalVectorizer: externalVectorizer,
+		}, nil
 	}
 }
 
@@ -59,21 +65,22 @@ func (bootstrap *CategoryBootstrap) Bootstrap(ctx context.Context) error {
 	}
 
 	for _, category := range categories {
-		embedding, vectorErr := bootstrap.vectorizer.Vectorize(ctx, categoryEmbeddingText(category.Name))
+		text := categoryEmbeddingText(category.Name)
+		local, vectorErr := bootstrap.localVectorizer.Vectorize(ctx, text)
 		if vectorErr != nil {
-			return fmt.Errorf("vectorize category %d %q: %w", category.ID, category.Name, vectorErr)
+			return fmt.Errorf("vectorize category %d %q (local): %w", category.ID, category.Name, vectorErr)
 		}
-		if len(embedding) != categoryEmbeddingDimensions {
-			return fmt.Errorf(
-				"vectorize category %d %q: embedding has %d dimensions, want %d",
-				category.ID,
-				category.Name,
-				len(embedding),
-				categoryEmbeddingDimensions,
-			)
+		if len(local) != categoryEmbeddingDimensions {
+			return fmt.Errorf("vectorize category %d %q (local): embedding has %d dimensions, want %d",
+				category.ID, category.Name, len(local), categoryEmbeddingDimensions)
 		}
 
-		updated, updateErr := bootstrap.repo.SetCategoryEmbedding(ctx, category.ID, embedding)
+		var external []float32
+		if bootstrap.externalVectorizer != nil {
+			external, _ = bootstrap.externalVectorizer.Vectorize(ctx, text)
+		}
+
+		updated, updateErr := bootstrap.repo.SetCategoryEmbedding(ctx, category.ID, local, external)
 		if updateErr != nil {
 			return fmt.Errorf("store category %d %q embedding: %w", category.ID, category.Name, updateErr)
 		}

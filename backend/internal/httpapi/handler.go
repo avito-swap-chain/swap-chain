@@ -630,24 +630,21 @@ func (h *Handler) CreateItem(ctx context.Context, request api.CreateItemRequestO
 		imageURLs = append(imageURLs, (*request.Body.ImageUrls)...)
 	}
 
-	var offerCategoryID *int32
-	if request.Body.CategoryId != nil {
-		if err := h.categories.ValidateCategory(ctx, *request.Body.CategoryId); err != nil {
-			return api.CreateItem422JSONResponse{
-				ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "category validation failed", map[string]any{
-					"categoryId": err.Error(),
-				})),
-			}, nil
-		}
-		offerCategoryID = request.Body.CategoryId
+	if err := h.categories.ValidateCategory(ctx, request.Body.CategoryId); err != nil {
+		return api.CreateItem422JSONResponse{
+			ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "category validation failed", map[string]any{
+				"categoryId": err.Error(),
+			})),
+		}, nil
 	}
+	offerCategoryID := request.Body.CategoryId
 
 	item, err := h.items.Create(ctx, current.UserID, items.CreateInput{
 		OfferTitle:       request.Body.OfferTitle,
 		OfferDescription: request.Body.OfferDescription,
-		Wishes: request.Body.Wishes,
+		Wishes:           request.Body.Wishes,
 		ImageURLs:        imageURLs,
-		OfferCategoryID:  offerCategoryID,
+		OfferCategoryID:  &offerCategoryID,
 	})
 	if err != nil {
 		var validationError *items.ValidationError
@@ -700,9 +697,15 @@ func (h *Handler) UpdateItem(ctx context.Context, request api.UpdateItemRequestO
 	item, err := h.items.Update(ctx, current.UserID, request.ItemId, items.UpdateInput{
 		OfferTitle:       request.Body.OfferTitle,
 		OfferDescription: request.Body.OfferDescription,
-		Wishes: func() []string { if request.Body.Wishes != nil { return *request.Body.Wishes } else { return nil } }(),
-		OfferCategoryID:  offerCategoryID,
-		Withdraw:         withdraw,
+		Wishes: func() []string {
+			if request.Body.Wishes != nil {
+				return *request.Body.Wishes
+			} else {
+				return nil
+			}
+		}(),
+		OfferCategoryID: offerCategoryID,
+		Withdraw:        withdraw,
 	})
 	if err != nil {
 		var validationError *items.ValidationError
@@ -734,6 +737,85 @@ func (h *Handler) UpdateItem(ctx context.Context, request api.UpdateItemRequestO
 		}
 	}
 	return api.UpdateItem200JSONResponse(itemModel(item)), nil
+}
+
+// ResolveItemCategories применяет предложенный ручной выбор владельца карточки.
+func (h *Handler) ResolveItemCategories(
+	ctx context.Context,
+	request api.ResolveItemCategoriesRequestObject,
+) (api.ResolveItemCategoriesResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ResolveItemCategories401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.ResolveItemCategories400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	input := items.CategoryDecisionInput{OfferCategoryID: request.Body.OfferCategoryId}
+	if request.Body.OfferCategoryId != nil {
+		if err := h.categories.ValidateCategory(ctx, *request.Body.OfferCategoryId); err != nil {
+			return api.ResolveItemCategories422JSONResponse{
+				ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "category validation failed", map[string]any{
+					"offerCategoryId": err.Error(),
+				})),
+			}, nil
+		}
+	}
+	if request.Body.Wishes != nil {
+		input.Wishes = make([]items.WishCategoryDecision, 0, len(*request.Body.Wishes))
+		for _, decision := range *request.Body.Wishes {
+			if err := h.categories.ValidateCategory(ctx, decision.CategoryId); err != nil {
+				return api.ResolveItemCategories422JSONResponse{
+					ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "category validation failed", map[string]any{
+						"wishes": err.Error(),
+					})),
+				}, nil
+			}
+			input.Wishes = append(input.Wishes, items.WishCategoryDecision{
+				WishID:     decision.WishId,
+				CategoryID: decision.CategoryId,
+			})
+		}
+	}
+
+	item, err := h.items.ResolveCategories(ctx, current.UserID, request.ItemId, input)
+	if err != nil {
+		var validationError *items.ValidationError
+		switch {
+		case errors.As(err, &validationError):
+			details := make(map[string]any, len(validationError.Fields))
+			for field, message := range validationError.Fields {
+				details[field] = message
+			}
+			return api.ResolveItemCategories422JSONResponse{
+				ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(errorModel(ctx, "VALIDATION_ERROR", "category decision is invalid", details)),
+			}, nil
+		case errors.Is(err, items.ErrNotFound):
+			return api.ResolveItemCategories404JSONResponse{
+				NotFoundJSONResponse: api.NotFoundJSONResponse(errorModel(ctx, "ITEM_NOT_FOUND", "item not found", nil)),
+			}, nil
+		case errors.Is(err, items.ErrForbidden):
+			return api.ResolveItemCategories403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(errorModel(ctx, "ITEM_FORBIDDEN", "item does not belong to the current user", nil)),
+			}, nil
+		case errors.Is(err, items.ErrConflict):
+			return api.ResolveItemCategories409JSONResponse{
+				ConflictJSONResponse: api.ConflictJSONResponse(errorModel(ctx, "CATEGORY_DECISION_NOT_REQUIRED", "item is not waiting for category input", nil)),
+			}, nil
+		default:
+			h.logger.Error("resolve item categories", zap.Int64("item_id", request.ItemId), zap.Error(err))
+			return api.ResolveItemCategories500JSONResponse{
+				InternalErrorJSONResponse: api.InternalErrorJSONResponse(errorModel(ctx, "INTERNAL_ERROR", "failed to resolve item categories", nil)),
+			}, nil
+		}
+	}
+
+	return api.ResolveItemCategories200JSONResponse(itemModel(item)), nil
 }
 
 // GetItem returns one item.
@@ -1387,24 +1469,20 @@ func itemModel(item items.Item) api.Item {
 		Wishes: func() []api.ItemWish {
 			wishes := make([]api.ItemWish, 0, len(item.Wishes))
 			for _, w := range item.Wishes {
-				var catID int32
-				if w.CategoryID != nil {
-					catID = *w.CategoryID
-				}
 				wishes = append(wishes, api.ItemWish{
 					Id:          w.ID,
-					CategoryId:  catID,
+					CategoryId:  w.CategoryID,
 					Description: w.Description,
 				})
 			}
 			return wishes
 		}(),
-		ImageUrls:        append([]string{}, item.ImageURLs...),
-		Status:           api.ItemStatus(item.Status),
-		CategoryId:       item.OfferCategoryID,
-		OfferCategoryId:  item.OfferCategoryID,
-		CreatedAt:        item.CreatedAt,
-		UpdatedAt:        item.UpdatedAt,
+		ImageUrls:                 append([]string{}, item.ImageURLs...),
+		Status:                    api.ItemStatus(item.Status),
+		CategoryId:                item.OfferCategoryID,
+		OfferCategoryId:           item.OfferCategoryID,
+		CreatedAt:                 item.CreatedAt,
+		UpdatedAt:                 item.UpdatedAt,
 	}
 }
 

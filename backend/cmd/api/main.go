@@ -162,6 +162,7 @@ func run(logger *zap.Logger) error {
 	}
 
 	var openRouterClient *adapters.OpenRouter
+	var categoryClassifier analyzeservice.CategoryClassifier
 	if cfg.OpenRouterAPIKey != "" {
 		openRouterConfig := adapters.DefaultOpenRouterConfig(cfg.OpenRouterAPIKey)
 		if cfg.OpenRouterModel != "" {
@@ -174,6 +175,13 @@ func run(logger *zap.Logger) error {
 		}
 		openRouterClient = orClient
 
+		categoryConfig := adapters.DefaultOpenRouterConfig(cfg.OpenRouterAPIKey)
+		categoryConfig.Model = cfg.CategoryModel
+		categoryConfig.Timeout = cfg.CategoryModelTimeout
+		categoryClassifier, err = adapters.NewOpenRouter(categoryConfig)
+		if err != nil {
+			return fmt.Errorf("create category classifier: %w", err)
+		}
 
 		enricher, err = adapters.NewFallbackClient(openRouterClient, enricher)
 		if err != nil {
@@ -186,6 +194,7 @@ func run(logger *zap.Logger) error {
 		}
 	}
 
+	var externalEmbedder adapters.Embedder
 	if cfg.VoyageAPIKey == "" {
 		return fmt.Errorf("VOYAGE_API_KEY is required for vectorization, please check your .env")
 	}
@@ -200,10 +209,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create voyage client via openrouter: %w", err)
 	}
-	embedder, err = adapters.NewFallbackEmbedder(voyageClient, embedder)
-	if err != nil {
-		return fmt.Errorf("create voyage embedder fallback: %w", err)
-	}
+	externalEmbedder = voyageClient
 	if visionAdapter != nil {
 		vision, vsErr := analyzeservice.NewVision(visionAdapter)
 		if vsErr != nil {
@@ -215,15 +221,15 @@ func run(logger *zap.Logger) error {
 		logger.Info("vision photo recognition disabled (no API keys set)")
 	}
 
-	vectorizer, err := analyzeservice.NewVectorizer(enricher, embedder)
+	vectorizer, err := analyzeservice.NewVectorizer(enricher, embedder, externalEmbedder, logger)
 	if err != nil {
 		return fmt.Errorf("create vectorizer: %w", err)
 	}
-	analysisRepo, err := analyzerepository.NewPostgreSQLAnalysis(queries)
+	analysisRepo, err := analyzerepository.NewPostgreSQLAnalysis(database, queries)
 	if err != nil {
 		return fmt.Errorf("create analysis repo: %w", err)
 	}
-	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(analysisRepo, embedder)
+	categoryBootstrap, err := analyzeservice.NewCategoryBootstrap(analysisRepo, embedder, externalEmbedder)
 	if err != nil {
 		return fmt.Errorf("create category bootstrap: %w", err)
 	}
@@ -238,11 +244,23 @@ func run(logger *zap.Logger) error {
 	}
 	cancelBootstrap()
 
-	tagging, err := analyzeservice.NewTagging(analysisRepo, analyzeservice.TaggingConfig{
+	notificationRepo, err := notificationrepository.NewPostgres(database)
+	if err != nil {
+		return fmt.Errorf("create notification repository: %w", err)
+	}
+	notificationService, err := notificationservice.New(notificationRepo)
+	if err != nil {
+		return fmt.Errorf("create notification service: %w", err)
+	}
+	notificationProducer := notificationservice.NewProducer(notificationService, logger, func(userID int64, eventType, entityID string, data map[string]any) {
+		eventHub.PublishToUser(userID, eventType, entityID, data)
+	})
+
+	tagging, err := analyzeservice.NewTagging(categoryClassifier, analysisRepo, analyzeservice.TaggingConfig{
 		SimilarityThreshold: cfg.CategorySimilarityThreshold,
 		ConfidenceMargin:    cfg.CategoryConfidenceMargin,
 		UndefinedCategoryID: cfg.UndefinedCategoryID,
-	})
+	}, logger)
 	if err != nil {
 		return fmt.Errorf("create tagging: %w", err)
 	}
@@ -250,7 +268,7 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create scoring: %w", err)
 	}
-	analysis, err := analyzeservice.NewAnalysis(analysisRepo, scoring, tagging, vectorizer, analyzeservice.AnalysisConfig{
+	analysis, err := analyzeservice.NewAnalysis(analysisRepo, scoring, tagging, vectorizer, notificationProducer, analyzeservice.AnalysisConfig{
 		Concurrency: cfg.AnalysisConcurrency,
 	})
 	if err != nil {
@@ -283,18 +301,6 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create matching: %w", err)
 	}
-
-	notificationRepo, err := notificationrepository.NewPostgres(database)
-	if err != nil {
-		return fmt.Errorf("create notification repository: %w", err)
-	}
-	notificationService, err := notificationservice.New(notificationRepo)
-	if err != nil {
-		return fmt.Errorf("create notification service: %w", err)
-	}
-	notificationProducer := notificationservice.NewProducer(notificationService, logger, func(userID int64, eventType, entityID string, data map[string]any) {
-		eventHub.PublishToUser(userID, eventType, entityID, data)
-	})
 
 	chainService := chains.NewPostgresServiceWithOutbox(database, func(userIDs []int64, eventType, entityID string, data map[string]any) {
 		chainID, _ := strconv.ParseInt(entityID, 10, 64)

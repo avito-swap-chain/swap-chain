@@ -23,7 +23,8 @@ func TestPostgresServiceTransitionsItemToMatching(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Городской",
-		Wishes: []string{"Сноуборд"},
+		Wishes:           []string{"Сноуборд"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -60,7 +61,7 @@ func (r *fakeRepository) Create(_ context.Context, userID int64, input CreateInp
 		UserID:           userID,
 		OfferTitle:       input.OfferTitle,
 		OfferDescription: input.OfferDescription,
-		Wishes: []ItemWish{{ID: 1, Description: input.Wishes[0]}},
+		Wishes:           []ItemWish{{ID: 1, Description: input.Wishes[0]}},
 		Status:           "ANALYZING",
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -76,6 +77,10 @@ func (r *fakeRepository) Update(_ context.Context, userID, itemID int64, input U
 		item.Status = "WITHDRAWN"
 	}
 	return updateResult{Item: item}, nil
+}
+
+func (r *fakeRepository) ResolveCategories(_ context.Context, userID, itemID int64, _ CategoryDecisionInput) (Item, error) {
+	return Item{ID: itemID, UserID: userID, Status: "MATCHING"}, nil
 }
 
 func (r *fakeRepository) Get(_ context.Context, itemID int64) (Item, error) {
@@ -109,7 +114,8 @@ func TestPostgresServiceUpdatesTitleTriggersAnalysis(t *testing.T) {
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
 		OfferDescription: "Городской",
-		Wishes: []string{"Сноуборд"},
+		Wishes:           []string{"Сноуборд"},
+		OfferCategoryID:  int32PointerForTest(4),
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)

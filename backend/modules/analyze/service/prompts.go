@@ -79,3 +79,27 @@ Product description: "%s"`
 func BuildParamRichnessPrompt(description string) string {
 	return fmt.Sprintf(ParamRichnessPromptTemplate, description)
 }
+
+const CategoryDefinitionPromptTemplate = `You are an AI catalog manager for a swap-chain marketplace.
+Your task is to classify an item into EXACTLY ONE of the available categories based on its title and description.
+
+Available Categories (ID: Name):
+%s
+
+Rules:
+1. Choose the single most specific and accurate category for the item from the list above.
+2. If the text is vague, ambiguous, does not describe a concrete item, or no category is clearly appropriate, return category_id 47. Never guess in this case.
+3. Respond ONLY with a valid JSON object containing the integer "category_id".
+4. Do not include markdown formatting or extra text.
+
+Schema:
+{
+  "category_id": 123
+}
+
+Item Title: "%s"
+Item Description: "%s"`
+
+func BuildCategoryDefinitionPrompt(categories string, title string, description string) string {
+	return fmt.Sprintf(CategoryDefinitionPromptTemplate, categories, title, description)
+}
