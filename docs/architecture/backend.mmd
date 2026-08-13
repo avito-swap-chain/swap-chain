@@ -1,0 +1,81 @@
+flowchart TB
+    User[Пользователь] -->|HTTPS| Frontend[React frontend<br/>nginx]
+    Admin[Сотрудник ПВЗ] -->|HTTPS| Frontend
+
+    subgraph Backend[Go backend — модульный монолит]
+        direction TB
+
+        subgraph Transport[Transport]
+            Router[internal/httpserver<br/>routing, middleware, auth]
+            Contract[internal/api<br/>generated OpenAPI contract]
+            Handler[internal/httpapi<br/>handlers и DTO mapping]
+            Router --> Contract --> Handler
+        end
+
+        subgraph Application[Application]
+            ItemFlow[Items и analyze flow]
+            MatchingFlow[internal/application/matching<br/>worker и materializer]
+            ChainFlow[Chains и confirmations]
+            DeliveryFlow[Admin delivery flow]
+            Supporting[Chat, notifications,<br/>reputation и metrics]
+        end
+
+        subgraph Domain[Domain rules]
+            MatchingDomain[Matching graph,<br/>cycles и scoring]
+            ChainRules[Chain invariants<br/>и participant decisions]
+            DeliveryRules[Delivery transitions]
+            ReputationRules[Review rules]
+        end
+
+        subgraph Infrastructure[Infrastructure]
+            Repositories[PostgreSQL repositories<br/>SQL и sqlc]
+            MatchingJobs[matching_jobs<br/>lease и retry]
+            Outbox[outbox_events<br/>lease, retry, deduplication]
+            Broadcaster[PostgreSQL broadcaster<br/>LISTEN / NOTIFY]
+            SSEHub[Персональный SSE hub]
+            MediaAdapter[MinIO adapter]
+            AIAdapters[Ollama и внешние AI adapters]
+        end
+
+        Handler --> ItemFlow
+        Handler --> MatchingFlow
+        Handler --> ChainFlow
+        Handler --> DeliveryFlow
+        Handler --> Supporting
+
+        ItemFlow --> ChainRules
+        MatchingFlow --> MatchingDomain
+        ChainFlow --> ChainRules
+        DeliveryFlow --> DeliveryRules
+        Supporting --> ReputationRules
+
+        ItemFlow --> Repositories
+        ItemFlow --> AIAdapters
+        ItemFlow --> MediaAdapter
+        MatchingFlow --> MatchingJobs
+        MatchingFlow --> Repositories
+        ChainFlow --> Repositories
+        ChainFlow --> Outbox
+        DeliveryFlow --> Repositories
+        DeliveryFlow --> Outbox
+        Supporting --> Repositories
+
+        Outbox --> Broadcaster
+        Broadcaster --> SSEHub
+    end
+
+    Frontend -->|REST и cookie session| Router
+    SSEHub -->|SSE events| Frontend
+
+    Repositories --> PostgreSQL[(PostgreSQL 17<br/>pgvector)]
+    MatchingJobs --> PostgreSQL
+    Outbox --> PostgreSQL
+    Broadcaster <-->|pg_notify| PostgreSQL
+    MediaAdapter --> MinIO[(MinIO)]
+    AIAdapters --> Ollama[Ollama]
+    AIAdapters -.-> ExternalAI[Опциональные внешние AI<br/>GigaChat / OpenRouter]
+
+    MatchingFlow -.->|найденный цикл| ChainFlow
+    ChainFlow -.->|PENDING: решения участников| ChainFlow
+    ChainFlow -.->|все APPROVED:<br/>items MATCHING → LOCKED| DeliveryFlow
+    DeliveryFlow -.->|все RECEIVED:<br/>chain → COMPLETED| ChainFlow
