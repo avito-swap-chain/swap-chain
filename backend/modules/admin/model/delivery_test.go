@@ -1,6 +1,9 @@
 package model
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestCanTransition(t *testing.T) {
 	tests := []struct {
@@ -25,5 +28,17 @@ func TestCanTransition(t *testing.T) {
 				t.Fatalf("CanTransition(%q, %q) = %t, want %t", test.current, test.target, got, test.wantAllowed)
 			}
 		})
+	}
+}
+
+func TestValidateTargetStatus(t *testing.T) {
+	for _, status := range []string{DeliveryAtPVZ, DeliveryInTransit, DeliveryReceived} {
+		if err := ValidateTargetStatus(status); err != nil {
+			t.Fatalf("ValidateTargetStatus(%q) error = %v", status, err)
+		}
+	}
+	var validationError *ValidationError
+	if err := ValidateTargetStatus(DeliveryAwaitingPVZ); !errors.As(err, &validationError) || validationError.Field != "status" {
+		t.Fatalf("ValidateTargetStatus() error = %v", err)
 	}
 }

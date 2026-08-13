@@ -64,6 +64,46 @@ func TestNewRequiresRepository(t *testing.T) {
 	}
 }
 
+func TestTransitionDeliveryCallsCallbackAfterSuccess(t *testing.T) {
+	want := model.Delivery{ID: 10, Status: model.DeliveryAtPVZ}
+	repository := &repositoryStub{transitionResult: want}
+	callbackCalls := 0
+	admin, err := NewWithCallback(repository, func(_ context.Context, got model.Delivery) {
+		callbackCalls++
+		if got != want {
+			t.Errorf("callback delivery = %+v, want %+v", got, want)
+		}
+	}, AdminConfig{MaxListLimit: 100})
+	if err != nil {
+		t.Fatalf("NewWithCallback() error = %v", err)
+	}
+
+	if _, err := admin.TransitionDelivery(context.Background(), 7, 10, model.DeliveryAtPVZ); err != nil {
+		t.Fatalf("TransitionDelivery() error = %v", err)
+	}
+	if callbackCalls != 1 {
+		t.Fatalf("callback calls = %d, want 1", callbackCalls)
+	}
+	repository.transitionError = model.ErrTransitionConflict
+	if _, err := admin.TransitionDelivery(context.Background(), 7, 10, model.DeliveryAtPVZ); !errors.Is(err, model.ErrTransitionConflict) {
+		t.Fatalf("TransitionDelivery() error = %v", err)
+	}
+	if callbackCalls != 1 {
+		t.Fatalf("callback called after repository error: %d", callbackCalls)
+	}
+}
+
+func TestConfirmReceiptValidatesCommand(t *testing.T) {
+	admin := newTestAdmin(t, &repositoryStub{})
+	if _, err := admin.ConfirmReceipt(context.Background(), 0, 1); !errors.Is(err, model.ErrReceiptForbidden) {
+		t.Fatalf("ConfirmReceipt() actor error = %v", err)
+	}
+	var validationError *model.ValidationError
+	if _, err := admin.ConfirmReceipt(context.Background(), 1, 0); !errors.As(err, &validationError) {
+		t.Fatalf("ConfirmReceipt() chain error = %v", err)
+	}
+}
+
 func TestListDeliveriesValidatesCommand(t *testing.T) {
 	repository := &repositoryStub{}
 	admin := newTestAdmin(t, repository)

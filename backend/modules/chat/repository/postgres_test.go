@@ -3,13 +3,46 @@ package repository
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"swap-chain/modules/chat/model"
+	"swap-chain/shared/db"
 )
 
 func TestNewPostgreSQLRequiresDatabase(t *testing.T) {
 	if _, err := NewPostgreSQL(nil); err == nil {
 		t.Fatal("NewPostgreSQL(nil) error = nil")
+	}
+}
+
+func TestChatMessageMappings(t *testing.T) {
+	createdAt := time.Unix(100, 0).UTC()
+	row := db.GetChatMessageRow{
+		ID: 7, ChainID: 8,
+		SenderUserID: 1, SenderUsername: "Аня",
+		RecipientUserID: 2, RecipientUsername: "Борис",
+		ClientMessageID: "client-1", MessageText: "Привет", CreatedAt: createdAt,
+	}
+	got := mapChatMessage(row)
+	if got.ID != 7 || got.ChainID != 8 || got.Sender.ID != 1 || got.Recipient.ID != 2 ||
+		got.ClientMessageID != "client-1" || got.Text != "Привет" || !got.CreatedAt.Equal(createdAt) {
+		t.Fatalf("mapChatMessage() = %+v", got)
+	}
+
+	idempotent := mapIdempotentMessage(db.GetChatMessageByClientIDRow{
+		ID: row.ID, ChainID: row.ChainID,
+		SenderUserID: row.SenderUserID, SenderUsername: row.SenderUsername,
+		RecipientUserID: row.RecipientUserID, RecipientUsername: row.RecipientUsername,
+		ClientMessageID: row.ClientMessageID, MessageText: row.MessageText, CreatedAt: row.CreatedAt,
+	})
+	listed := mapListedMessage(db.ListChatMessagesRow{
+		ID: row.ID, ChainID: row.ChainID,
+		SenderUserID: row.SenderUserID, SenderUsername: row.SenderUsername,
+		RecipientUserID: row.RecipientUserID, RecipientUsername: row.RecipientUsername,
+		ClientMessageID: row.ClientMessageID, MessageText: row.MessageText, CreatedAt: row.CreatedAt,
+	})
+	if idempotent != got || listed != got {
+		t.Fatalf("mapping mismatch: created=%+v idempotent=%+v listed=%+v", got, idempotent, listed)
 	}
 }
 

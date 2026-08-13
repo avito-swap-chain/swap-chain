@@ -26,6 +26,29 @@ func TestNewRequiresRepository(t *testing.T) {
 	}
 }
 
+func TestSendCallsCallbackOnlyForNewMessage(t *testing.T) {
+	repository := &repositoryStub{}
+	callbackCalls := 0
+	chat, err := NewWithCallback(repository, func(_ context.Context, message model.Message) {
+		callbackCalls++
+		if message.Text != "Привет" {
+			t.Errorf("callback message = %+v", message)
+		}
+	}, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
+	if err != nil {
+		t.Fatalf("NewWithCallback() error = %v", err)
+	}
+
+	for range 2 {
+		if _, _, err := chat.Send(context.Background(), 1, 2, 3, "message-1", "Привет"); err != nil {
+			t.Fatalf("Send() error = %v", err)
+		}
+	}
+	if callbackCalls != 1 {
+		t.Fatalf("callback calls = %d, want 1", callbackCalls)
+	}
+}
+
 func (r *repositoryStub) CreateMessage(_ context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (model.Message, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -249,5 +272,8 @@ func TestChatValidationRejectsInvalidCommands(t *testing.T) {
 				t.Fatalf("error = %v, want ValidationError", err)
 			}
 		})
+	}
+	if _, err := chat.ListThreads(context.Background(), 0); !errors.Is(err, model.ErrForbidden) {
+		t.Fatalf("ListThreads() error = %v, want ErrForbidden", err)
 	}
 }

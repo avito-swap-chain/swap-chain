@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	"swap-chain/modules/matching/model"
@@ -10,6 +11,47 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
+
+func TestNewMatchingValidatesDependenciesAndConfig(t *testing.T) {
+	valid := MatchingConfig{
+		SimilarItemsAmount:              5,
+		CompatibilityThreshold:          0.5,
+		UndefinedCategoryID:             47,
+		UndefinedCompatibilityThreshold: 0.8,
+		ChainLen:                        3,
+		PenaltyFactor:                   0.2,
+		ChainRatingThreshold:            0.4,
+	}
+	repository := &repoStub{matchable: true}
+	scorer := scorerStub{score: 1}
+	tests := []struct {
+		name   string
+		logger *zap.Logger
+		repo   MatchingRepo
+		scorer Scorer
+		cfg    MatchingConfig
+	}{
+		{name: "nil logger", repo: repository, scorer: scorer, cfg: valid},
+		{name: "nil repository", logger: zap.NewNop(), scorer: scorer, cfg: valid},
+		{name: "nil scorer", logger: zap.NewNop(), repo: repository, cfg: valid},
+		{name: "invalid chain length", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.ChainLen = 4; return c }()},
+		{name: "invalid amount", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.SimilarItemsAmount = 0; return c }()},
+		{name: "invalid compatibility", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.CompatibilityThreshold = math.NaN(); return c }()},
+		{name: "invalid undefined threshold", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.UndefinedCompatibilityThreshold = 0.4; return c }()},
+		{name: "invalid rating", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.ChainRatingThreshold = 2; return c }()},
+		{name: "invalid penalty", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.PenaltyFactor = -1; return c }()},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := NewMatching(test.logger, test.repo, test.scorer, test.cfg); err == nil {
+				t.Fatal("NewMatching() error = nil")
+			}
+		})
+	}
+	if _, err := NewMatching(zap.NewNop(), repository, scorer, valid); err != nil {
+		t.Fatalf("NewMatching(valid) error = %v", err)
+	}
+}
 
 type repoCall struct {
 	itemID            int64
@@ -153,6 +195,22 @@ func TestMatchingDebugLogsCandidatesAndCycles(t *testing.T) {
 		if logs.FilterMessage(message).Len() == 0 {
 			t.Fatalf("debug log %q was not emitted", message)
 		}
+	}
+}
+
+func TestApplyElbowMethodCutsSharpSimilarityDrop(t *testing.T) {
+	matches := []model.ItemMatch{
+		{Similarity: 0.95},
+		{Similarity: 0.93},
+		{Similarity: 0.90},
+		{Similarity: 0.60},
+	}
+	got := applyElbowMethod(matches, 0.5)
+	if len(got) != 3 {
+		t.Fatalf("applyElbowMethod() length = %d, want 3", len(got))
+	}
+	if got := applyElbowMethod(nil, 0.5); got != nil {
+		t.Fatalf("applyElbowMethod(nil) = %#v", got)
 	}
 }
 
