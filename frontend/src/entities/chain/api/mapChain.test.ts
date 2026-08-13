@@ -14,11 +14,6 @@ const item = (id: number, title: string) => ({
   updatedAt: '2026-08-09T10:00:00Z',
 })
 
-const incomingDelivery = {
-  incomingDeliveryStatus: 'AWAITING_PVZ' as const,
-  incomingDeliveryUpdatedAt: '2026-08-09T10:00:00Z',
-}
-
 const apiChain = (
   status: ApiChain['status'],
   receipts: [boolean, boolean] = [false, false],
@@ -34,7 +29,8 @@ const apiChain = (
       receiveItem: item(2, 'Наушники'),
       status: 'WAITING',
       receiptConfirmed: receipts[0],
-      ...incomingDelivery,
+      incomingDeliveryStatus: 'AWAITING_PVZ',
+      incomingDeliveryUpdatedAt: '2026-08-09T10:00:00Z',
     },
     {
       user: { id: 2, username: 'Марк' },
@@ -42,7 +38,8 @@ const apiChain = (
       receiveItem: item(1, 'Горный велосипед'),
       status: 'APPROVED',
       receiptConfirmed: receipts[1],
-      ...incomingDelivery,
+      incomingDeliveryStatus: 'AWAITING_PVZ',
+      incomingDeliveryUpdatedAt: '2026-08-09T10:00:00Z',
     },
   ],
 })
@@ -113,7 +110,8 @@ const stand: ApiChain = {
       receiveItem: item(56, 'Лампа'),
       status: 'APPROVED',
       receiptConfirmed: false,
-      ...incomingDelivery,
+      incomingDeliveryStatus: 'AWAITING_PVZ',
+      incomingDeliveryUpdatedAt: '2026-08-09T10:00:00Z',
     },
     {
       user: { id: 16, username: 'Борис' },
@@ -121,7 +119,8 @@ const stand: ApiChain = {
       receiveItem: item(57, 'Клавиатура'),
       status: 'APPROVED',
       receiptConfirmed: false,
-      ...incomingDelivery,
+      incomingDeliveryStatus: 'AWAITING_PVZ',
+      incomingDeliveryUpdatedAt: '2026-08-09T10:00:00Z',
     },
     {
       user: { id: 17, username: 'Вера' },
@@ -129,7 +128,8 @@ const stand: ApiChain = {
       receiveItem: item(55, 'Книга'),
       status: 'APPROVED',
       receiptConfirmed: false,
-      ...incomingDelivery,
+      incomingDeliveryStatus: 'AWAITING_PVZ',
+      incomingDeliveryUpdatedAt: '2026-08-09T10:00:00Z',
     },
   ],
 }
@@ -158,5 +158,16 @@ describe('mapChain — порядок участников', () => {
     }
 
     expect(mapChain(broken, 15).participants).toHaveLength(3)
+  })
+})
+
+describe('статус доставки участника', () => {
+  it('переносится из контракта — без него стадия передачи молчит до отметки о получении', () => {
+    const chain = mapChain(apiChain('ACCEPTED'), 1)
+
+    expect(chain.participants.map((p) => p.incomingDelivery)).toEqual([
+      'AWAITING_PVZ',
+      'AWAITING_PVZ',
+    ])
   })
 })

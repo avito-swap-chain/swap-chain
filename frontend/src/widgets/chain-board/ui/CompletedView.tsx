@@ -1,11 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import { ExchangeSummary } from '@/entities/chain'
+import { LeaveReview } from '@/features/leave-review'
 import { Banner, Button, IconCheck } from '@/shared/ui'
 import type { ChainViewProps } from '../model/types'
 import { BoardFooter } from './BoardFooter'
 
 /** COMPLETED: все передали и подтвердили получение — цепочка закрыта. */
-export function CompletedView({ me, neighbours }: ChainViewProps) {
+export function CompletedView({ chain, me, neighbours }: ChainViewProps) {
   const navigate = useNavigate()
 
   return (
@@ -21,6 +22,13 @@ export function CompletedView({ me, neighbours }: ChainViewProps) {
       <p className="text-[12.5px] leading-relaxed text-ink-3">
         Полученная вещь появится в списке ваших объявлений.
       </p>
+
+      {/* Оцениваем того, от кого получили вещь: с ним человек и имел дело — переписывался,
+          ждал передачу. Об остальных участниках круга ему сказать нечего. */}
+      <LeaveReview
+        chainId={chain.id}
+        target={{ userId: neighbours.giver.userId, name: neighbours.giver.name }}
+      />
 
       <BoardFooter>
         <Button fullWidth onClick={() => navigate('/')}>

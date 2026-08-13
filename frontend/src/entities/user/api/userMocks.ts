@@ -1,5 +1,5 @@
 import { currentPersonaId, editPersona, personaById } from '@/shared/model/persona'
-import type { Profile, ProfileEdit } from '../model/types'
+import type { Profile, ProfileEdit, Review } from '../model/types'
 
 /**
  * Профили на моках — тот же реестр демо-персон, из которого собираются участники цепочек
@@ -21,9 +21,11 @@ function toProfile(id: string): Profile {
     name: persona.name,
     avatarUrl: persona.avatarUrl || undefined,
     registeredAt: REGISTERED_AT,
-    completedExchanges: 3,
     rating: persona.rating,
     reviews: persona.reviews,
+    // Завершённые обмены на моках выводим из отзывов: каждый оставляют после закрытой
+    // сделки, поэтому число обменов не может быть меньше — и выдумывать его отдельно незачем.
+    completedExchanges: persona.reviews,
   }
 }
 
@@ -41,4 +43,62 @@ export async function edit(id: string, patch: ProfileEdit): Promise<Profile> {
 
   editPersona(id, { name: patch.name, avatarUrl: patch.avatarUrl })
   return toProfile(id)
+}
+
+/**
+ * Отзывы на моках. Не выдумываем «отличный обмен» на каждого: тексты разной длины и
+ * оценки не только пятёрки — иначе блок читается как витрина, а не как отзывы живых людей.
+ * Один отзыв намеренно без текста: так и бывает, а интерфейс обязан это пережить.
+ */
+const REVIEWS: Record<string, Review[]> = {
+  u1: [
+    {
+      id: 'r1',
+      author: { id: 'u2', name: 'Марк', avatarUrl: '/mock/avatars/u12.jpg' },
+      rating: 5,
+      text: 'Вещь как в описании, в ПВЗ сдала в тот же день. Спасибо за обмен!',
+      createdAt: '2026-08-04T12:20:00Z',
+    },
+    {
+      id: 'r2',
+      author: { id: 'u3', name: 'Лена', avatarUrl: '/mock/avatars/u47.jpg' },
+      rating: 4,
+      text: 'Всё хорошо, только ответа пришлось подождать пару дней.',
+      createdAt: '2026-07-28T09:10:00Z',
+    },
+  ],
+  u2: [
+    {
+      id: 'r3',
+      author: { id: 'u1', name: 'Даша', avatarUrl: '/mock/avatars/u32.jpg' },
+      rating: 5,
+      createdAt: '2026-08-04T12:25:00Z',
+    },
+  ],
+  u3: [],
+}
+
+export async function reviewsFor(id: string): Promise<Review[]> {
+  await delay(250)
+  return REVIEWS[id] ?? []
+}
+
+/**
+ * Оставленный отзыв виден сразу, как и с бэкендом: демо на моках должно доигрываться
+ * до конца, включая последний шаг обмена.
+ */
+export async function addReview(targetUserId: string, rating: number, text?: string): Promise<void> {
+  await delay(400)
+  const me = personaById(currentPersonaId())
+
+  REVIEWS[targetUserId] = [
+    {
+      id: `r${Date.now()}`,
+      author: { id: me?.id ?? 'u1', name: me?.name ?? 'Вы', avatarUrl: me?.avatarUrl || undefined },
+      rating,
+      text: text?.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    },
+    ...(REVIEWS[targetUserId] ?? []),
+  ]
 }

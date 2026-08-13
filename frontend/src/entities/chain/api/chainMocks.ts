@@ -124,7 +124,11 @@ let chains: Chain[] = [
     id: 'c2',
     status: 'active',
     participants: [
-      of(DASHA, { id: '5', title: 'Кофеварка', photoUrl: '/mock/items/coffee.jpg' }, 'confirmed'),
+      {
+        ...of(DASHA, { id: '5', title: 'Кофеварка', photoUrl: '/mock/items/coffee.jpg' }, 'confirmed'),
+        // Даше уже везут гитару — на её экране видно «Вам везут: едет получателю».
+        incomingDelivery: 'IN_DELIVERY',
+      },
       {
         userId: 'u5',
         name: 'Игорь',
@@ -133,6 +137,8 @@ let chains: Chain[] = [
         givesItem: { id: '51', title: 'Акустическая гитара', photoUrl: '/mock/items/guitar.jpg' },
         status: 'confirmed',
         receiptConfirmed: true,
+        // Кофеварку Даши ПВЗ уже принял и передал в доставку.
+        incomingDelivery: 'RECEIVED',
       },
       // Единственный участник без `avatarUrl` — намеренно: на нём видно фолбэк на инициал.
       {
@@ -142,6 +148,8 @@ let chains: Chain[] = [
         givesItem: { id: '61', title: 'Электросамокат', photoUrl: '/mock/items/scooter.jpg' },
         status: 'confirmed',
         receiptConfirmed: false,
+        // Соня свою вещь ещё не забрала: гитара Игоря ждёт приёмки на стойке.
+        incomingDelivery: 'AWAITING_PVZ',
       },
     ],
   },
