@@ -2,6 +2,7 @@ import { unwrap } from '@/shared/api/fetcher'
 import {
   createItem as createItemRequest,
   listItems,
+  resolveItemCategories,
   updateItem,
   uploadMedia,
 } from '@/shared/api/generated/endpoints'
@@ -65,6 +66,9 @@ export async function getMyItems(): Promise<Item[]> {
 export async function createItem(draft: ItemDraft): Promise<Item> {
   const wish = usableWishes(draft.wish)
   if (wish.length === 0) throw new Error('Не указано, что хочется взамен')
+  // Категория обязательна с контракта 0.9.0: по ней идёт подбор, и угадать её за человека
+  // бэкенд больше не берётся. Форма без категории дальше не пускает — это страховка.
+  if (!draft.categoryId) throw new Error('Не выбрана категория')
 
   if (!isBackendConnected) return mock.create(draft, wish)
 
@@ -86,9 +90,7 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
       offerDescription: draft.description?.trim() || draft.title,
       wishes: wish,
       imageUrls: imageUrl ? [imageUrl] : [],
-      // Категорию бэкенд принимает и учитывает в подборе; если человек её не выбрал,
-      // поле не отправляем — модель определит сама при разборе описания.
-      ...(draft.categoryId ? { categoryId: draft.categoryId } : {}),
+      categoryId: draft.categoryId,
     }),
   )
   return mapItem(created)
@@ -134,6 +136,21 @@ export async function editItem(
  * меняется только желание.
  */
 export const setItemWish = (id: string, wish: string[]): Promise<Item> => editItem(id, { wish })
+
+/**
+ * Досогласовать разделы желаний, которые не определила модель. Вещь стоит в `needs_category`
+ * и в подбор не идёт, пока решение не принято, — поэтому бэкенд применяет его целиком,
+ * за один запрос по всем нерешённым вариантам.
+ *
+ * Ветки моков здесь нет намеренно: `needs_category` приходит только из ответа бэкенда,
+ * на моках такой вещи не бывает и спрашивать не о чем.
+ */
+export async function resolveWishCategories(
+  id: string,
+  decisions: { wishId: number; categoryId: number }[],
+): Promise<Item> {
+  return mapItem(unwrap<ApiItem>(await resolveItemCategories(Number(id), { wishes: decisions })))
+}
 
 /**
  * Снять вещь с обмена. Не удаление: желание убирается, вещь уходит из подбора и снова

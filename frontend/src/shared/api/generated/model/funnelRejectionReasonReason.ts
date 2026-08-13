@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.8.0
+ * OpenAPI spec version: 0.9.0
  */
 
 export type FunnelRejectionReasonReason = typeof FunnelRejectionReasonReason[keyof typeof FunnelRejectionReasonReason];
@@ -15,5 +15,6 @@ export const FunnelRejectionReasonReason = {
   item_unavailable: 'item_unavailable',
   item_changed: 'item_changed',
   item_withdrawn: 'item_withdrawn',
+  blocked: 'blocked',
   unknown: 'unknown',
 } as const;

@@ -1,12 +1,17 @@
 import { unwrap } from '@/shared/api/fetcher'
 import {
+  blockUser as blockUserRequest,
   createChainReview,
   getUser,
+  listBlocks,
   listUserReviews,
+  unblockUser as unblockUserRequest,
   updateUser,
   uploadMedia,
 } from '@/shared/api/generated/endpoints'
 import type {
+  Block,
+  BlockList,
   MediaUpload,
   UserProfile,
   UserReview,
@@ -128,15 +133,35 @@ export async function uploadAvatar(file: File): Promise<string> {
 }
 
 /**
- * Чёрный список и жалобы. Ручек в контракте нет ни у того, ни у другого (0.8.0), поэтому
- * работают на моках даже с подключённым бэкендом — как и остальные поля из списка
- * в `shared/config/backend.ts`. Наружу это единственная точка входа: появятся ручки —
- * поменяется тело, интерфейс останется прежним.
+ * Чёрный список. С контракта 0.9.0 у него есть ручки, и блокировка перестала быть
+ * пометкой в браузере: бэкенд убирает пару из подбора в обе стороны и распускает общие
+ * незавершённые цепочки. Интерфейс остался прежним — поменялось тело.
+ *
+ * Список читаем одной страницей: чёрный список — это единицы людей, а не лента, и
+ * листать там нечего. Сотня записей — потолок, который разрешает контракт.
  */
-export const getBlocked = (): Promise<string[]> => mock.blocked()
+export async function getBlocked(): Promise<string[]> {
+  if (!isBackendConnected) return mock.blocked()
 
-export const blockUser = (userId: string): Promise<void> => mock.block(userId)
+  const { blocks } = unwrap<BlockList>(await listBlocks({ limit: 100 }))
+  return blocks.map((block) => String(block.blockedUser.id))
+}
 
-export const unblockUser = (userId: string): Promise<void> => mock.unblock(userId)
+export async function blockUser(userId: string): Promise<void> {
+  if (!isBackendConnected) return mock.block(userId)
 
+  unwrap<Block>(await blockUserRequest({ blockedUserId: Number(userId) }))
+}
+
+export async function unblockUser(userId: string): Promise<void> {
+  if (!isBackendConnected) return mock.unblock(userId)
+
+  await unblockUserRequest(Number(userId))
+}
+
+/**
+ * Жалобы. Ручка в контракте есть, но она про сообщение чата, а не про человека —
+ * см. `entities/chat`. Здесь остаётся мок ровно для того же, для чего он был:
+ * пожаловаться на пользователя из его профиля, где никакого сообщения нет.
+ */
 export const reportUser = (complaint: Report): Promise<void> => mock.report(complaint)

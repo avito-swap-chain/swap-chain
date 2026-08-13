@@ -10,6 +10,7 @@ export {
   editItem,
   setItemWish,
   withdrawItem,
+  resolveWishCategories,
 } from './api/itemsApi'
 export { categoryKeys, getCategories, matchCategory } from './api/categoriesApi'
 export { suggestWish, type GivenItem } from './api/suggestWish'

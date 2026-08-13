@@ -13,6 +13,7 @@ import type { Item, ItemStatus } from '../model/types'
  */
 const STATUS: Record<ApiItem['status'], ItemStatus> = {
   ANALYZING: 'analyzing',
+  ACTION_REQUIRED: 'needs_category',
   MATCHING: 'searching',
   LOCKED: 'reserved',
   WITHDRAWN: 'withdrawn',
@@ -44,5 +45,10 @@ export const mapItem = (item: ApiItem): Item => ({
   // Желание списком вариантов — теперь и в контракте. Идентификатор и категорию варианта
   // бэкенд заводит себе сам, интерфейсу от варианта нужна только формулировка.
   wish: item.wishes.map((variant) => variant.description),
+  // Кроме одного случая: раздел варианта не определился, и вещь ждёт ответа владельца.
+  // Тогда нужен и идентификатор — по нему решение уезжает обратно.
+  pendingWishes: item.wishes
+    .filter((variant) => variant.categoryId == null)
+    .map(({ id, description }) => ({ id, description })),
   status: STATUS[item.status],
 })

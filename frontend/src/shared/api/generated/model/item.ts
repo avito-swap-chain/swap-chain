@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.8.0
+ * OpenAPI spec version: 0.9.0
  */
 import type { ItemStatus } from './itemStatus';
 import type { ItemWish } from './itemWish';
@@ -17,12 +17,12 @@ export interface Item {
   imageUrls: string[];
   status: ItemStatus;
   /**
-     * User-selected offer category; null when not explicitly set. Maps to offer_category_id.
+     * User-selected offer category. Required for newly created cards. Maps to offer_category_id.
      * @nullable
      */
   categoryId?: number | null;
   /**
-     * Assigned by AI analysis; null until analysis completes.
+     * Compatibility alias of categoryId backed by offer_category_id.
      * @nullable
      */
   offerCategoryId?: number | null;

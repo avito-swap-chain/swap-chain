@@ -1,14 +1,17 @@
-import { Status } from '@/shared/ui'
+import { Status, type StatusTone } from '@/shared/ui'
 import type { ItemStatus } from '../model/types'
 
-// Ход не за пользователем ни в одном из состояний, поэтому оранжевого здесь нет:
+// Оранжевый только там, где ход за пользователем, и такое состояние ровно одно:
 // «В цепочке» — обычный тёмный статус, «Поиск обмена» — серый фон жизни вещи.
-const STATUS_VIEW: Record<ItemStatus, { tone: 'neutral' | 'muted'; label: string } | null> = {
+const STATUS_VIEW: Record<ItemStatus, { tone: StatusTone; label: string } | null> = {
   reserved: { tone: 'neutral', label: 'В цепочке' },
   searching: { tone: 'muted', label: 'Поиск обмена' },
   // Разбор описания занимает секунды, но без подписи вещь выглядит зависшей: желание
   // указано, а в подборе её ещё нет и делать с ней нечего.
   analyzing: { tone: 'muted', label: 'Проверяем описание' },
+  // Единственное, чего вещь сама не переживёт: пока раздел желания не выбран, в подбор
+  // она не пойдёт. Поэтому не серая подпись, а обращение к человеку.
+  needs_category: { tone: 'attention', label: 'Нужен раздел желания' },
   // Снятую вещь подписываем, а не молчим: человек только что сделал действие,
   // и подтверждение результата важнее чистоты карточки.
   withdrawn: { tone: 'muted', label: 'Снято с обмена' },

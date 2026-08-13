@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Swap Chain API
-  version: 0.8.0
+  version: 0.9.0
   description: Shared REST and realtime contract for the swap-chain MVP.
 
 servers:
@@ -18,6 +18,8 @@ tags:
   - name: categories
   - name: chains
   - name: chat
+  - name: blocks
+  - name: moderation
   - name: admin
   - name: events
   - name: notifications
@@ -561,6 +563,53 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/items/{itemId}/category-decision:
+    parameters:
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: resolveItemCategories
+      tags: [items, categories]
+      summary: Resolve categories that require the item owner's input
+      description: >
+        Applies all outstanding wish-category decisions atomically. Each value
+        must be an available user-facing category from GET /api/v1/categories.
+        offerCategoryId is retained only for resolving legacy cards created
+        before categoryId became mandatory.
+        A successful decision moves the item from ACTION_REQUIRED to MATCHING.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveItemCategoriesRequest"
+      responses:
+        "200":
+          description: Categories resolved and item returned to matching
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -1236,6 +1285,352 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/blocks:
+    get:
+      operationId: listBlocks
+      tags: [blocks]
+      summary: List the current user's personal blacklist
+      description: Requires an authenticated user. Returns only users blocked by the current actor.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Block ID returned as nextCursor by the previous page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current user's blocks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: blockUser
+      tags: [blocks]
+      summary: Block another user
+      description: >-
+        Directed block that also acts symmetrically for matching. Idempotent;
+        atomically cancels shared non-terminal chains with the blocked user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockRequest"
+      responses:
+        "200":
+          description: Block applied (or already present)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Block"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/blocks/{blockedUserId}:
+    parameters:
+      - name: blockedUserId
+        in: path
+        required: true
+        description: User to unblock.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    delete:
+      operationId: unblockUser
+      tags: [blocks]
+      summary: Remove a user from the personal blacklist
+      description: >-
+        Idempotent. Unblocking never revives previously cancelled chains.
+        Returns 204 when the pair was never blocked; 404 only when the target
+        user does not exist.
+      responses:
+        "204":
+          description: Unblocked (or nothing to unblock)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/reports:
+    post:
+      operationId: createReport
+      tags: [moderation]
+      summary: Report a specific message in an accessible chat
+      description: >-
+        Only a participant of the chat may report a message sent by another
+        participant. Repeated reports of the same message are idempotent.
+        comment is optional for spam/abuse and required for other.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportRequest"
+      responses:
+        "201":
+          description: Report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageReport"
+        "200":
+          description: Idempotent duplicate of an existing report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/admin/reports:
+    get:
+      operationId: listAdminReports
+      tags: [moderation]
+      summary: List message reports in the moderation queue
+      description: Requires ADMIN. Cursor-paginated by report ID.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReportStatus"
+        - name: reason
+          in: query
+          schema:
+            $ref: "#/components/schemas/ReportReason"
+        - name: assigneeId
+          in: query
+          description: Filter to reports assigned to this administrator.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: unassigned
+          in: query
+          description: When true, return only reports without an assignee.
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Report ID returned as nextCursor by the previous page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reports in the moderation queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageReportList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/admin/reports/{reportId}:
+    parameters:
+      - name: reportId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    get:
+      operationId: getAdminReport
+      tags: [moderation]
+      summary: Get one report with the reported message and full chat context
+      description: Requires ADMIN. Context messages are ordered by ascending ID.
+      responses:
+        "200":
+          description: Report detail with reported message and thread context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/admin/reports/{reportId}/assign:
+    parameters:
+      - name: reportId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: assignReport
+      tags: [moderation]
+      summary: Assign an open report to the current administrator
+      description: >-
+        Requires ADMIN. Take-over is only allowed for open reports. Repeating
+        the same administrator is idempotent; a report already assigned to a
+        different administrator returns 409.
+      responses:
+        "200":
+          description: Report after assignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/admin/reports/{reportId}/decision:
+    parameters:
+      - name: reportId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: decideReport
+      tags: [moderation]
+      summary: Resolve or reject an open report assigned to the current administrator
+      description: >-
+        Requires ADMIN. Only the assignee may decide, once, with a mandatory
+        decision comment. The decision classifies the report and does not
+        execute any sanction; user, message, chat, item and chain state remain
+        unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReportDecisionRequest"
+      responses:
+        "200":
+          description: Report after the terminal decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/admin/audit:
+    get:
+      operationId: listAdminAudit
+      tags: [moderation]
+      summary: List the append-only administrator audit log
+      description: Requires ADMIN. Newest first, cursor-paginated.
+      parameters:
+        - name: action
+          in: query
+          schema:
+            $ref: "#/components/schemas/AuditAction"
+        - name: adminId
+          in: query
+          description: Filter to audit entries written by this administrator.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: targetType
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: Audit entry ID returned as nextCursor by the previous page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit log entries newest first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
 components:
   responses:
     BadRequest:
@@ -1397,7 +1792,7 @@ components:
 
     CreateItemRequest:
       type: object
-      required: [offerTitle, offerDescription, wishes]
+      required: [offerTitle, offerDescription, categoryId, wishes]
       properties:
         offerTitle:
           type: string
@@ -1423,7 +1818,7 @@ components:
         categoryId:
           type: integer
           format: int32
-          description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
+          description: Required user-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. Wish categories are determined by the analysis pipeline from their descriptions.
 
     UpdateItemRequest:
       type: object
@@ -1448,6 +1843,33 @@ components:
           type: integer
           format: int32
           description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
+
+    ResolveItemCategoriesRequest:
+      type: object
+      minProperties: 1
+      properties:
+        offerCategoryId:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Legacy-only decision for cards created before offer category became mandatory.
+        wishes:
+          type: array
+          items:
+            $ref: "#/components/schemas/WishCategoryDecision"
+
+    WishCategoryDecision:
+      type: object
+      required: [wishId, categoryId]
+      properties:
+        wishId:
+          type: integer
+          format: int64
+          minimum: 1
+        categoryId:
+          type: integer
+          format: int32
+          minimum: 1
 
     MediaUpload:
       type: object
@@ -1502,12 +1924,12 @@ components:
           type: integer
           format: int32
           nullable: true
-          description: User-selected offer category; null when not explicitly set. Maps to offer_category_id.
+          description: User-selected offer category. Required for newly created cards. Maps to offer_category_id.
         offerCategoryId:
           type: integer
           format: int32
           nullable: true
-          description: Assigned by AI analysis; null until analysis completes.
+          description: Compatibility alias of categoryId backed by offer_category_id.
         wantCategoryId:
           type: integer
           format: int32
@@ -1522,7 +1944,7 @@ components:
 
     ItemWish:
       type: object
-      required: [id, categoryId, description]
+      required: [id, description]
       properties:
         id:
           type: integer
@@ -1530,6 +1952,7 @@ components:
         categoryId:
           type: integer
           format: int32
+          nullable: true
         description:
           type: string
 
@@ -1547,7 +1970,7 @@ components:
 
     ItemStatus:
       type: string
-      enum: [ANALYZING, MATCHING, LOCKED, WITHDRAWN]
+      enum: [ANALYZING, ACTION_REQUIRED, MATCHING, LOCKED, WITHDRAWN]
 
     Category:
       type: object
@@ -2072,11 +2495,192 @@ components:
       properties:
         reason:
           type: string
-          enum: [declined, expired, item_unavailable, item_changed, item_withdrawn, unknown]
+          enum: [declined, expired, item_unavailable, item_changed, item_withdrawn, blocked, unknown]
         count:
           type: integer
           format: int64
           minimum: 0
+
+    BlockRequest:
+      type: object
+      required: [blockedUserId]
+      properties:
+        blockedUserId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: User to block. Must differ from the current user.
+
+    Block:
+      type: object
+      required: [id, blockedUser, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        blockedUser:
+          $ref: "#/components/schemas/UserSummary"
+        createdAt:
+          type: string
+          format: date-time
+
+    BlockList:
+      type: object
+      required: [blocks]
+      properties:
+        blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Block"
+        nextCursor:
+          type: string
+          nullable: true
+
+    ReportStatus:
+      type: string
+      enum: [open, resolved, rejected]
+
+    ReportReason:
+      type: string
+      enum: [spam, abuse, other]
+
+    ReportDecision:
+      type: string
+      enum: [resolved, rejected]
+
+    CreateReportRequest:
+      type: object
+      required: [messageId, reason]
+      properties:
+        messageId:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          $ref: "#/components/schemas/ReportReason"
+        comment:
+          type: string
+          maxLength: 1000
+          description: Optional for spam/abuse, required for other.
+
+    MessageReport:
+      type: object
+      required: [id, reporter, messageId, reason, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        reporter:
+          $ref: "#/components/schemas/UserSummary"
+        messageId:
+          type: integer
+          format: int64
+        reason:
+          $ref: "#/components/schemas/ReportReason"
+        comment:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ReportStatus"
+        assignee:
+          $ref: "#/components/schemas/UserSummary"
+          nullable: true
+        decisionComment:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MessageReportList:
+      type: object
+      required: [reports]
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageReport"
+        nextCursor:
+          type: string
+          nullable: true
+
+    ReportDetail:
+      type: object
+      required: [report, reportedMessage, context]
+      properties:
+        report:
+          $ref: "#/components/schemas/MessageReport"
+        reportedMessage:
+          $ref: "#/components/schemas/ChatMessage"
+        context:
+          type: array
+          description: Full thread context (chain + message sender/recipient) in ascending message ID order.
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+
+    ReportDecisionRequest:
+      type: object
+      required: [decision, comment]
+      properties:
+        decision:
+          $ref: "#/components/schemas/ReportDecision"
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Mandatory non-empty internal decision rationale.
+
+    AuditAction:
+      type: string
+      enum:
+        - REPORT_ASSIGNED
+        - REPORT_RESOLVED
+        - REPORT_REJECTED
+        - USER_BLOCKED
+        - CHAIN_CANCELLED
+        - DELIVERY_STATUS_CHANGED
+
+    AuditLogEntry:
+      type: object
+      required: [id, admin, action, targetType, targetId, metadata, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        admin:
+          $ref: "#/components/schemas/UserSummary"
+        action:
+          $ref: "#/components/schemas/AuditAction"
+        targetType:
+          type: string
+          description: Structural target kind (e.g. report, delivery). No message body or personal data.
+        targetId:
+          type: integer
+          format: int64
+        metadata:
+          type: object
+          additionalProperties: true
+          description: >-
+            Structural identifiers and before/after state only; never a message
+            body, decision comment, secret or arbitrary personal data.
+        createdAt:
+          type: string
+          format: date-time
+
+    AuditLogList:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
+        nextCursor:
+          type: string
+          nullable: true
 
     ChainReceipt:
       type: object
