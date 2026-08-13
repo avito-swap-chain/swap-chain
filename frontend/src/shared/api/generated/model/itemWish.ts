@@ -3,11 +3,12 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.8.0
+ * OpenAPI spec version: 0.9.0
  */
 
 export interface ItemWish {
   id: number;
-  categoryId: number;
+  /** @nullable */
+  categoryId?: number | null;
   description: string;
 }

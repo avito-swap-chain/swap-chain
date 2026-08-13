@@ -3,7 +3,7 @@ import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
 import { isServiceThread, SERVICE_THREAD } from '../lib/thread'
 import type { ThreadRef } from '../model/types'
 import { resetThreads } from './messageMocks'
-import { getMessages, getThreads, markThreadRead, sendMessage } from './messagesApi'
+import { getMessages, getThreads, markThreadRead, reportMessage, sendMessage } from './messagesApi'
 
 const [DASHA, MARK] = PERSONAS
 
@@ -188,5 +188,17 @@ describe('messagesApi — непрочитанное', () => {
     expect((await getThreads()).totalUnread).toBe(1) // только собственный канал сервиса
     expect(await dialogues()).toEqual([])
     expect(await getMessages(BIKE)).toEqual([])
+  })
+})
+
+describe('reportMessage — жалоба на реплику', () => {
+  beforeEach(resetThreads)
+
+  it('«другое» без пояснения не отправляется: причина не сказана ничем, кроме текста', async () => {
+    await expect(reportMessage('1', 'other', '   ')).rejects.toThrow()
+  })
+
+  it('у остальных причин пояснение необязательно', async () => {
+    await expect(reportMessage('1', 'spam', '')).resolves.toBeUndefined()
   })
 })

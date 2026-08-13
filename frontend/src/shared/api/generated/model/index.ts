@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.8.0
+ * OpenAPI spec version: 0.9.0
  */
 
 export * from './adminDelivery';
@@ -13,7 +13,14 @@ export * from './adminDeliveryTransitionRequest';
 export * from './adminDeliveryTransitionStatus';
 export * from './analyzePhotoBody';
 export * from './appNotification';
+export * from './auditAction';
+export * from './auditLogEntry';
+export * from './auditLogEntryMetadata';
+export * from './auditLogList';
 export * from './badRequestResponse';
+export * from './block';
+export * from './blockList';
+export * from './blockRequest';
 export * from './category';
 export * from './categoryList';
 export * from './chain';
@@ -32,6 +39,7 @@ export * from './chatThreadList';
 export * from './conflictResponse';
 export * from './createChainRequest';
 export * from './createItemRequest';
+export * from './createReportRequest';
 export * from './createUserRequest';
 export * from './createUserReviewRequest';
 export * from './currentUser';
@@ -50,7 +58,10 @@ export * from './item';
 export * from './itemList';
 export * from './itemStatus';
 export * from './itemWish';
+export * from './listAdminAuditParams';
 export * from './listAdminDeliveriesParams';
+export * from './listAdminReportsParams';
+export * from './listBlocksParams';
 export * from './listChainsParams';
 export * from './listChatMessagesParams';
 export * from './listItemsParams';
@@ -67,6 +78,8 @@ export * from './matchingEdge';
 export * from './matchingResponse';
 export * from './mediaUpload';
 export * from './mediaUploadContentType';
+export * from './messageReport';
+export * from './messageReportList';
 export * from './notFoundResponse';
 export * from './notificationKind';
 export * from './notificationList';
@@ -74,6 +87,12 @@ export * from './notImplementedResponse';
 export * from './participantStatus';
 export * from './pipelineEvent';
 export * from './pipelineEventData';
+export * from './reportDecision';
+export * from './reportDecisionRequest';
+export * from './reportDetail';
+export * from './reportReason';
+export * from './reportStatus';
+export * from './resolveItemCategoriesRequest';
 export * from './sendChatMessageRequest';
 export * from './serviceUnavailableResponse';
 export * from './session';
@@ -91,3 +110,4 @@ export * from './validationErrorResponse';
 export * from './visionAnalysisAccepted';
 export * from './visionAnalysisResponse';
 export * from './visualQuality';
+export * from './wishCategoryDecision';

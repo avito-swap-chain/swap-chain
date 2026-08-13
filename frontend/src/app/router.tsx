@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { AdminDeliveriesPage } from '@/pages/admin-deliveries'
+import { AdminAuditPage, AdminModerationPage, AdminReportPage } from '@/pages/admin-moderation'
 import { ChainPage } from '@/pages/chain'
 import { CreateOfferPage } from '@/pages/create-offer'
 import { EditItemPage } from '@/pages/edit-item'
@@ -35,6 +36,10 @@ export const router = createBrowserRouter(
         // Админка ПВЗ живёт в том же кабинете: у сотрудника это рабочее место, а не
         // отдельный продукт. Роут открыт всем, кто вошёл, — доступ решает бэкенд по роли.
         { path: '/admin/deliveries', element: <AdminDeliveriesPage /> },
+        // Модерация — там же и на тех же правах: очередь жалоб, разбор одной и журнал.
+        { path: '/admin/moderation', element: <AdminModerationPage /> },
+        { path: '/admin/moderation/:reportId', element: <AdminReportPage /> },
+        { path: '/admin/audit', element: <AdminAuditPage /> },
         // Вложенные экраны: сюда ведут из разделов, путь назад показывают крошки.
         { path: '/items/new', element: <CreateOfferPage /> },
         { path: '/items/:id/barter', element: <EnableBarterPage /> },

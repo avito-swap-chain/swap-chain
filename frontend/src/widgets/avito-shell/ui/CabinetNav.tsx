@@ -10,6 +10,8 @@ const EXCHANGE_URL = '/exchange'
 const MESSAGES_URL = '/messages'
 const NOTIFICATIONS_URL = '/notifications'
 const ADMIN_URL = '/admin/deliveries'
+const MODERATION_URL = '/admin/moderation'
+const AUDIT_URL = '/admin/audit'
 
 // Одна разметка на оба вида: на узких окнах — чипы в горизонтальной ленте,
 // от `lg` — строки вертикального меню слева, как в кабинете Авито.
@@ -40,7 +42,11 @@ export function CabinetNav({ section, className }: { section: Section; className
 
   // Админка — не раздел кабинета: её нет ни в `Section`, ни в нижней панели, поэтому
   // оболочка считает её объявлениями. Разбираем по пути, чтобы жирным был открытый пункт.
-  const isAdmin = pathname === ADMIN_URL
+  // Разбор одной жалобы — часть модерации, поэтому пункт подсвечен и на вложенном экране.
+  const isDeliveries = pathname === ADMIN_URL
+  const isModeration = pathname.startsWith(MODERATION_URL)
+  const isAudit = pathname === AUDIT_URL
+  const isAdmin = isDeliveries || isModeration || isAudit
 
   return (
     <nav
@@ -98,13 +104,31 @@ export function CabinetNav({ section, className }: { section: Section; className
       {/* Рабочее место сотрудника ПВЗ. Обычному пользователю показывать его нечего:
           в списке чужие вещи и чужие имена, а кнопки всё равно вернут 403. */}
       {user?.isAdmin && (
-        <Link
-          to={ADMIN_URL}
-          aria-current={isAdmin ? 'page' : undefined}
-          className={cx(itemClass, isAdmin ? currentClass : restClass)}
-        >
-          Доставки ПВЗ
-        </Link>
+        <>
+          <Link
+            to={ADMIN_URL}
+            aria-current={isDeliveries ? 'page' : undefined}
+            className={cx(itemClass, isDeliveries ? currentClass : restClass)}
+          >
+            Доставки ПВЗ
+          </Link>
+
+          <Link
+            to={MODERATION_URL}
+            aria-current={isModeration ? 'page' : undefined}
+            className={cx(itemClass, isModeration ? currentClass : restClass)}
+          >
+            Жалобы
+          </Link>
+
+          <Link
+            to={AUDIT_URL}
+            aria-current={isAudit ? 'page' : undefined}
+            className={cx(itemClass, isAudit ? currentClass : restClass)}
+          >
+            Журнал
+          </Link>
+        </>
       )}
     </nav>
   )

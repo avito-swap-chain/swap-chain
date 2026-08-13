@@ -133,6 +133,7 @@ describe('createItem — публикация вещи сразу с желан�
   const draft = {
     title: 'Ролики',
     category: 'Спорт и отдых',
+    categoryId: 3,
     condition: 'good' as const,
     wish: ['Колонка', '  Электронная книга ', '  '],
   }
@@ -159,5 +160,9 @@ describe('createItem — публикация вещи сразу с желан�
 
   it('вещь без единого непустого варианта не публикуется', async () => {
     await expect(createItem({ ...draft, wish: [' '] })).rejects.toThrow()
+  })
+
+  it('вещь без категории не публикуется: с 0.9.0 её требует контракт', async () => {
+    await expect(createItem({ ...draft, categoryId: undefined })).rejects.toThrow()
   })
 })

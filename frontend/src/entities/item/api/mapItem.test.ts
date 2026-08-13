@@ -61,9 +61,26 @@ describe('mapItem — вещь из контракта в нашу модель'
   it('стадия обработки переводится в участие в обмене', () => {
     // Не `idle`: обмен у вещи включён, просто бэкенд ещё разбирает описание.
     expect(mapItem(apiItem({ status: 'ANALYZING' })).status).toBe('analyzing')
+    expect(mapItem(apiItem({ status: 'ACTION_REQUIRED' })).status).toBe('needs_category')
     expect(mapItem(apiItem({ status: 'MATCHING' })).status).toBe('searching')
     expect(mapItem(apiItem({ status: 'LOCKED' })).status).toBe('reserved')
     expect(mapItem(apiItem({ status: 'WITHDRAWN' })).status).toBe('withdrawn')
+  })
+
+  it('вариант без раздела попадает в нерешённые: по нему и спросят человека', () => {
+    const item = mapItem(
+      apiItem({
+        status: 'ACTION_REQUIRED',
+        wishes: [
+          { id: 1, categoryId: 3, description: 'Игровая приставка' },
+          { id: 2, categoryId: null, description: 'Что-нибудь интересное' },
+        ],
+      }),
+    )
+
+    // Формулировки остаются все: спрашивают про раздел, а не про сам вариант желания.
+    expect(item.wish).toEqual(['Игровая приставка', 'Что-нибудь интересное'])
+    expect(item.pendingWishes).toEqual([{ id: 2, description: 'Что-нибудь интересное' }])
   })
 
   it('первая картинка становится фото карточки, пустой список — отсутствием фото', () => {

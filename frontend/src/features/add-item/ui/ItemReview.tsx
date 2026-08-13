@@ -89,7 +89,8 @@ export function ItemReview({
 
   // Чего не хватает для подбора — в родительном падеже, потому что дальше «не хватает».
   // Название сюда не входит: без него объявление вообще не опубликовать, и говорит
-  // об этом заблокированная кнопка, а не совет в баннере.
+  // об этом заблокированная кнопка, а не совет в баннере. Категория с контракта 0.9.0
+  // тоже обязательна, но её в баннере оставляем: кнопка молчит о том, чего именно ждёт.
   const missing = [
     !values.description?.trim() && 'описания',
     !values.categoryId && 'категории',
@@ -159,7 +160,7 @@ export function ItemReview({
       <ReviewBlock
         label="Категория"
         value={values.category}
-        missing="Не выбрана — с ней обмен находится точнее"
+        missing="Не выбрана — без неё объявление не опубликовать"
         open={open === 'Категория'}
         onToggle={() => toggle('Категория')}
       >
@@ -224,7 +225,7 @@ export function ItemReview({
       </ReviewBlock>
 
       <div className="mt-auto pt-2">
-        <Button type="submit" fullWidth disabled={!values.title.trim()}>
+        <Button type="submit" fullWidth disabled={!values.title.trim() || !values.categoryId}>
           Далее: что хотите взамен
         </Button>
       </div>

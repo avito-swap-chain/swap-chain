@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getMyItems, ItemCard, ItemStatusLabel, itemKeys, type Item } from '@/entities/item'
 import { EditItemLink } from '@/features/edit-item'
 import { EnableBarterButton } from '@/features/enable-barter'
+import { ResolveWishCategory } from '@/features/resolve-wish-category'
 import { WithdrawItem } from '@/features/withdraw-item'
 import { Button, EmptyState, Notice } from '@/shared/ui'
 
@@ -24,6 +25,17 @@ function actionFor(item: Item) {
       <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
         <ItemStatusLabel status={item.status} />
         <EnableBarterButton itemId={item.id} />
+      </span>
+    )
+  }
+
+  // Раздел желания не определился — вещь стоит вне подбора, и пока это не решено,
+  // остальные действия над ней второстепенны.
+  if (item.status === 'needs_category' && item.pendingWishes?.length) {
+    return (
+      <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+        <ItemStatusLabel status={item.status} />
+        <ResolveWishCategory itemId={item.id} wishes={item.pendingWishes} />
       </span>
     )
   }

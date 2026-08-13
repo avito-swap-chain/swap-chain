@@ -61,6 +61,22 @@ export interface MessageDraft {
   clientMessageId: string
 }
 
+/**
+ * За что можно пожаловаться на реплику. Список короткий и берётся из контракта: жалоба
+ * уезжает в очередь модерации, и своих причин туда не добавить — разбирающий их не увидит.
+ */
+export type MessageReportReason = 'spam' | 'abuse' | 'other'
+
+export const MESSAGE_REPORT_REASON_LABEL: Record<MessageReportReason, string> = {
+  spam: 'Спам или реклама',
+  abuse: 'Оскорбления и грубость',
+  other: 'Другое',
+}
+
+export const MESSAGE_REPORT_REASONS = Object.keys(
+  MESSAGE_REPORT_REASON_LABEL,
+) as MessageReportReason[]
+
 /** Параметры чтения ленты: курсор и сколько секунд бэкенду держать запрос, ожидая нового. */
 export interface ReadOptions {
   afterId?: string

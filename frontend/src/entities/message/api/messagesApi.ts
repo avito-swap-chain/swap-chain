@@ -1,5 +1,6 @@
 import { unwrap } from '@/shared/api/fetcher'
 import {
+  createReport,
   listChatMessages,
   listChatThreads,
   markChatThreadRead,
@@ -9,6 +10,7 @@ import type {
   ChatMessage as ApiChatMessage,
   ChatMessageList,
   ChatThreadList,
+  MessageReport,
 } from '@/shared/api/generated/model'
 import { isBackendConnected } from '@/shared/config/backend'
 import { currentUserId } from '@/shared/model/session'
@@ -16,6 +18,7 @@ import { isServiceThread } from '../lib/thread'
 import type {
   Message,
   MessageDraft,
+  MessageReportReason,
   ReadOptions,
   Thread,
   ThreadKey,
@@ -130,6 +133,35 @@ export async function markThreadRead(key: ThreadKey, lastMessageId: string): Pro
   unwrap(
     await markChatThreadRead(Number(key.chainId), Number(key.counterpartId), {
       lastReadMessageId: Number(lastMessageId),
+    }),
+  )
+}
+
+/**
+ * Пожаловаться на реплику собеседника. Жалоба всегда на конкретное сообщение, а не на
+ * человека: разбирающий её видит, что именно сказано, и не гадает по описанию.
+ *
+ * Повтор той же жалобы бэкенд возвращает как ту же самую — нажать второй раз безопасно.
+ * На моках жалоба остаётся в памяти вкладки: разбирать её всё равно некому, а демо обязано
+ * открываться без сервера.
+ */
+export async function reportMessage(
+  messageId: string,
+  reason: MessageReportReason,
+  comment: string,
+): Promise<void> {
+  const text = comment.trim()
+  // Для «другого» причина не сказана ничем, кроме текста, — без него жалоба пустая,
+  // и бэкенд отвергает её как `VALIDATION_ERROR`.
+  if (reason === 'other' && text === '') throw new Error('Расскажите, что случилось')
+
+  if (!isBackendConnected) return mock.report(messageId, reason, text)
+
+  unwrap<MessageReport>(
+    await createReport({
+      messageId: Number(messageId),
+      reason,
+      ...(text ? { comment: text } : {}),
     }),
   )
 }

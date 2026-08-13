@@ -1,7 +1,14 @@
 import { notify } from '@/shared/model/notifications'
 import { currentPersonaId } from '@/shared/model/persona'
 import { sameThread, threadPath } from '../lib/thread'
-import type { Message, MessageDraft, Thread, ThreadKey, ThreadRef } from '../model/types'
+import type {
+  Message,
+  MessageDraft,
+  MessageReportReason,
+  Thread,
+  ThreadKey,
+  ThreadRef,
+} from '../model/types'
 import { resetServiceThread } from './serviceThread'
 
 /**
@@ -137,9 +144,26 @@ export function markRead(key: ThreadKey, lastMessageId: string): void {
   thread.lastReadId = Math.max(thread.lastReadId, Number(lastMessageId))
 }
 
+/**
+ * Жалобы на моках живут в памяти вкладки: очереди модерации без бэкенда нет, и разбирать
+ * их некому. Хранятся всё же не в пустоту — по ним видно, что жалоба на одну реплику
+ * повторно не заводится, как и у бэкенда.
+ */
+const REPORTED = new Set<string>()
+
+export async function report(
+  messageId: string,
+  reason: MessageReportReason,
+  comment: string,
+): Promise<void> {
+  await delay(400)
+  REPORTED.add(`${messageId}:${reason}:${comment}`)
+}
+
 /** Сброс переписок — для тестов. */
 export const resetThreads = (): void => {
   mockThreads = {}
   counter = 0
+  REPORTED.clear()
   resetServiceThread()
 }

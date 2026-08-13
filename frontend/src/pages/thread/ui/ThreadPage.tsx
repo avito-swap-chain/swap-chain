@@ -11,7 +11,7 @@ import {
   useThreadMessages,
 } from '@/entities/message'
 import { BlockUser } from '@/features/block-user'
-import { ReportUser } from '@/features/report-user'
+import { ReportMessage } from '@/features/report-message'
 import { MessageComposer } from '@/features/send-message'
 import { IconBox, Notice, Screen, ScreenHeader } from '@/shared/ui'
 import { asset } from '@/shared/lib'
@@ -90,17 +90,23 @@ export function ThreadPage() {
             {thread.itemTitle && (
               <p className="text-[13px] leading-4 text-ink-2">{thread.itemTitle}</p>
             )}
-            <MessageList messages={messages} />
+            {/* Пожаловаться можно только на чужую реплику: на свою бэкенд отвечает
+                `SELF_REPORT`, да и незачем. */}
+            <MessageList
+              messages={messages}
+              action={(message) =>
+                message.author === 'them' ? <ReportMessage messageId={message.id} /> : null
+              }
+            />
             {/* Служебный канал сервиса — не диалог: отвечать в него некому. */}
             {!isServiceThread(thread) && (
               <MessageComposer thread={thread} empty={messages.length === 0} />
             )}
 
-            {/* Защита — там же, где разговор: грубость и «вещь не такая» видны именно здесь,
-                и уходить за этим в профиль человек не станет. */}
+            {/* Защита — там же, где разговор. Жалоба отсюда ушла к самим репликам:
+                она всегда о конкретном сообщении, а блокировка — о человеке целиком. */}
             {!isServiceThread(thread) && (
               <div className="flex flex-col gap-2 border-t border-line-2 pt-3">
-                <ReportUser userId={counterpartId} chainId={chainId} />
                 <BlockUser userId={counterpartId} name={thread.peerName} />
               </div>
             )}

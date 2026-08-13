@@ -3,7 +3,7 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.8.0
+ * OpenAPI spec version: 0.9.0
  */
 
 export interface CreateItemRequest {
@@ -25,6 +25,6 @@ export interface CreateItemRequest {
   wishes: string[];
   /** @maxItems 10 */
   imageUrls?: string[];
-  /** User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. */
-  categoryId?: number;
+  /** Required user-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. Wish categories are determined by the analysis pipeline from their descriptions. */
+  categoryId: number;
 }

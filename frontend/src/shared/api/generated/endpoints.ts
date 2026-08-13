@@ -3,14 +3,18 @@
  * Do not edit manually.
  * Swap Chain API
  * Shared REST and realtime contract for the swap-chain MVP.
- * OpenAPI spec version: 0.8.0
+ * OpenAPI spec version: 0.9.0
  */
 import type {
   AdminDelivery,
   AdminDeliveryList,
   AdminDeliveryTransitionRequest,
   AnalyzePhotoBody,
+  AuditLogList,
   BadRequestResponse,
+  Block,
+  BlockList,
+  BlockRequest,
   CategoryList,
   Chain,
   ChainList,
@@ -22,6 +26,7 @@ import type {
   ConflictResponse,
   CreateChainRequest,
   CreateItemRequest,
+  CreateReportRequest,
   CreateUserRequest,
   CreateUserReviewRequest,
   Error,
@@ -31,7 +36,10 @@ import type {
   InternalErrorResponse,
   Item,
   ItemList,
+  ListAdminAuditParams,
   ListAdminDeliveriesParams,
+  ListAdminReportsParams,
+  ListBlocksParams,
   ListChainsParams,
   ListChatMessagesParams,
   ListItemsParams,
@@ -44,9 +52,14 @@ import type {
   MarkNotificationsReadRequest,
   MatchingResponse,
   MediaUpload,
+  MessageReport,
+  MessageReportList,
   NotFoundResponse,
   NotImplementedResponse,
   NotificationList,
+  ReportDecisionRequest,
+  ReportDetail,
+  ResolveItemCategoriesRequest,
   SendChatMessageRequest,
   ServiceUnavailableResponse,
   Session,
@@ -1095,6 +1108,81 @@ export const findMatchingCycles = async (itemId: number, options?: Parameters<ty
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export type resolveItemCategoriesResponse200 = {
+  data: Item
+  status: 200
+}
+
+export type resolveItemCategoriesResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type resolveItemCategoriesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type resolveItemCategoriesResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type resolveItemCategoriesResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type resolveItemCategoriesResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type resolveItemCategoriesResponse422 = {
+  data: ValidationErrorResponse
+  status: 422
+}
+
+export type resolveItemCategoriesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type resolveItemCategoriesResponseSuccess = (resolveItemCategoriesResponse200) & {
+  headers: Headers;
+};
+export type resolveItemCategoriesResponseError = (resolveItemCategoriesResponse400 | resolveItemCategoriesResponse401 | resolveItemCategoriesResponse403 | resolveItemCategoriesResponse404 | resolveItemCategoriesResponse409 | resolveItemCategoriesResponse422 | resolveItemCategoriesResponse500) & {
+  headers: Headers;
+};
+
+export type resolveItemCategoriesResponse = (resolveItemCategoriesResponseSuccess | resolveItemCategoriesResponseError)
+
+export const getResolveItemCategoriesUrl = (itemId: number,) => {
+
+
+
+
+  return `/api/v1/items/${itemId}/category-decision`
+}
+
+/**
+ * Applies all outstanding wish-category decisions atomically. Each value must be an available user-facing category from GET /api/v1/categories. offerCategoryId is retained only for resolving legacy cards created before categoryId became mandatory. A successful decision moves the item from ACTION_REQUIRED to MATCHING.
+ * @summary Resolve categories that require the item owner's input
+ */
+export const resolveItemCategories = async (itemId: number,
+    resolveItemCategoriesRequest: ResolveItemCategoriesRequest, options?: Parameters<typeof apiFetch>[1]): Promise<resolveItemCategoriesResponse> => {
+
+  return apiFetch<resolveItemCategoriesResponse>(getResolveItemCategoriesUrl(itemId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resolveItemCategoriesRequest)
   }
 );}
 
@@ -2157,6 +2245,584 @@ export const getSubscribeEventsUrl = () => {
 export const subscribeEvents = async ( options?: Parameters<typeof apiFetch>[1]): Promise<subscribeEventsResponse> => {
 
   return apiFetch<subscribeEventsResponse>(getSubscribeEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type listBlocksResponse200 = {
+  data: BlockList
+  status: 200
+}
+
+export type listBlocksResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listBlocksResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listBlocksResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listBlocksResponseSuccess = (listBlocksResponse200) & {
+  headers: Headers;
+};
+export type listBlocksResponseError = (listBlocksResponse400 | listBlocksResponse401 | listBlocksResponse500) & {
+  headers: Headers;
+};
+
+export type listBlocksResponse = (listBlocksResponseSuccess | listBlocksResponseError)
+
+export const getListBlocksUrl = (params?: ListBlocksParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/blocks?${stringifiedParams}` : `/api/v1/blocks`
+}
+
+/**
+ * Requires an authenticated user. Returns only users blocked by the current actor.
+ * @summary List the current user's personal blacklist
+ */
+export const listBlocks = async (params?: ListBlocksParams, options?: Parameters<typeof apiFetch>[1]): Promise<listBlocksResponse> => {
+
+  return apiFetch<listBlocksResponse>(getListBlocksUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type blockUserResponse200 = {
+  data: Block
+  status: 200
+}
+
+export type blockUserResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type blockUserResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type blockUserResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type blockUserResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type blockUserResponseSuccess = (blockUserResponse200) & {
+  headers: Headers;
+};
+export type blockUserResponseError = (blockUserResponse400 | blockUserResponse401 | blockUserResponse404 | blockUserResponse500) & {
+  headers: Headers;
+};
+
+export type blockUserResponse = (blockUserResponseSuccess | blockUserResponseError)
+
+export const getBlockUserUrl = () => {
+
+
+
+
+  return `/api/v1/blocks`
+}
+
+/**
+ * Directed block that also acts symmetrically for matching. Idempotent; atomically cancels shared non-terminal chains with the blocked user.
+ * @summary Block another user
+ */
+export const blockUser = async (blockRequest: BlockRequest, options?: Parameters<typeof apiFetch>[1]): Promise<blockUserResponse> => {
+
+  return apiFetch<blockUserResponse>(getBlockUserUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(blockRequest)
+  }
+);}
+
+
+
+export type unblockUserResponse204 = {
+  data: void
+  status: 204
+}
+
+export type unblockUserResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type unblockUserResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type unblockUserResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type unblockUserResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type unblockUserResponseSuccess = (unblockUserResponse204) & {
+  headers: Headers;
+};
+export type unblockUserResponseError = (unblockUserResponse400 | unblockUserResponse401 | unblockUserResponse404 | unblockUserResponse500) & {
+  headers: Headers;
+};
+
+export type unblockUserResponse = (unblockUserResponseSuccess | unblockUserResponseError)
+
+export const getUnblockUserUrl = (blockedUserId: number,) => {
+
+
+
+
+  return `/api/v1/blocks/${blockedUserId}`
+}
+
+/**
+ * Idempotent. Unblocking never revives previously cancelled chains. Returns 204 when the pair was never blocked; 404 only when the target user does not exist.
+ * @summary Remove a user from the personal blacklist
+ */
+export const unblockUser = async (blockedUserId: number, options?: Parameters<typeof apiFetch>[1]): Promise<unblockUserResponse> => {
+
+  return apiFetch<unblockUserResponse>(getUnblockUserUrl(blockedUserId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export type createReportResponse200 = {
+  data: MessageReport
+  status: 200
+}
+
+export type createReportResponse201 = {
+  data: MessageReport
+  status: 201
+}
+
+export type createReportResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createReportResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createReportResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createReportResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createReportResponseSuccess = (createReportResponse200 | createReportResponse201) & {
+  headers: Headers;
+};
+export type createReportResponseError = (createReportResponse400 | createReportResponse401 | createReportResponse404 | createReportResponse500) & {
+  headers: Headers;
+};
+
+export type createReportResponse = (createReportResponseSuccess | createReportResponseError)
+
+export const getCreateReportUrl = () => {
+
+
+
+
+  return `/api/v1/reports`
+}
+
+/**
+ * Only a participant of the chat may report a message sent by another participant. Repeated reports of the same message are idempotent. comment is optional for spam/abuse and required for other.
+ * @summary Report a specific message in an accessible chat
+ */
+export const createReport = async (createReportRequest: CreateReportRequest, options?: Parameters<typeof apiFetch>[1]): Promise<createReportResponse> => {
+
+  return apiFetch<createReportResponse>(getCreateReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createReportRequest)
+  }
+);}
+
+
+
+export type listAdminReportsResponse200 = {
+  data: MessageReportList
+  status: 200
+}
+
+export type listAdminReportsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listAdminReportsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listAdminReportsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listAdminReportsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listAdminReportsResponseSuccess = (listAdminReportsResponse200) & {
+  headers: Headers;
+};
+export type listAdminReportsResponseError = (listAdminReportsResponse400 | listAdminReportsResponse401 | listAdminReportsResponse403 | listAdminReportsResponse500) & {
+  headers: Headers;
+};
+
+export type listAdminReportsResponse = (listAdminReportsResponseSuccess | listAdminReportsResponseError)
+
+export const getListAdminReportsUrl = (params?: ListAdminReportsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/admin/reports?${stringifiedParams}` : `/api/v1/admin/reports`
+}
+
+/**
+ * Requires ADMIN. Cursor-paginated by report ID.
+ * @summary List message reports in the moderation queue
+ */
+export const listAdminReports = async (params?: ListAdminReportsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listAdminReportsResponse> => {
+
+  return apiFetch<listAdminReportsResponse>(getListAdminReportsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type getAdminReportResponse200 = {
+  data: ReportDetail
+  status: 200
+}
+
+export type getAdminReportResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type getAdminReportResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getAdminReportResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getAdminReportResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getAdminReportResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getAdminReportResponseSuccess = (getAdminReportResponse200) & {
+  headers: Headers;
+};
+export type getAdminReportResponseError = (getAdminReportResponse400 | getAdminReportResponse401 | getAdminReportResponse403 | getAdminReportResponse404 | getAdminReportResponse500) & {
+  headers: Headers;
+};
+
+export type getAdminReportResponse = (getAdminReportResponseSuccess | getAdminReportResponseError)
+
+export const getGetAdminReportUrl = (reportId: number,) => {
+
+
+
+
+  return `/api/v1/admin/reports/${reportId}`
+}
+
+/**
+ * Requires ADMIN. Context messages are ordered by ascending ID.
+ * @summary Get one report with the reported message and full chat context
+ */
+export const getAdminReport = async (reportId: number, options?: Parameters<typeof apiFetch>[1]): Promise<getAdminReportResponse> => {
+
+  return apiFetch<getAdminReportResponse>(getGetAdminReportUrl(reportId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type assignReportResponse200 = {
+  data: MessageReport
+  status: 200
+}
+
+export type assignReportResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type assignReportResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type assignReportResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type assignReportResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type assignReportResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type assignReportResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type assignReportResponseSuccess = (assignReportResponse200) & {
+  headers: Headers;
+};
+export type assignReportResponseError = (assignReportResponse400 | assignReportResponse401 | assignReportResponse403 | assignReportResponse404 | assignReportResponse409 | assignReportResponse500) & {
+  headers: Headers;
+};
+
+export type assignReportResponse = (assignReportResponseSuccess | assignReportResponseError)
+
+export const getAssignReportUrl = (reportId: number,) => {
+
+
+
+
+  return `/api/v1/admin/reports/${reportId}/assign`
+}
+
+/**
+ * Requires ADMIN. Take-over is only allowed for open reports. Repeating the same administrator is idempotent; a report already assigned to a different administrator returns 409.
+ * @summary Assign an open report to the current administrator
+ */
+export const assignReport = async (reportId: number, options?: Parameters<typeof apiFetch>[1]): Promise<assignReportResponse> => {
+
+  return apiFetch<assignReportResponse>(getAssignReportUrl(reportId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type decideReportResponse200 = {
+  data: MessageReport
+  status: 200
+}
+
+export type decideReportResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type decideReportResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type decideReportResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type decideReportResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type decideReportResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type decideReportResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type decideReportResponseSuccess = (decideReportResponse200) & {
+  headers: Headers;
+};
+export type decideReportResponseError = (decideReportResponse400 | decideReportResponse401 | decideReportResponse403 | decideReportResponse404 | decideReportResponse409 | decideReportResponse500) & {
+  headers: Headers;
+};
+
+export type decideReportResponse = (decideReportResponseSuccess | decideReportResponseError)
+
+export const getDecideReportUrl = (reportId: number,) => {
+
+
+
+
+  return `/api/v1/admin/reports/${reportId}/decision`
+}
+
+/**
+ * Requires ADMIN. Only the assignee may decide, once, with a mandatory decision comment. The decision classifies the report and does not execute any sanction; user, message, chat, item and chain state remain unchanged.
+ * @summary Resolve or reject an open report assigned to the current administrator
+ */
+export const decideReport = async (reportId: number,
+    reportDecisionRequest: ReportDecisionRequest, options?: Parameters<typeof apiFetch>[1]): Promise<decideReportResponse> => {
+
+  return apiFetch<decideReportResponse>(getDecideReportUrl(reportId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reportDecisionRequest)
+  }
+);}
+
+
+
+export type listAdminAuditResponse200 = {
+  data: AuditLogList
+  status: 200
+}
+
+export type listAdminAuditResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listAdminAuditResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listAdminAuditResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listAdminAuditResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listAdminAuditResponseSuccess = (listAdminAuditResponse200) & {
+  headers: Headers;
+};
+export type listAdminAuditResponseError = (listAdminAuditResponse400 | listAdminAuditResponse401 | listAdminAuditResponse403 | listAdminAuditResponse500) & {
+  headers: Headers;
+};
+
+export type listAdminAuditResponse = (listAdminAuditResponseSuccess | listAdminAuditResponseError)
+
+export const getListAdminAuditUrl = (params?: ListAdminAuditParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/admin/audit?${stringifiedParams}` : `/api/v1/admin/audit`
+}
+
+/**
+ * Requires ADMIN. Newest first, cursor-paginated.
+ * @summary List the append-only administrator audit log
+ */
+export const listAdminAudit = async (params?: ListAdminAuditParams, options?: Parameters<typeof apiFetch>[1]): Promise<listAdminAuditResponse> => {
+
+  return apiFetch<listAdminAuditResponse>(getListAdminAuditUrl(params),
   {
     ...options,
     method: 'GET'
