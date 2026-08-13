@@ -74,6 +74,22 @@ export const IconImage = (props: IconProps) => (
   </Icon>
 )
 
+/** Жалоба: флажок, а не восклицательный знак — знак тревожит, флажок помечает. */
+export const IconFlag = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <path d="M6 21V4" />
+    <path d="M6 4h11l-2 4 2 4H6" />
+  </Icon>
+)
+
+/** Блокировка: перечёркнутый круг — тот же знак, что и у запрета везде. */
+export const IconBan = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M6 18L18 6" />
+  </Icon>
+)
+
 export const IconSearch = (props: IconProps) => (
   <Icon strokeWidth={2} {...props}>
     <circle cx="11" cy="11" r="7" />

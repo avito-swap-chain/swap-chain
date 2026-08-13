@@ -1,5 +1,5 @@
 import { currentPersonaId, editPersona, personaById } from '@/shared/model/persona'
-import type { Profile, ProfileEdit, Review } from '../model/types'
+import type { Profile, ProfileEdit, Report, Review } from '../model/types'
 
 /**
  * Профили на моках — тот же реестр демо-персон, из которого собираются участники цепочек
@@ -87,7 +87,11 @@ export async function reviewsFor(id: string): Promise<Review[]> {
  * Оставленный отзыв виден сразу, как и с бэкендом: демо на моках должно доигрываться
  * до конца, включая последний шаг обмена.
  */
-export async function addReview(targetUserId: string, rating: number, text?: string): Promise<void> {
+export async function addReview(
+  targetUserId: string,
+  rating: number,
+  text?: string,
+): Promise<void> {
   await delay(400)
   const me = personaById(currentPersonaId())
 
@@ -101,4 +105,35 @@ export async function addReview(targetUserId: string, rating: number, text?: str
     },
     ...(REVIEWS[targetUserId] ?? []),
   ]
+}
+
+/**
+ * Чёрный список и жалобы живут в памяти вкладки: ручек в контракте нет (версия 0.8.0),
+ * а показать механизм защиты на защите надо — в кейсе он записан требованием.
+ *
+ * Обещать разбор жалобы нельзя, поэтому мок ровно такой, каким его видит человек:
+ * отправили — приняли. Никакой очереди модерации за этим не стоит, и интерфейс её
+ * не рисует.
+ */
+const BLOCKED = new Set<string>()
+const REPORTS: Report[] = []
+
+export async function blocked(): Promise<string[]> {
+  await delay(150)
+  return [...BLOCKED]
+}
+
+export async function block(userId: string): Promise<void> {
+  await delay(300)
+  BLOCKED.add(userId)
+}
+
+export async function unblock(userId: string): Promise<void> {
+  await delay(300)
+  BLOCKED.delete(userId)
+}
+
+export async function report(complaint: Report): Promise<void> {
+  await delay(400)
+  REPORTS.push(complaint)
 }

@@ -15,13 +15,14 @@ import type {
 import { isBackendConnected } from '@/shared/config/backend'
 import { currentUserId } from '@/shared/model/session'
 import * as mock from './userMocks'
-import type { Profile, ProfileEdit, Review } from '../model/types'
+import type { Profile, ProfileEdit, Report, Review } from '../model/types'
 
 export const userKeys = {
   all: ['users'] as const,
   profile: (id: string) => [...userKeys.all, id] as const,
   me: () => [...userKeys.all, 'me'] as const,
   reviews: (id: string) => [...userKeys.all, id, 'reviews'] as const,
+  blocked: () => [...userKeys.all, 'blocked'] as const,
 }
 
 const mapProfile = (profile: UserProfile): Profile => ({
@@ -125,3 +126,17 @@ export async function uploadAvatar(file: File): Promise<string> {
 
   return unwrap<MediaUpload>(await uploadMedia({ file })).url
 }
+
+/**
+ * Чёрный список и жалобы. Ручек в контракте нет ни у того, ни у другого (0.8.0), поэтому
+ * работают на моках даже с подключённым бэкендом — как и остальные поля из списка
+ * в `shared/config/backend.ts`. Наружу это единственная точка входа: появятся ручки —
+ * поменяется тело, интерфейс останется прежним.
+ */
+export const getBlocked = (): Promise<string[]> => mock.blocked()
+
+export const blockUser = (userId: string): Promise<void> => mock.block(userId)
+
+export const unblockUser = (userId: string): Promise<void> => mock.unblock(userId)
+
+export const reportUser = (complaint: Report): Promise<void> => mock.report(complaint)

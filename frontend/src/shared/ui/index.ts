@@ -25,6 +25,8 @@ export {
   IconImage,
   IconPencil,
   IconSearch,
+  IconFlag,
+  IconBan,
   IconSparkle,
   IconBox,
   IconHeart,

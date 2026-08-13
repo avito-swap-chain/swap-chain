@@ -34,3 +34,17 @@ export interface ProfileEdit {
   name?: string
   avatarUrl?: string
 }
+
+/** Причина жалобы. Подписи — в `model/dictionaries`. */
+export type ReportReason = 'item' | 'noshow' | 'rude' | 'fraud' | 'other'
+
+/**
+ * Жалоба на человека. Привязана к обмену, если он был: разбирать «нагрубил» в отрыве
+ * от конкретной цепочки нечем — переписка и вещи живут именно там.
+ */
+export interface Report {
+  targetUserId: string
+  chainId?: string
+  reason: ReportReason
+  text?: string
+}

@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
 import { getMyProfile, getProfile, getReviews, userKeys, type Profile } from '@/entities/user'
+import { BlockUser } from '@/features/block-user'
 import { EditProfile } from '@/features/edit-profile'
+import { ReportUser } from '@/features/report-user'
 import { exchangesLabel, reviewsLabel } from '@/shared/lib'
 import {
   Avatar,
@@ -130,6 +132,16 @@ function ProfileBody({ profile, mine }: { profile: Profile; mine: boolean }) {
       {mine && editing && <EditProfile profile={profile} />}
 
       <Reviews userId={profile.id} count={profile.reviews} />
+
+      {/* Защита — в чужом профиле и внизу, как «Пожаловаться» у Авито: сначала человек
+          читает, кто перед ним, и только потом решает, что с ним делать. */}
+      {!mine && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-[19px] leading-6 font-bold">Безопасность</h2>
+          <ReportUser userId={profile.id} />
+          <BlockUser userId={profile.id} name={profile.name} />
+        </section>
+      )}
     </>
   )
 }
