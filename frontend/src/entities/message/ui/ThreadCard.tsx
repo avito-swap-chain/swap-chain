@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { asset, cx } from '@/shared/lib'
-import { IconBox } from '@/shared/ui'
-import { threadPath } from '../lib/thread'
+import { BrandDots, IconBox } from '@/shared/ui'
+import { isServiceThread, threadPath } from '../lib/thread'
 import type { Thread } from '../model/types'
 
 /** «14:03» для сегодняшних, «21 апр.» для остальных — как в списке диалогов Авито. */
@@ -21,14 +21,24 @@ const formatWhen = (iso: string): string => {
  */
 export function ThreadCard({ thread }: { thread: Thread }) {
   const last = thread.lastMessage
+  // Канал сервиса стоит первым и выделен подложкой — так же, как «Поддержка Авито»
+  // в мессенджере Авито: это не разговор с человеком, и путать их не нужно.
+  const service = isServiceThread(thread)
 
   return (
     <Link
       to={threadPath(thread)}
-      className="flex items-center gap-3 rounded-card px-2 py-2.5 outline-offset-2 hover:bg-line-2 focus-visible:outline-2 focus-visible:outline-brand"
+      className={cx(
+        'flex items-center gap-3 rounded-card px-2 py-2.5 outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand',
+        service ? 'bg-brand-pale px-3 hover:bg-brand-soft' : 'hover:bg-line-2',
+      )}
     >
       <span className="relative shrink-0">
-        {thread.itemPhotoUrl ? (
+        {service ? (
+          <span className="grid size-14 place-items-center rounded-chip bg-card">
+            <BrandDots className="h-7 w-auto" />
+          </span>
+        ) : thread.itemPhotoUrl ? (
           <img
             src={asset(thread.itemPhotoUrl)}
             alt=""
@@ -59,6 +69,11 @@ export function ThreadCard({ thread }: { thread: Thread }) {
             <span className="ml-auto shrink-0 text-[13px] leading-4 text-ink-2">
               {formatWhen(last.createdAt)}
             </span>
+          )}
+          {/* Точка непрочитанного — как у Авито: жирного текста ниже мало, когда реплика
+              короткая и в списке её легко пропустить. */}
+          {thread.unreadCount > 0 && (
+            <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-stop" />
           )}
         </span>
         {thread.itemTitle && (

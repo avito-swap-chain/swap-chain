@@ -30,10 +30,10 @@ export function WishCard({ item }: { item: Item }) {
         {/* Желания — не статус, а перечисление: нейтральный тег, как чипы фильтров у Авито. */}
         {item.wish.map((variant) => (
           <span
-            key={variant.description}
+            key={variant}
             className="rounded-chip bg-line-2 px-2 py-[3px] text-[12px] leading-4 font-semibold text-ink"
           >
-            {variant.description}
+            {variant}
           </span>
         ))}
       </div>

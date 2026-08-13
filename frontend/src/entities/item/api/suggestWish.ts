@@ -1,5 +1,5 @@
 import { currentPersonaId, PERSONAS } from '@/shared/model/persona'
-import type { Item, Wish } from '../model/types'
+import type { Item } from '../model/types'
 import { itemsOfOthers } from './itemMocks'
 
 /** Больше пяти подсказок не показываем: столько же вариантов принимает форма желания. */
@@ -28,7 +28,7 @@ const hitBy = (signal: string) => (item: Item) => norm(item.title).includes(norm
  *
  * Сюда встанет реальный запрос к бэку — снаружи видна только эта функция.
  */
-export async function suggestWish(give: GivenItem, chosen: Wish[] = []): Promise<Wish[]> {
+export async function suggestWish(give: GivenItem, chosen: string[] = []): Promise<string[]> {
   const persona = PERSONAS.find((p) => p.id === currentPersonaId())
   if (!persona) return []
 
@@ -41,15 +41,15 @@ export async function suggestWish(give: GivenItem, chosen: Wish[] = []): Promise
     ...catalog.filter((item) => item.category === give.category),
   ]
 
-  const seen = new Set(chosen.map((wish) => norm(wish.description)))
-  const suggestions: Wish[] = []
+  const seen = new Set(chosen.map(norm))
+  const suggestions: string[] = []
 
   for (const item of candidates) {
     if (suggestions.length === MAX_SUGGESTIONS) break
     if (seen.has(norm(item.title))) continue
 
     seen.add(norm(item.title))
-    suggestions.push({ category: item.category, description: item.title })
+    suggestions.push(item.title)
   }
 
   return suggestions

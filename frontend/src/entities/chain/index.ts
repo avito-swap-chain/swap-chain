@@ -25,7 +25,7 @@ export {
   countReceipts,
   type Neighbours,
 } from './lib/participants'
-export { isOpenOffer, countVariantsWithItem, cancelReason } from './lib/offers'
+export { isOpenOffer, isInboxOffer, countVariantsWithItem, cancelReason } from './lib/offers'
 export { ChainCard } from './ui/ChainCard'
 export { ExchangeSummary } from './ui/ExchangeSummary'
 export { ChainRibbon } from './ui/ChainRibbon'

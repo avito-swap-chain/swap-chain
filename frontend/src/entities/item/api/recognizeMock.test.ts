@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { recognize as recognizeMock } from './itemMocks'
 
 /** Задержку в тестах убираем: состояние «распознаём» нужно интерфейсу, а не проверке. */
-const recognize = (name: string) => recognizeMock(new File([], name), 0)
+const recognize = (name: string) => recognizeMock(new File([], name), { delayMs: 0 })
 
 describe('распознавание вещи по фото на моках', () => {
-  it('узнаёт демо-фотографию и заполняет все три поля', async () => {
+  it('узнаёт демо-фотографию и заполняет все поля объявления', async () => {
     expect(await recognize('bike.jpg')).toEqual({
       title: 'Горный велосипед',
       category: 'Спорт и отдых',
       condition: 'good',
+      // Описание — то, ради чего разбор фото и нужен: по нему бэкенд ищет обмен.
+      description: expect.stringContaining('Горный велосипед'),
     })
   })
 

@@ -1,27 +1,29 @@
 import type { RecognizedItem } from '@/entities/item'
 
-/** Поля формы, которые заполняет распознавание. */
-export type RecognizedField = 'title' | 'category' | 'condition' | 'description'
+/**
+ * Поля, которые заполняет распознавание. Категории здесь нет: модель отвечает названием
+ * из своего промпта, а форме нужен идентификатор справочника — пару им подбирает
+ * `matchCategory`, и подставляются они только вместе.
+ */
+export type RecognizedField = 'title' | 'condition' | 'description'
 
 type Recognized = Partial<Pick<RecognizedItem, RecognizedField>>
 
 /**
- * Что из распознанного можно подставить в форму. Поля, которые человек правил сам, не трогаем:
- * ответ модели приходит с задержкой и не должен затирать уже сделанный выбор.
+ * Что из распознанного встанет в сводку. Правило одно: заполняем только пустые поля.
+ * «Заполнить этим» человек нажимает, чтобы закрыть пробелы, а не чтобы отдать модели
+ * уже написанное — набранный текст она не трогает.
  *
- * Пустое значение не подставляем вовсе: модель не даёт названия, и `undefined` в этом месте
- * стёр бы то, что человек уже написал.
+ * Пустое значение не подставляем вовсе: названия у модели обычно нет, и `undefined`
+ * в этом месте стёр бы то, что человек успел написать.
  */
-export function recognitionPatch(
-  recognized: Recognized,
-  edited: ReadonlySet<RecognizedField>,
-): Recognized {
+export function recognitionPatch(recognized: Recognized, current: Recognized): Recognized {
   const patch: Recognized = {}
 
-  if (recognized.title && !edited.has('title')) patch.title = recognized.title
-  if (recognized.category && !edited.has('category')) patch.category = recognized.category
-  if (recognized.condition && !edited.has('condition')) patch.condition = recognized.condition
-  if (recognized.description && !edited.has('description')) {
+  if (recognized.title && !current.title?.trim()) patch.title = recognized.title
+  if (recognized.condition && !current.condition) patch.condition = recognized.condition
+
+  if (recognized.description && !current.description?.trim()) {
     patch.description = recognized.description
   }
 

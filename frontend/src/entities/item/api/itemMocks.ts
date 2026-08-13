@@ -1,5 +1,11 @@
 import { currentPersonaId, PERSONAS } from '@/shared/model/persona'
-import type { Item, ItemDraft, RecognizedItem, Wish } from '../model/types'
+import type {
+  Item,
+  ItemDraft,
+  RecognitionStage,
+  RecognizeOptions,
+  RecognizedItem,
+} from '../model/types'
 
 /**
  * Демо-объявления и операции над ними: то, что делал бы бэкенд, если бы он был подключён.
@@ -34,10 +40,7 @@ let itemsByOwner: Record<string, Item[]> = {
       category: 'Спорт и отдых',
       condition: 'good',
       status: 'reserved',
-      wish: [
-        { category: 'Электроника', description: 'Игровая приставка PlayStation' },
-        { category: 'Электроника', description: 'Плёночный фотоаппарат' },
-      ],
+      wish: ['Игровая приставка PlayStation', 'Плёночный фотоаппарат'],
     },
     {
       id: '5',
@@ -46,7 +49,7 @@ let itemsByOwner: Record<string, Item[]> = {
       category: 'Дом и дача',
       condition: 'good',
       status: 'reserved',
-      wish: [{ category: 'Транспорт', description: 'Электросамокат' }],
+      wish: ['Электросамокат'],
     },
     // Единственная вещь без `photoUrl` — намеренно: объявление без фото на Авито обычное дело,
     // и на ней видно, что плейсхолдер `ItemCard` работает.
@@ -56,11 +59,7 @@ let itemsByOwner: Record<string, Item[]> = {
       category: 'Спорт и отдых',
       condition: 'used',
       status: 'searching',
-      wish: [
-        { category: 'Электроника', description: 'Умные часы' },
-        { category: 'Электроника', description: 'Фитнес-браслет' },
-        { category: 'Спорт и отдых', description: 'Беговая дорожка' },
-      ],
+      wish: ['Умные часы', 'Фитнес-браслет', 'Беговая дорожка'],
     },
   ],
   [MARK.id]: [
@@ -80,7 +79,7 @@ let itemsByOwner: Record<string, Item[]> = {
       category: 'Аудио',
       condition: 'good',
       status: 'reserved',
-      wish: [{ category: 'Спорт и отдых', description: 'Горный велосипед' }],
+      wish: ['Горный велосипед'],
     },
     {
       id: '22',
@@ -89,10 +88,7 @@ let itemsByOwner: Record<string, Item[]> = {
       category: 'Электроника',
       condition: 'new',
       status: 'searching',
-      wish: [
-        { category: 'Электроника', description: 'Монитор 27"' },
-        { category: 'Электроника', description: 'Графический планшет' },
-      ],
+      wish: ['Монитор 27"', 'Графический планшет'],
     },
   ],
   [LENA.id]: [
@@ -112,7 +108,7 @@ let itemsByOwner: Record<string, Item[]> = {
       category: 'Электроника',
       condition: 'used',
       status: 'reserved',
-      wish: [{ category: 'Аудио', description: 'Наушники' }],
+      wish: ['Наушники'],
     },
     {
       id: '33',
@@ -121,10 +117,7 @@ let itemsByOwner: Record<string, Item[]> = {
       category: 'Дом и дача',
       condition: 'good',
       status: 'searching',
-      wish: [
-        { category: 'Хобби и творчество', description: 'Виниловый проигрыватель' },
-        { category: 'Дом и дача', description: 'Кофеварка' },
-      ],
+      wish: ['Виниловый проигрыватель', 'Кофеварка'],
     },
   ],
 }
@@ -171,7 +164,7 @@ export function itemsOfOthers(): Item[] {
 }
 
 /** Желание уже очищено вызывающим: пустые и повторяющиеся варианты отсеивает `itemsApi`. */
-export async function create(draft: ItemDraft, wish: Wish[]): Promise<Item> {
+export async function create(draft: ItemDraft, wish: string[]): Promise<Item> {
   await delay(400)
 
   const { photoFile: _, ...fields } = draft
@@ -183,7 +176,7 @@ export async function create(draft: ItemDraft, wish: Wish[]): Promise<Item> {
 
 export async function edit(
   id: string,
-  wish: Wish[],
+  wish: string[],
   description?: string,
   title?: string,
 ): Promise<Item> {
@@ -214,33 +207,158 @@ export async function withdraw(id: string): Promise<Item> {
  * отказывается, а не выдумывает вещь.
  *
  * В отличие от бэкенда, здесь есть и название: демо должно показывать сценарий целиком,
- * а модель названий не даёт (см. `recognizeItem`).
+ * а модель названий не даёт (см. `recognizeItem`). Описание, наоборот, — главное, что модель
+ * отдаёт на самом деле, и без него на демо нечего было бы подставлять в объявление.
  */
 const RECOGNIZED: Record<string, RecognizedItem> = {
-  bike: { title: 'Горный велосипед', category: 'Спорт и отдых', condition: 'good' },
-  dumbbells: { title: 'Гантели 20 кг', category: 'Спорт и отдых', condition: 'used' },
-  scooter: { title: 'Электросамокат', category: 'Транспорт', condition: 'good' },
-  monitor24: { title: 'Монитор 24"', category: 'Электроника', condition: 'good' },
-  monitor: { title: 'Монитор LG 27" IPS', category: 'Электроника', condition: 'good' },
-  console: { title: 'Игровая приставка PlayStation 4', category: 'Электроника', condition: 'used' },
-  camera: { title: 'Плёночный фотоаппарат', category: 'Электроника', condition: 'used' },
-  keyboard: { title: 'Механическая клавиатура', category: 'Электроника', condition: 'new' },
-  watch: { title: 'Умные часы Amazfit GTR', category: 'Электроника', condition: 'good' },
-  phone: { title: 'Смартфон', category: 'Электроника', condition: 'good' },
-  headphones: { title: 'Наушники', category: 'Аудио', condition: 'good' },
-  guitar: { title: 'Акустическая гитара', category: 'Хобби и творчество', condition: 'good' },
-  coffee: { title: 'Кофеварка', category: 'Дом и дача', condition: 'good' },
-  grinder: { title: 'Кофемолка', category: 'Дом и дача', condition: 'good' },
-  lamp: { title: 'Настольная лампа', category: 'Дом и дача', condition: 'good' },
-  blanket: { title: 'Плед', category: 'Дом и дача', condition: 'new' },
-  beanbag: { title: 'Кресло-мешок', category: 'Дом и дача', condition: 'good' },
+  bike: {
+    title: 'Горный велосипед',
+    category: 'Спорт и отдых',
+    condition: 'good',
+    description:
+      'Горный велосипед с алюминиевой рамой, 21 скорость. Катался два сезона по городу, весной обслужен.',
+  },
+  dumbbells: {
+    title: 'Гантели 20 кг',
+    category: 'Спорт и отдых',
+    condition: 'used',
+    description:
+      'Разборные гантели на 20 кг: два грифа и набор блинов. Покрытие местами потёрто, замки держат крепко.',
+  },
+  scooter: {
+    title: 'Электросамокат',
+    category: 'Транспорт',
+    condition: 'good',
+    description:
+      'Электросамокат, запас хода около 25 км. Складывается, есть фара и дисковый тормоз, аккумулятор держит заряд.',
+  },
+  monitor24: {
+    title: 'Монитор 24"',
+    category: 'Электроника',
+    condition: 'good',
+    description:
+      'Монитор 24 дюйма, разрешение Full HD. Подставка регулируется по наклону, кабели питания и HDMI в комплекте.',
+  },
+  monitor: {
+    title: 'Монитор LG 27" IPS',
+    category: 'Электроника',
+    condition: 'good',
+    description:
+      'Монитор 27 дюймов, матрица IPS, разрешение 2560×1440. Битых пикселей нет, в комплекте кабель DisplayPort.',
+  },
+  console: {
+    title: 'Игровая приставка PlayStation 4',
+    category: 'Электроника',
+    condition: 'used',
+    description:
+      'Игровая приставка с одним джойстиком и кабелями. Стояла в тумбе, работает тихо, диски читает без сбоев.',
+  },
+  camera: {
+    title: 'Плёночный фотоаппарат',
+    category: 'Электроника',
+    condition: 'used',
+    description:
+      'Плёночный фотоаппарат с механическим затвором. Объектив чистый, без грибка; чехол и ремень в комплекте.',
+  },
+  keyboard: {
+    title: 'Механическая клавиатура',
+    category: 'Электроника',
+    condition: 'new',
+    description:
+      'Механическая клавиатура полного размера, белая подсветка. Кабель отсоединяется, в комплекте съёмник клавиш.',
+  },
+  watch: {
+    title: 'Умные часы Amazfit GTR',
+    category: 'Электроника',
+    condition: 'good',
+    description:
+      'Умные часы с круглым экраном и силиконовым ремешком. Держат заряд около недели, зарядка в комплекте.',
+  },
+  phone: {
+    title: 'Смартфон',
+    category: 'Электроника',
+    condition: 'good',
+    description:
+      'Смартфон в тёмном корпусе, экран без трещин и царапин. Аккумулятор держит день, чехол в комплекте.',
+  },
+  headphones: {
+    title: 'Наушники',
+    category: 'Аудио',
+    condition: 'good',
+    description:
+      'Беспроводные наушники с чехлом-зарядкой. Звук чистый, амбушюры целые, заряда хватает на несколько часов.',
+  },
+  guitar: {
+    title: 'Акустическая гитара',
+    category: 'Хобби и творчество',
+    condition: 'good',
+    description:
+      'Акустическая гитара, корпус дредноут. Гриф ровный, строй держит; чехол и запасные струны в комплекте.',
+  },
+  coffee: {
+    title: 'Кофеварка',
+    category: 'Дом и дача',
+    condition: 'good',
+    description:
+      'Рожковая кофеварка с капучинатором, давление 15 бар. Рожок и мерная ложка на месте, накипь чистилась.',
+  },
+  grinder: {
+    title: 'Кофемолка',
+    category: 'Дом и дача',
+    condition: 'good',
+    description:
+      'Кофемолка с жерновами и регулировкой помола. Работает тихо, контейнер без трещин, шнур целый.',
+  },
+  lamp: {
+    title: 'Настольная лампа',
+    category: 'Дом и дача',
+    condition: 'good',
+    description:
+      'Настольная лампа на гибкой ножке, тёплый свет. Есть регулировка яркости, лампочка в комплекте.',
+  },
+  blanket: {
+    title: 'Плед',
+    category: 'Дом и дача',
+    condition: 'new',
+    description:
+      'Плед из мягкой шерсти, полутораспальный размер. Не колется и не скатался — пролежал в шкафу.',
+  },
+  beanbag: {
+    title: 'Кресло-мешок',
+    category: 'Дом и дача',
+    condition: 'good',
+    description:
+      'Кресло-мешок с плотным чехлом, наполнитель — пенополистирол. Чехол снимается и стирается.',
+  },
 }
 
-/** Пауза перед ответом: за неё состояние «распознаём» успевает стать видимым. */
-const RECOGNIZE_MS = 1700
+/**
+ * Пауза перед ответом: за неё экран разбора успевает показать все три шага, по секунде
+ * на каждый. С настоящей моделью это занимает от нескольких секунд до полуминуты, так что
+ * пауза здесь не замедляет демо, а показывает его ближе к тому, как оно работает на стенде.
+ */
+const RECOGNIZE_MS = 2600
 
-export async function recognize(file: File, delayMs = RECOGNIZE_MS): Promise<RecognizedItem> {
-  await delay(delayMs)
+/**
+ * Доли паузы по шагам. На моках грузить и подключаться некуда, но шаги проходим те же:
+ * демо без бэкенда показывает тот же сценарий, что и стенд, — иначе экрана разбора там
+ * не увидеть вовсе.
+ */
+const STAGE_SHARE: [RecognitionStage, number][] = [
+  ['upload', 0.25],
+  ['connect', 0.3],
+  ['analyze', 0.45],
+]
+
+export async function recognize(
+  file: File,
+  { delayMs = RECOGNIZE_MS, onStage, signal }: RecognizeOptions & { delayMs?: number } = {},
+): Promise<RecognizedItem> {
+  for (const [stage, share] of STAGE_SHARE) {
+    onStage?.(stage)
+    await delay(delayMs * share)
+    if (signal?.aborted) throw new DOMException('Распознавание отменено', 'AbortError')
+  }
 
   const name = file.name.toLowerCase()
 

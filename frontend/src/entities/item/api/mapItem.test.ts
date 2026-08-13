@@ -17,7 +17,7 @@ const apiItem = (over: Partial<ApiItem> = {}): ApiItem => ({
 
 describe('mapItem — вещь из контракта в нашу модель', () => {
   it('желание из контракта становится вариантом нашей модели', () => {
-    expect(mapItem(apiItem()).wish).toEqual([{ category: '', description: 'Игровая приставка' }])
+    expect(mapItem(apiItem()).wish).toEqual(['Игровая приставка'])
   })
 
   it('пустое желание — это отсутствие вариантов, а не вариант с пустым текстом', () => {
@@ -38,7 +38,7 @@ describe('mapItem — вещь из контракта в нашу модель'
       }),
     ).wish
 
-    expect(wish.map((variant) => variant.description)).toEqual(['Приставка', 'Велосипед', 'Гитара'])
+    expect(wish).toEqual(['Приставка', 'Велосипед', 'Гитара'])
   })
 
   it('состояния вещи в контракте нет — не выдумываем его', () => {

@@ -57,7 +57,7 @@ export function ItemsList() {
         description="Разместите первое — а потом включите у него обмен, и сервис подберёт цепочку."
         action={
           <Link to="/items/new">
-            <Button variant="dark">Разместить объявление</Button>
+            <Button>Разместить объявление</Button>
           </Link>
         }
       />

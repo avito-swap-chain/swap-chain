@@ -74,6 +74,54 @@ export const IconImage = (props: IconProps) => (
   </Icon>
 )
 
+/** Жалоба: флажок, а не восклицательный знак — знак тревожит, флажок помечает. */
+export const IconFlag = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <path d="M6 21V4" />
+    <path d="M6 4h11l-2 4 2 4H6" />
+  </Icon>
+)
+
+/** Блокировка: перечёркнутый круг — тот же знак, что и у запрета везде. */
+export const IconBan = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M6 18L18 6" />
+  </Icon>
+)
+
+export const IconSearch = (props: IconProps) => (
+  <Icon strokeWidth={2} {...props}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M16.5 16.5L21 21" />
+  </Icon>
+)
+
+/** Правка блока: карандаш ведёт к полю, а не открывает новый экран. */
+export const IconPencil = (props: IconProps) => (
+  <Icon strokeWidth={1.8} {...props}>
+    <path d="M4 20.5h4L20 8.5a2.8 2.8 0 0 0-4-4L4 16.5v4z" />
+    <path d="M14.5 6l3.5 3.5" />
+  </Icon>
+)
+
+/**
+ * Работа модели. Заливка, а не обводка: искра рядом с текстом читается как значок ИИ
+ * только сплошной — в тонком контуре она превращается в звёздочку сноски.
+ */
+export const IconSparkle = ({ size = 16, className }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M12 1.5c.7 6.2 3.8 9.3 10 10-6.2.7-9.3 3.8-10 10-.7-6.2-3.8-9.3-10-10 6.2-.7 9.3-3.8 10-10z" />
+  </svg>
+)
+
 /** Обмен: две встречные стрелки — цикл, а не отправка в одну сторону. */
 export const IconSwap = (props: IconProps) => (
   <Icon strokeWidth={1.8} {...props}>

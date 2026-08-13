@@ -6,5 +6,10 @@ export {
   leaveReview,
   editProfile,
   uploadAvatar,
+  getBlocked,
+  blockUser,
+  unblockUser,
+  reportUser,
 } from './api/userApi'
-export type { Profile, ProfileEdit, Review } from './model/types'
+export { REPORT_REASONS, REPORT_REASON_LABEL } from './model/dictionaries'
+export type { Profile, ProfileEdit, Report, ReportReason, Review } from './model/types'
