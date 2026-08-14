@@ -20,9 +20,7 @@ export function HandoffView({ chain, me, neighbours }: ChainViewProps) {
 
   // Свою вещь пользователь сдал, как только ПВЗ её принял. Пока статуса доставки нет
   // (старый бэкенд или моки), остаётся прежний признак: сосед отметил получение.
-  const handedOver = mineOnTheWay
-    ? mineOnTheWay !== 'AWAITING_PVZ'
-    : receiver.receiptConfirmed
+  const handedOver = mineOnTheWay ? mineOnTheWay !== 'AWAITING_PVZ' : receiver.receiptConfirmed
   const inDelivery = mineOnTheWay === 'IN_DELIVERY' || mineOnTheWay === 'RECEIVED'
   const readyToPickUp = comingToMe === 'IN_DELIVERY' || comingToMe === 'RECEIVED'
 

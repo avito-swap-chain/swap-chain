@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { describeError } from '@/shared/api/describeError'
 import { ApiError } from '@/shared/api/fetcher'
 import { normalizePhone } from '@/shared/lib'
-import { DEMO_USERS, login, register } from '@/shared/model/session'
+import { accountLabel, DEMO_USERS, login, register } from '@/shared/model/session'
 import { Button, Input } from '@/shared/ui'
 
 /**
@@ -121,8 +121,9 @@ export function LoginPage() {
           {isNewUser ? 'Зарегистрироваться' : 'Войти'}
         </Button>
 
-        {/* Демо-пользователи бэкенда: жюри открывает ссылку и заходит в один клик,
-            а не выясняет, какие номера засеяны при старте. */}
+        {/* Демо-номера бэкенда: жюри открывает ссылку и заходит в один клик, а не выясняет,
+            какие номера засеяны при старте. Подписаны номером, а не именем: кто за ним стоит,
+            знает только база, и после пересева выдуманное имя оказывалось чужим. */}
         <div className="flex flex-col gap-1.5 border-t border-line pt-3.5">
           <span className="text-xs font-semibold text-ink-2">Демо-пользователи</span>
           <div className="flex flex-wrap gap-1.5">
@@ -137,7 +138,7 @@ export function LoginPage() {
                 }}
                 className="cursor-pointer rounded-chip border border-line px-2.5 py-1 text-[12.5px] font-bold hover:border-focus"
               >
-                {user.name}
+                {accountLabel(user.phone, user.isAdmin)}
               </button>
             ))}
           </div>

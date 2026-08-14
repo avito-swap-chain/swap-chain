@@ -10,7 +10,9 @@ const login = vi.fn()
 const register = vi.fn()
 
 vi.mock('@/shared/model/session', () => ({
-  DEMO_USERS: [{ name: 'Алиса', phone: '+79001000001' }],
+  // Имён у демо-номеров нет: кто за номером стоит, знает только база.
+  DEMO_USERS: [{ phone: '+79001000001' }],
+  accountLabel: (phone: string) => phone,
   login: (phone: string) => login(phone),
   register: (name: string, phone: string) => register(name, phone),
 }))
@@ -64,7 +66,7 @@ describe('экран входа', () => {
     await screen.findByLabelText('Имя')
 
     login.mockResolvedValue({ id: '1', name: 'Алиса' })
-    await userEvent.click(screen.getByRole('button', { name: 'Алиса' }))
+    await userEvent.click(screen.getByRole('button', { name: '+79001000001' }))
 
     expect(login).toHaveBeenLastCalledWith('+79001000001')
     expect(register).not.toHaveBeenCalled()

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
 import {
+  accountLabel,
   DEMO_USERS,
   getCurrentUser,
   knownAccounts,
@@ -100,16 +101,23 @@ export function SwitchPersona() {
 
   if (!user) return null
 
-  // Список для выбора: засеянные бэкендом демо-пользователи плюс все, кто входил с этого
-  // браузера. Раньше своим здесь был только текущий, и после переключения на другого человека
+  // Список для выбора: засеянные бэкендом демо-номера плюс все, кто входил с этого браузера.
+  // Раньше своим здесь был только текущий, и после переключения на другого человека
   // зарегистрировавшийся терял себя из виду. Сравниваем по телефону: имена не уникальны,
   // и на них выбор промахивался.
+  //
+  // Подпись демо-номера берётся у бэкенда — через тех, под кем уже входили: имён в списке
+  // нет, и придумывать их нельзя, иначе кнопка снова начнёт обещать не того человека.
   const options: SwitchOption[] = isBackendConnected
     ? [
         ...knownAccounts().filter(
           (account) => !DEMO_USERS.some((demo) => demo.phone === account.phone),
         ),
-        ...DEMO_USERS,
+        ...DEMO_USERS.map((demo) => ({
+          name: accountLabel(demo.phone, demo.isAdmin),
+          phone: demo.phone,
+          isAdmin: demo.isAdmin,
+        })),
       ]
     : PERSONAS.map((persona) => ({ name: persona.name, phone: persona.id }))
 
