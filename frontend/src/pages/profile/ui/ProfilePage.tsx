@@ -155,16 +155,17 @@ function ProfileBody({ profile, mine }: { profile: Profile; mine: boolean }) {
 }
 
 /**
- * Разделы кабинета строками — как «Инструменты» у Авито. Дублируют меню оболочки намеренно:
- * на узком экране меню сворачивается в нижнюю панель, и профиль остаётся местом, откуда
- * видно всё сразу.
+ * Разделы кабинета строками — как «Инструменты» у Авито. Только на узких экранах: там меню
+ * свёрнуто в нижнюю панель, и профиль остаётся единственным местом, откуда видно всё сразу.
+ * На десктопе те же пункты стоят в левой колонке, и второй их список рядом — просто дубль;
+ * у Авито в профиле его тоже нет.
  */
 function Cabinet({ onEdit, editing }: { onEdit: () => void; editing: boolean }) {
   const { data } = useQuery({ queryKey: chainKeys.my(), queryFn: getMyChains })
   const waiting = data?.filter(needsMyAction).length ?? 0
 
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3 lg:hidden">
       <h2 className="text-[19px] leading-6 font-bold">Кабинет</h2>
 
       <TileGroup>

@@ -40,11 +40,15 @@ import type {
   ListAdminAuditParams,
   ListAdminDeliveriesParams,
   ListAdminReportsParams,
+  ListAdminSupportMessagesParams,
+  ListAdminSupportThreads200,
+  ListAdminSupportThreadsParams,
   ListBlocksParams,
   ListChainsParams,
   ListChatMessagesParams,
   ListItemsParams,
   ListNotificationsParams,
+  ListSupportMessagesParams,
   ListUserItemsParams,
   ListUserReviewsParams,
   LivenessResponse,
@@ -65,6 +69,10 @@ import type {
   ServiceUnavailableResponse,
   Session,
   SubmitChainDecisionRequest,
+  SupportMessage,
+  SupportMessageList,
+  SupportReadState,
+  SupportThread,
   UnauthorizedResponse,
   UpdateItemRequest,
   UpdateUserRequest,
@@ -1896,6 +1904,649 @@ export const markChatThreadRead = async (itemId: number,
     markChatThreadReadRequest: MarkChatThreadReadRequest, options?: Parameters<typeof apiFetch>[1]): Promise<markChatThreadReadResponse> => {
 
   return apiFetch<markChatThreadReadResponse>(getMarkChatThreadReadUrl(itemId,counterpartId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(markChatThreadReadRequest)
+  }
+);}
+
+
+
+export type getSupportThreadResponse200 = {
+  data: SupportThread
+  status: 200
+}
+
+export type getSupportThreadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getSupportThreadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getSupportThreadResponseSuccess = (getSupportThreadResponse200) & {
+  headers: Headers;
+};
+export type getSupportThreadResponseError = (getSupportThreadResponse401 | getSupportThreadResponse500) & {
+  headers: Headers;
+};
+
+export type getSupportThreadResponse = (getSupportThreadResponseSuccess | getSupportThreadResponseError)
+
+export const getGetSupportThreadUrl = () => {
+
+
+
+
+  return `/api/v1/support/thread`
+}
+
+/**
+ * @summary Get the authenticated user's persistent support thread
+ */
+export const getSupportThread = async ( options?: Parameters<typeof apiFetch>[1]): Promise<getSupportThreadResponse> => {
+
+  return apiFetch<getSupportThreadResponse>(getGetSupportThreadUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type listSupportMessagesResponse200 = {
+  data: SupportMessageList
+  status: 200
+}
+
+export type listSupportMessagesResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listSupportMessagesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listSupportMessagesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listSupportMessagesResponseSuccess = (listSupportMessagesResponse200) & {
+  headers: Headers;
+};
+export type listSupportMessagesResponseError = (listSupportMessagesResponse400 | listSupportMessagesResponse401 | listSupportMessagesResponse500) & {
+  headers: Headers;
+};
+
+export type listSupportMessagesResponse = (listSupportMessagesResponseSuccess | listSupportMessagesResponseError)
+
+export const getListSupportMessagesUrl = (params?: ListSupportMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/support/messages?${stringifiedParams}` : `/api/v1/support/messages`
+}
+
+export const listSupportMessages = async (params?: ListSupportMessagesParams, options?: Parameters<typeof apiFetch>[1]): Promise<listSupportMessagesResponse> => {
+
+  return apiFetch<listSupportMessagesResponse>(getListSupportMessagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type sendSupportMessageResponse200 = {
+  data: SupportMessage
+  status: 200
+}
+
+export type sendSupportMessageResponse201 = {
+  data: SupportMessage
+  status: 201
+}
+
+export type sendSupportMessageResponse400 = {
+  data: ValidationErrorResponse
+  status: 400
+}
+
+export type sendSupportMessageResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type sendSupportMessageResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type sendSupportMessageResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type sendSupportMessageResponseSuccess = (sendSupportMessageResponse200 | sendSupportMessageResponse201) & {
+  headers: Headers;
+};
+export type sendSupportMessageResponseError = (sendSupportMessageResponse400 | sendSupportMessageResponse401 | sendSupportMessageResponse409 | sendSupportMessageResponse500) & {
+  headers: Headers;
+};
+
+export type sendSupportMessageResponse = (sendSupportMessageResponseSuccess | sendSupportMessageResponseError)
+
+export const getSendSupportMessageUrl = () => {
+
+
+
+
+  return `/api/v1/support/messages`
+}
+
+export const sendSupportMessage = async (sendChatMessageRequest: SendChatMessageRequest, options?: Parameters<typeof apiFetch>[1]): Promise<sendSupportMessageResponse> => {
+
+  return apiFetch<sendSupportMessageResponse>(getSendSupportMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(sendChatMessageRequest)
+  }
+);}
+
+
+
+export type markSupportReadResponse200 = {
+  data: SupportReadState
+  status: 200
+}
+
+export type markSupportReadResponse400 = {
+  data: ValidationErrorResponse
+  status: 400
+}
+
+export type markSupportReadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type markSupportReadResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type markSupportReadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type markSupportReadResponseSuccess = (markSupportReadResponse200) & {
+  headers: Headers;
+};
+export type markSupportReadResponseError = (markSupportReadResponse400 | markSupportReadResponse401 | markSupportReadResponse404 | markSupportReadResponse500) & {
+  headers: Headers;
+};
+
+export type markSupportReadResponse = (markSupportReadResponseSuccess | markSupportReadResponseError)
+
+export const getMarkSupportReadUrl = () => {
+
+
+
+
+  return `/api/v1/support/read`
+}
+
+export const markSupportRead = async (markChatThreadReadRequest: MarkChatThreadReadRequest, options?: Parameters<typeof apiFetch>[1]): Promise<markSupportReadResponse> => {
+
+  return apiFetch<markSupportReadResponse>(getMarkSupportReadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(markChatThreadReadRequest)
+  }
+);}
+
+
+
+export type listAdminSupportThreadsResponse200 = {
+  data: ListAdminSupportThreads200
+  status: 200
+}
+
+export type listAdminSupportThreadsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listAdminSupportThreadsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listAdminSupportThreadsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listAdminSupportThreadsResponseSuccess = (listAdminSupportThreadsResponse200) & {
+  headers: Headers;
+};
+export type listAdminSupportThreadsResponseError = (listAdminSupportThreadsResponse401 | listAdminSupportThreadsResponse403 | listAdminSupportThreadsResponse500) & {
+  headers: Headers;
+};
+
+export type listAdminSupportThreadsResponse = (listAdminSupportThreadsResponseSuccess | listAdminSupportThreadsResponseError)
+
+export const getListAdminSupportThreadsUrl = (params?: ListAdminSupportThreadsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/admin/support/threads?${stringifiedParams}` : `/api/v1/admin/support/threads`
+}
+
+export const listAdminSupportThreads = async (params?: ListAdminSupportThreadsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listAdminSupportThreadsResponse> => {
+
+  return apiFetch<listAdminSupportThreadsResponse>(getListAdminSupportThreadsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type getAdminSupportThreadResponse200 = {
+  data: SupportThread
+  status: 200
+}
+
+export type getAdminSupportThreadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getAdminSupportThreadResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getAdminSupportThreadResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getAdminSupportThreadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getAdminSupportThreadResponseSuccess = (getAdminSupportThreadResponse200) & {
+  headers: Headers;
+};
+export type getAdminSupportThreadResponseError = (getAdminSupportThreadResponse401 | getAdminSupportThreadResponse403 | getAdminSupportThreadResponse404 | getAdminSupportThreadResponse500) & {
+  headers: Headers;
+};
+
+export type getAdminSupportThreadResponse = (getAdminSupportThreadResponseSuccess | getAdminSupportThreadResponseError)
+
+export const getGetAdminSupportThreadUrl = (threadId: number,) => {
+
+
+
+
+  return `/api/v1/admin/support/threads/${threadId}`
+}
+
+export const getAdminSupportThread = async (threadId: number, options?: Parameters<typeof apiFetch>[1]): Promise<getAdminSupportThreadResponse> => {
+
+  return apiFetch<getAdminSupportThreadResponse>(getGetAdminSupportThreadUrl(threadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type joinSupportThreadResponse200 = {
+  data: SupportThread
+  status: 200
+}
+
+export type joinSupportThreadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type joinSupportThreadResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type joinSupportThreadResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type joinSupportThreadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type joinSupportThreadResponseSuccess = (joinSupportThreadResponse200) & {
+  headers: Headers;
+};
+export type joinSupportThreadResponseError = (joinSupportThreadResponse401 | joinSupportThreadResponse403 | joinSupportThreadResponse404 | joinSupportThreadResponse500) & {
+  headers: Headers;
+};
+
+export type joinSupportThreadResponse = (joinSupportThreadResponseSuccess | joinSupportThreadResponseError)
+
+export const getJoinSupportThreadUrl = (threadId: number,) => {
+
+
+
+
+  return `/api/v1/admin/support/threads/${threadId}/join`
+}
+
+export const joinSupportThread = async (threadId: number, options?: Parameters<typeof apiFetch>[1]): Promise<joinSupportThreadResponse> => {
+
+  return apiFetch<joinSupportThreadResponse>(getJoinSupportThreadUrl(threadId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type leaveSupportThreadResponse200 = {
+  data: SupportThread
+  status: 200
+}
+
+export type leaveSupportThreadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type leaveSupportThreadResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type leaveSupportThreadResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type leaveSupportThreadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type leaveSupportThreadResponseSuccess = (leaveSupportThreadResponse200) & {
+  headers: Headers;
+};
+export type leaveSupportThreadResponseError = (leaveSupportThreadResponse401 | leaveSupportThreadResponse403 | leaveSupportThreadResponse404 | leaveSupportThreadResponse500) & {
+  headers: Headers;
+};
+
+export type leaveSupportThreadResponse = (leaveSupportThreadResponseSuccess | leaveSupportThreadResponseError)
+
+export const getLeaveSupportThreadUrl = (threadId: number,) => {
+
+
+
+
+  return `/api/v1/admin/support/threads/${threadId}/leave`
+}
+
+export const leaveSupportThread = async (threadId: number, options?: Parameters<typeof apiFetch>[1]): Promise<leaveSupportThreadResponse> => {
+
+  return apiFetch<leaveSupportThreadResponse>(getLeaveSupportThreadUrl(threadId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export type listAdminSupportMessagesResponse200 = {
+  data: SupportMessageList
+  status: 200
+}
+
+export type listAdminSupportMessagesResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listAdminSupportMessagesResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listAdminSupportMessagesResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listAdminSupportMessagesResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type listAdminSupportMessagesResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listAdminSupportMessagesResponseSuccess = (listAdminSupportMessagesResponse200) & {
+  headers: Headers;
+};
+export type listAdminSupportMessagesResponseError = (listAdminSupportMessagesResponse400 | listAdminSupportMessagesResponse401 | listAdminSupportMessagesResponse403 | listAdminSupportMessagesResponse404 | listAdminSupportMessagesResponse500) & {
+  headers: Headers;
+};
+
+export type listAdminSupportMessagesResponse = (listAdminSupportMessagesResponseSuccess | listAdminSupportMessagesResponseError)
+
+export const getListAdminSupportMessagesUrl = (threadId: number,
+    params?: ListAdminSupportMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/admin/support/threads/${threadId}/messages?${stringifiedParams}` : `/api/v1/admin/support/threads/${threadId}/messages`
+}
+
+export const listAdminSupportMessages = async (threadId: number,
+    params?: ListAdminSupportMessagesParams, options?: Parameters<typeof apiFetch>[1]): Promise<listAdminSupportMessagesResponse> => {
+
+  return apiFetch<listAdminSupportMessagesResponse>(getListAdminSupportMessagesUrl(threadId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type sendAdminSupportMessageResponse200 = {
+  data: SupportMessage
+  status: 200
+}
+
+export type sendAdminSupportMessageResponse201 = {
+  data: SupportMessage
+  status: 201
+}
+
+export type sendAdminSupportMessageResponse400 = {
+  data: ValidationErrorResponse
+  status: 400
+}
+
+export type sendAdminSupportMessageResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type sendAdminSupportMessageResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type sendAdminSupportMessageResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type sendAdminSupportMessageResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type sendAdminSupportMessageResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type sendAdminSupportMessageResponseSuccess = (sendAdminSupportMessageResponse200 | sendAdminSupportMessageResponse201) & {
+  headers: Headers;
+};
+export type sendAdminSupportMessageResponseError = (sendAdminSupportMessageResponse400 | sendAdminSupportMessageResponse401 | sendAdminSupportMessageResponse403 | sendAdminSupportMessageResponse404 | sendAdminSupportMessageResponse409 | sendAdminSupportMessageResponse500) & {
+  headers: Headers;
+};
+
+export type sendAdminSupportMessageResponse = (sendAdminSupportMessageResponseSuccess | sendAdminSupportMessageResponseError)
+
+export const getSendAdminSupportMessageUrl = (threadId: number,) => {
+
+
+
+
+  return `/api/v1/admin/support/threads/${threadId}/messages`
+}
+
+export const sendAdminSupportMessage = async (threadId: number,
+    sendChatMessageRequest: SendChatMessageRequest, options?: Parameters<typeof apiFetch>[1]): Promise<sendAdminSupportMessageResponse> => {
+
+  return apiFetch<sendAdminSupportMessageResponse>(getSendAdminSupportMessageUrl(threadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(sendChatMessageRequest)
+  }
+);}
+
+
+
+export type markAdminSupportReadResponse200 = {
+  data: SupportReadState
+  status: 200
+}
+
+export type markAdminSupportReadResponse400 = {
+  data: ValidationErrorResponse
+  status: 400
+}
+
+export type markAdminSupportReadResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type markAdminSupportReadResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type markAdminSupportReadResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type markAdminSupportReadResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type markAdminSupportReadResponseSuccess = (markAdminSupportReadResponse200) & {
+  headers: Headers;
+};
+export type markAdminSupportReadResponseError = (markAdminSupportReadResponse400 | markAdminSupportReadResponse401 | markAdminSupportReadResponse403 | markAdminSupportReadResponse404 | markAdminSupportReadResponse500) & {
+  headers: Headers;
+};
+
+export type markAdminSupportReadResponse = (markAdminSupportReadResponseSuccess | markAdminSupportReadResponseError)
+
+export const getMarkAdminSupportReadUrl = (threadId: number,) => {
+
+
+
+
+  return `/api/v1/admin/support/threads/${threadId}/read`
+}
+
+export const markAdminSupportRead = async (threadId: number,
+    markChatThreadReadRequest: MarkChatThreadReadRequest, options?: Parameters<typeof apiFetch>[1]): Promise<markAdminSupportReadResponse> => {
+
+  return apiFetch<markAdminSupportReadResponse>(getMarkAdminSupportReadUrl(threadId),
   {
     ...options,
     method: 'POST',

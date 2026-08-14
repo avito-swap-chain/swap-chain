@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { isBackendConnected } from '@/shared/config/backend'
 import { isServiceThread } from '../lib/thread'
 import { mergeMessages } from '../lib/mergeMessages'
 import type { Message, ThreadKey } from '../model/types'
@@ -41,7 +42,8 @@ export function useThreadMessages(key: ThreadKey, enabled = true) {
       return mergeMessages(queryClient.getQueryData<Message[]>(queryKey) ?? known, fresh)
     },
     // Ошибка гасит цикл: долбить бэкенд запросом, который только что не прошёл, дважды
-    // в секунду нельзя. У служебного канала обновляться нечему — он живёт на фронте.
-    refetchInterval: (query) => (query.state.error || isServiceThread(key) ? false : GAP_MS),
+    // в секунду нельзя. На моках поддержке обновляться нечему — там она живёт на фронте.
+    refetchInterval: (query) =>
+      query.state.error || (isServiceThread(key) && !isBackendConnected) ? false : GAP_MS,
   })
 }

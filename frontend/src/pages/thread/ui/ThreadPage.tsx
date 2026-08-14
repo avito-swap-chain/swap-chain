@@ -11,9 +11,11 @@ import {
   useThreadMessages,
 } from '@/entities/message'
 import { BlockUser } from '@/features/block-user'
+import { ReportUser } from '@/features/report-user'
 import { ReportMessage } from '@/features/report-message'
 import { MessageComposer } from '@/features/send-message'
 import { IconBox, Notice, Screen, ScreenHeader } from '@/shared/ui'
+import { isBackendConnected } from '@/shared/config/backend'
 import { asset } from '@/shared/lib'
 
 /**
@@ -98,15 +100,19 @@ export function ThreadPage() {
                 message.author === 'them' ? <ReportMessage messageId={message.id} /> : null
               }
             />
-            {/* Служебный канал сервиса — не диалог: отвечать в него некому. */}
-            {!isServiceThread(thread) && (
+            {/* В поддержку писать можно: с контракта 0.11.0 за тредом стоит настоящий
+                разговор с модератором. На моках отвечать в него по-прежнему некому. */}
+            {(!isServiceThread(thread) || isBackendConnected) && (
               <MessageComposer thread={thread} empty={messages.length === 0} />
             )}
 
-            {/* Защита — там же, где разговор. Жалоба отсюда ушла к самим репликам:
-                она всегда о конкретном сообщении, а блокировка — о человеке целиком. */}
+            {/* Защита — там же, где разговор. Жалоба на реплику живёт у самих реплик,
+                а здесь — то, что относится к человеку целиком: пожаловаться на него
+                и заблокировать. Раньше вход в жалобу был только в чужом профиле, и его
+                не находили: до профиля из диалога ещё надо догадаться дойти. */}
             {!isServiceThread(thread) && (
               <div className="flex flex-col gap-2 border-t border-line-2 pt-3">
+                <ReportUser userId={counterpartId} />
                 <BlockUser userId={counterpartId} name={thread.peerName} />
               </div>
             )}
