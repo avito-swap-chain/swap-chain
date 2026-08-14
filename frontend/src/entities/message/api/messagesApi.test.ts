@@ -45,11 +45,11 @@ describe('messagesApi — переписка о состоянии вещи', ()
     expect(await dialogues()).toEqual([])
   })
 
-  it('мессенджер не бывает пустым: канал сервиса стоит первым всегда', async () => {
+  it('мессенджер не бывает пустым: поддержка стоит первой всегда', async () => {
     const { threads } = await getThreads()
 
     expect(threads).toHaveLength(1)
-    expect(threads[0]).toMatchObject({ peerName: 'Авито Обмен', ...SERVICE_THREAD })
+    expect(threads[0]).toMatchObject({ peerName: 'Поддержка Авито', ...SERVICE_THREAD })
     expect(threads[0].lastMessage?.author).toBe('system')
   })
 

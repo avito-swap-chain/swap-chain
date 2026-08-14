@@ -29,6 +29,7 @@ import type {
 import { mapMessage, mapThread } from './mapChat'
 import * as mock from './messageMocks'
 import { markServiceRead, serviceMessages, serviceThread } from './serviceThread'
+import { getSupport, getSupportMessages, readSupport, sendToSupport } from './supportApi'
 
 /**
  * Ключи кэша TanStack Query. Список и лента реплик — соседи, а не вложены друг в друга:
@@ -79,7 +80,7 @@ export async function getThreads(): Promise<ThreadList> {
 
   // Служебный канал стоит первым и считается наравне с остальными: для человека это такая же
   // непрочитанная переписка, хотя на бэкенде её нет.
-  const service = serviceThread(await serviceOwner())
+  const service = isBackendConnected ? await getSupport() : serviceThread(await serviceOwner())
   return {
     threads: [service, ...threads],
     totalUnread: totalUnread + service.unreadCount,
@@ -92,7 +93,9 @@ export async function getThreads(): Promise<ThreadList> {
  * появится новое сообщение, и это весь наш real-time: отдельного канала для чата нет.
  */
 export async function getMessages(key: ThreadKey, options: ReadOptions = {}): Promise<Message[]> {
-  if (isServiceThread(key)) return serviceMessages()
+  if (isServiceThread(key)) {
+    return isBackendConnected ? getSupportMessages(options) : serviceMessages()
+  }
   if (!isBackendConnected) return mock.listMessages(key, options.afterId)
 
   const meId = await currentUserId()
@@ -118,6 +121,9 @@ export async function getMessages(key: ThreadKey, options: ReadOptions = {}): Pr
  * тред. Бэкенду они не нужны: у него разговор существует с момента, как цепочка подобралась.
  */
 export async function sendMessage(ref: ThreadRef, draft: MessageDraft): Promise<Message> {
+  // В поддержку пишут тем же составителем, что и соседу по кругу: для человека это одна
+  // и та же переписка, просто собеседник — сервис.
+  if (isServiceThread(ref) && isBackendConnected) return sendToSupport(draft)
   if (!isBackendConnected) return mock.send(ref, draft)
 
   const meId = await currentUserId()
@@ -135,7 +141,9 @@ export async function sendMessage(ref: ThreadRef, draft: MessageDraft): Promise<
  * к старому сообщению «разучивал» бы то, что человек уже видел.
  */
 export async function markThreadRead(key: ThreadKey, lastMessageId: string): Promise<void> {
-  if (isServiceThread(key)) return markServiceRead(await serviceOwner())
+  if (isServiceThread(key)) {
+    return isBackendConnected ? readSupport(lastMessageId) : markServiceRead(await serviceOwner())
+  }
   if (!isBackendConnected) return mock.markRead(key, lastMessageId)
 
   unwrap(

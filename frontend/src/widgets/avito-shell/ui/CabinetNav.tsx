@@ -18,6 +18,7 @@ const ADMIN_URL = '/admin/deliveries'
 const MODERATION_URL = '/admin/moderation'
 const AUDIT_URL = '/admin/audit'
 const METRICS_URL = '/admin/metrics'
+const SUPPORT_URL = '/admin/support'
 
 // Одна разметка на оба вида: на узких окнах — чипы в горизонтальной ленте,
 // от `lg` — строки вертикального меню слева, как в кабинете Авито: кегль 15 на строке 24,
@@ -82,7 +83,8 @@ export function CabinetNav({ section, className }: { section: Section; className
   const isModeration = pathname.startsWith(MODERATION_URL)
   const isAudit = pathname === AUDIT_URL
   const isMetrics = pathname === METRICS_URL
-  const isAdmin = isDeliveries || isModeration || isAudit || isMetrics
+  const isSupport = pathname === SUPPORT_URL
+  const isAdmin = isDeliveries || isModeration || isAudit || isMetrics || isSupport
 
   return (
     <nav
@@ -176,6 +178,14 @@ export function CabinetNav({ section, className }: { section: Section; className
             className={cx(itemClass, isAudit ? currentClass : restClass)}
           >
             Журнал
+          </Link>
+
+          <Link
+            to={SUPPORT_URL}
+            aria-current={isSupport ? 'page' : undefined}
+            className={cx(itemClass, isSupport ? currentClass : restClass)}
+          >
+            Поддержка
           </Link>
 
           <Link

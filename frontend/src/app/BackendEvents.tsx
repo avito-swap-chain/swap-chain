@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { chainKeys } from '@/entities/chain'
 import { itemKeys } from '@/entities/item'
+import { messageKeys } from '@/entities/message'
 import { notificationKeys } from '@/entities/notification'
 import { subscribeToBackendEvents } from '@/shared/api/events'
 import { isBackendConnected } from '@/shared/config/backend'
@@ -38,6 +39,9 @@ export function BackendEvents() {
     const invalidateChains = () => queryClient.invalidateQueries({ queryKey: chainKeys.all })
     const invalidateNotifications = () =>
       queryClient.invalidateQueries({ queryKey: notificationKeys.all })
+    // Поддержка ответила: перечитываем и список переписок (там её строка и счётчик),
+    // и открытую ленту — она висит на long-poll, но событие приходит раньше ответа.
+    const invalidateMessages = () => queryClient.invalidateQueries({ queryKey: messageKeys.all })
 
     return subscribeToBackendEvents({
       onItems: invalidateItems,
@@ -48,12 +52,14 @@ export function BackendEvents() {
         invalidateItems()
       },
       onNotifications: invalidateNotifications,
+      onSupport: invalidateMessages,
       // Пропущенное за время обрыва сервер не переотправит — после подключения
       // перечитываем всё, иначе экран останется с состоянием до разрыва.
       onConnected: () => {
         invalidateItems()
         invalidateChains()
         invalidateNotifications()
+        invalidateMessages()
       },
     })
   }, [queryClient, userId])

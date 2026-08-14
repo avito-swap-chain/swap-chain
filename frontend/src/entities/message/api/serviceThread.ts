@@ -1,13 +1,11 @@
 import type { Message, Thread } from '../model/types'
 
 /**
- * Служебный канал сервиса — он же первый в списке переписок. У Авито мессенджер никогда
- * не бывает совсем пустым: сверху всегда стоит канал самого Авито. Здесь он объясняет правило,
- * которое иначе пришлось бы объяснять в интерфейсе цепочки.
+ * Поддержка на моках. С бэкендом это настоящий тред с модератором (`supportApi`), а здесь —
+ * то же место в списке, занятое пояснением от сервиса: демо обязано открываться без сервера,
+ * а разговаривать в нём не с кем.
  *
- * Это не мок, а часть продукта: канал живёт и с подключённым бэкендом. В контракте его нет
- * и быть не может — там отправитель сообщения всегда пользователь, а это пояснение интерфейса,
- * а не разговор. Согласовано с бэкендом именно так.
+ * У Авито мессенджер никогда не бывает совсем пустым: сверху всегда стоит канал самого Авито.
  */
 const SERVICE_MESSAGE: Message = {
   id: 'service',
@@ -49,9 +47,9 @@ export const markServiceRead = (ownerId: string): void => {
 export const serviceMessages = (): Message[] => [SERVICE_MESSAGE]
 
 export const serviceThread = (ownerId: string): Thread => ({
-  itemId: 'service',
-  counterpartId: 'service',
-  peerName: 'Авито Обмен',
+  itemId: 'support',
+  counterpartId: 'support',
+  peerName: 'Поддержка Авито',
   itemTitle: 'Обмен без доплат',
   lastMessage: SERVICE_MESSAGE,
   unreadCount: isRead(ownerId) ? 0 : 1,

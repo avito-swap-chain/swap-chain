@@ -23,6 +23,7 @@ export type BackendEvent =
   | 'chain.accepted'
   | 'chain.rejected'
   | 'notification.created'
+  | 'support.thread.updated'
 
 const ITEM_EVENTS: BackendEvent[] = ['item.created', 'item.status.updated']
 
@@ -34,6 +35,8 @@ const CHAIN_EVENTS: BackendEvent[] = [
 ]
 
 interface Handlers {
+  /** Поддержка ответила или подключился модератор: перечитать тред и его ленту. */
+  onSupport: () => void
   /** Пришло уведомление. Payload не разбираем: бэкенд просит перечитать список целиком. */
   onNotifications: () => void
   /** Что-то случилось с вещами: сменился статус разбора, вещь сняли с обмена. */
@@ -99,6 +102,7 @@ export function subscribeToBackendEvents({
   onItems,
   onChains,
   onNotifications,
+  onSupport,
   onConnected,
 }: Handlers): () => void {
   const source = new EventSource('/api/v1/events', { withCredentials: true })
@@ -112,6 +116,7 @@ export function subscribeToBackendEvents({
   for (const event of ITEM_EVENTS) source.addEventListener(event, onItems)
   for (const event of CHAIN_EVENTS) source.addEventListener(event, onChains)
   source.addEventListener('notification.created', onNotifications)
+  source.addEventListener('support.thread.updated', onSupport)
 
   // Результат распознавания — единственное событие, из которого мы читаем данные.
   // Полезная нагрузка лежит в поле `data` конверта; кривой JSON здесь означает,
