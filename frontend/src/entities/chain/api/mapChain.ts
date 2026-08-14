@@ -73,6 +73,7 @@ function inCycleOrder(participants: ApiParticipant[]): ApiParticipant[] {
 export const mapChain = (chain: ApiChain, meId: number): Chain => ({
   id: String(chain.id),
   status: STATUS[chain.status],
+  expiresAt: chain.expiresAt,
   // Кто именно отметил получение, теперь приходит полем участника — до этого приходилось
   // выводить отметку из `COMPLETED`, то есть «либо никто, либо все», и прогресс передачи
   // показать было нечем.

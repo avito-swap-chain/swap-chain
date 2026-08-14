@@ -26,6 +26,7 @@ export {
   type Neighbours,
 } from './lib/participants'
 export { isOpenOffer, isInboxOffer, countVariantsWithItem, cancelReason } from './lib/offers'
+export { timeLeft } from './lib/expiry'
 export { ChainCard } from './ui/ChainCard'
 export { ExchangeSummary } from './ui/ExchangeSummary'
 export { ChainRibbon } from './ui/ChainRibbon'

@@ -5,6 +5,7 @@ import {
   ExchangeSummary,
   findMe,
   findNeighbours,
+  timeLeft,
   type Chain,
 } from '@/entities/chain'
 import { AskAboutItem } from '@/features/ask-about-item'
@@ -30,6 +31,7 @@ export function OfferCard({ chain, variants }: OfferCardProps) {
 
   const total = chain.participants.length
   const cancelled = chain.status === 'cancelled'
+  const left = timeLeft(chain)
 
   // Собеседник — тот, кто отдаёт вещь мне, а тема разговора — сама эта вещь: спрашивают
   // о состоянии того, что получаешь, и история держится за вещью, а не за вариантом обмена.
@@ -53,6 +55,8 @@ export function OfferCard({ chain, variants }: OfferCardProps) {
           Участников: {total} · согласны {countConfirmed(chain)} из {total}
           {/* Не объясняем механику заново — только помечаем, что вариант не единственный. */}
           {!cancelled && variants > 1 && ` · ещё ${variants - 1} с этой вещью`}
+          {/* Срок — в той же строке: это признак варианта, а не отдельная новость. */}
+          {!cancelled && left && ` · ${left}`}
         </p>
       </div>
 
