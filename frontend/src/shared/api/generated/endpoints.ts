@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.9.0
  */
 import type {
+  AdminChain,
+  AdminChainList,
   AdminDelivery,
   AdminDeliveryList,
   AdminDeliveryTransitionRequest,
@@ -38,6 +40,7 @@ import type {
   Item,
   ItemList,
   ListAdminAuditParams,
+  ListAdminChainsParams,
   ListAdminDeliveriesParams,
   ListAdminReportsParams,
   ListAdminSupportMessagesParams,
@@ -2552,6 +2555,201 @@ export const markAdminSupportRead = async (threadId: number,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(markChatThreadReadRequest)
+  }
+);}
+
+
+
+export type listAdminChainsResponse200 = {
+  data: AdminChainList
+  status: 200
+}
+
+export type listAdminChainsResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type listAdminChainsResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type listAdminChainsResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type listAdminChainsResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type listAdminChainsResponseSuccess = (listAdminChainsResponse200) & {
+  headers: Headers;
+};
+export type listAdminChainsResponseError = (listAdminChainsResponse400 | listAdminChainsResponse401 | listAdminChainsResponse403 | listAdminChainsResponse500) & {
+  headers: Headers;
+};
+
+export type listAdminChainsResponse = (listAdminChainsResponseSuccess | listAdminChainsResponseError)
+
+export const getListAdminChainsUrl = (params?: ListAdminChainsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/admin/chains?${stringifiedParams}` : `/api/v1/admin/chains`
+}
+
+/**
+ * Returns chain summaries; participant and item details are available only inside a selected chain.
+ * @summary List exchange chains for pickup-point staff
+ */
+export const listAdminChains = async (params?: ListAdminChainsParams, options?: Parameters<typeof apiFetch>[1]): Promise<listAdminChainsResponse> => {
+
+  return apiFetch<listAdminChainsResponse>(getListAdminChainsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type getAdminChainResponse200 = {
+  data: AdminChain
+  status: 200
+}
+
+export type getAdminChainResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type getAdminChainResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type getAdminChainResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type getAdminChainResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type getAdminChainResponseSuccess = (getAdminChainResponse200) & {
+  headers: Headers;
+};
+export type getAdminChainResponseError = (getAdminChainResponse401 | getAdminChainResponse403 | getAdminChainResponse404 | getAdminChainResponse500) & {
+  headers: Headers;
+};
+
+export type getAdminChainResponse = (getAdminChainResponseSuccess | getAdminChainResponseError)
+
+export const getGetAdminChainUrl = (chainId: number,) => {
+
+
+
+
+  return `/api/v1/admin/chains/${chainId}`
+}
+
+/**
+ * @summary Get a chain with all item hand-offs
+ */
+export const getAdminChain = async (chainId: number, options?: Parameters<typeof apiFetch>[1]): Promise<getAdminChainResponse> => {
+
+  return apiFetch<getAdminChainResponse>(getGetAdminChainUrl(chainId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export type confirmAdminParticipantReceiptResponse200 = {
+  data: ChainReceipt
+  status: 200
+}
+
+export type confirmAdminParticipantReceiptResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type confirmAdminParticipantReceiptResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type confirmAdminParticipantReceiptResponse403 = {
+  data: ForbiddenResponse
+  status: 403
+}
+
+export type confirmAdminParticipantReceiptResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type confirmAdminParticipantReceiptResponse409 = {
+  data: ConflictResponse
+  status: 409
+}
+
+export type confirmAdminParticipantReceiptResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type confirmAdminParticipantReceiptResponseSuccess = (confirmAdminParticipantReceiptResponse200) & {
+  headers: Headers;
+};
+export type confirmAdminParticipantReceiptResponseError = (confirmAdminParticipantReceiptResponse400 | confirmAdminParticipantReceiptResponse401 | confirmAdminParticipantReceiptResponse403 | confirmAdminParticipantReceiptResponse404 | confirmAdminParticipantReceiptResponse409 | confirmAdminParticipantReceiptResponse500) & {
+  headers: Headers;
+};
+
+export type confirmAdminParticipantReceiptResponse = (confirmAdminParticipantReceiptResponseSuccess | confirmAdminParticipantReceiptResponseError)
+
+export const getConfirmAdminParticipantReceiptUrl = (chainId: number,
+    participantId: number,) => {
+
+
+
+
+  return `/api/v1/admin/chains/${chainId}/participants/${participantId}/receipt`
+}
+
+/**
+ * Requires ADMIN. Idempotent when already received; the final receipt completes the chain atomically.
+ * @summary Confirm that a participant received their incoming item
+ */
+export const confirmAdminParticipantReceipt = async (chainId: number,
+    participantId: number, options?: Parameters<typeof apiFetch>[1]): Promise<confirmAdminParticipantReceiptResponse> => {
+
+  return apiFetch<confirmAdminParticipantReceiptResponse>(getConfirmAdminParticipantReceiptUrl(chainId,participantId),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 

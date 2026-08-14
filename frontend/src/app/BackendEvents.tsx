@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { chainKeys } from '@/entities/chain'
+import { deliveryKeys } from '@/entities/delivery'
 import { itemKeys } from '@/entities/item'
 import { messageKeys } from '@/entities/message'
 import { notificationKeys } from '@/entities/notification'
@@ -42,6 +43,12 @@ export function BackendEvents() {
     // Поддержка ответила: перечитываем и список переписок (там её строка и счётчик),
     // и открытую ленту — она висит на long-poll, но событие приходит раньше ответа.
     const invalidateMessages = () => queryClient.invalidateQueries({ queryKey: messageKeys.all })
+    // Очередь ПВЗ живёт теми же цепочками: пока сотрудник смотрит на список, участники
+    // подтверждают получение, и без этого круг оставался бы «в пути» до перезагрузки.
+    const invalidateDeliveries = () => {
+      queryClient.invalidateQueries({ queryKey: deliveryKeys.chains() })
+      queryClient.invalidateQueries({ queryKey: deliveryKeys.list() })
+    }
 
     return subscribeToBackendEvents({
       onItems: invalidateItems,
@@ -50,6 +57,7 @@ export function BackendEvents() {
       onChains: () => {
         invalidateChains()
         invalidateItems()
+        invalidateDeliveries()
       },
       onNotifications: invalidateNotifications,
       onSupport: invalidateMessages,
@@ -60,6 +68,7 @@ export function BackendEvents() {
         invalidateChains()
         invalidateNotifications()
         invalidateMessages()
+        invalidateDeliveries()
       },
     })
   }, [queryClient, userId])
