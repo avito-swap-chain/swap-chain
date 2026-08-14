@@ -216,13 +216,13 @@ func (r *postgresRepository) Create(ctx context.Context, userID int64, input Cre
 	defer func() { _ = tx.Rollback() }()
 
 	row := tx.QueryRowContext(ctx, `
-		INSERT INTO items (user_id, offer_title, offer_description, image_urls, offer_category_id, is_category_manual)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO items (user_id, offer_title, offer_description, image_urls, offer_category_id, is_category_manual, quality_score)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, user_id, offer_title, offer_description,
-		          image_urls, status::text, offer_category_id, is_category_manual,
+		          image_urls, status::text, offer_category_id, is_category_manual, quality_score,
 		          created_at, updated_at`,
 		userID, input.OfferTitle, input.OfferDescription, pq.Array(input.ImageURLs), input.OfferCategoryID,
-		input.OfferCategoryID != nil,
+		input.OfferCategoryID != nil, conditionScore(input.Condition),
 	)
 	item, err := scanItem(row)
 	if err != nil {
@@ -256,7 +256,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	}
 	current, err := scanItem(tx.QueryRowContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description,
-		       image_urls, status::text, offer_category_id, is_category_manual,
+		       image_urls, status::text, offer_category_id, is_category_manual, quality_score,
 		       created_at, updated_at
 		FROM items WHERE id = $1 FOR UPDATE`, itemID))
 	if err != nil {
@@ -301,6 +301,9 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	case input.OfferTitle != nil && titleChanged && current.Status != "WITHDRAWN":
 		status = "ANALYZING"
 		matchingChanged = true
+	case input.Condition != nil && *input.Condition != current.Condition && current.Status != "WITHDRAWN":
+		status = "ANALYZING"
+		matchingChanged = true
 	}
 	if offerCategoryChanged && current.Status != "WITHDRAWN" {
 		status = "ANALYZING"
@@ -330,6 +333,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		        ELSE offer_category_id
 		    END,
 		    is_category_manual = CASE WHEN $6::int IS NOT NULL THEN TRUE ELSE is_category_manual END,
+		    quality_score = CASE WHEN $7::numeric IS NULL THEN quality_score ELSE $7::numeric END,
 		    param_richness = CASE WHEN $4 THEN NULL ELSE param_richness END,
 		    offer_embedding_local = CASE WHEN $4 THEN NULL ELSE offer_embedding_local END,
 		    offer_embedding_external = CASE WHEN $4 THEN NULL ELSE offer_embedding_external END,
@@ -338,9 +342,9 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 		    updated_at = now()
 		WHERE id = $1
 		RETURNING id, user_id, offer_title, offer_description,
-		          image_urls, status::text, offer_category_id, is_category_manual,
+		          image_urls, status::text, offer_category_id, is_category_manual, quality_score,
 		          created_at, updated_at`,
-		itemID, offerDescription, status, matchingChanged, offerTitle, input.OfferCategoryID,
+		itemID, offerDescription, status, matchingChanged, offerTitle, input.OfferCategoryID, nullableConditionScore(input.Condition),
 	)
 	item, err := scanItem(row)
 	if err != nil {
@@ -396,7 +400,7 @@ func (r *postgresRepository) ResolveCategories(
 	}
 	item, err := scanItem(tx.QueryRowContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description,
-		       image_urls, status::text, offer_category_id, is_category_manual,
+		       image_urls, status::text, offer_category_id, is_category_manual, quality_score,
 		       created_at, updated_at
 		FROM items
 		WHERE id = $1
@@ -507,7 +511,7 @@ func (r *postgresRepository) ResolveCategories(
 		    updated_at = NOW()
 		WHERE id = $1 AND status = 'ACTION_REQUIRED'
 		RETURNING id, user_id, offer_title, offer_description,
-		          image_urls, status::text, offer_category_id, is_category_manual,
+		          image_urls, status::text, offer_category_id, is_category_manual, quality_score,
 		          created_at, updated_at`,
 		itemID, selectedOfferCategory, offerManual))
 	if err != nil {
@@ -590,7 +594,7 @@ func rejectPendingChainsForItem(ctx context.Context, tx *sql.Tx, actorID, itemID
 func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error) {
 	item, err := scanItem(r.database.QueryRowContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description,
-		       image_urls, status::text, offer_category_id, is_category_manual,
+		       image_urls, status::text, offer_category_id, is_category_manual, quality_score,
 		       created_at, updated_at
 		FROM items WHERE id = $1`, itemID))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -609,7 +613,7 @@ func (r *postgresRepository) Get(ctx context.Context, itemID int64) (Item, error
 func (r *postgresRepository) ListByUser(ctx context.Context, userID, afterID int64, limit int) ([]Item, *int64, error) {
 	rows, err := r.database.QueryContext(ctx, `
 		SELECT id, user_id, offer_title, offer_description,
-		       image_urls, status::text, offer_category_id, is_category_manual,
+		       image_urls, status::text, offer_category_id, is_category_manual, quality_score,
 		       created_at, updated_at
 		FROM items
 		WHERE user_id = $1 AND id > $2
@@ -651,6 +655,7 @@ type rowScanner interface {
 func scanItem(row rowScanner) (Item, error) {
 	var item Item
 	var offerCategoryID sql.NullInt32
+	var qualityScore string
 	var imageURLs pq.StringArray
 	err := row.Scan(
 		&item.ID,
@@ -661,18 +666,49 @@ func scanItem(row rowScanner) (Item, error) {
 		&item.Status,
 		&offerCategoryID,
 		&item.OfferCategoryIsManual,
+		&qualityScore,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
 	if offerCategoryID.Valid {
 		item.OfferCategoryID = &offerCategoryID.Int32
 	}
+	item.Condition = conditionFromScore(qualityScore)
 	if imageURLs == nil {
 		item.ImageURLs = []string{}
 	} else {
 		item.ImageURLs = append([]string(nil), imageURLs...)
 	}
 	return item, err
+}
+
+func conditionScore(condition string) float64 {
+	switch condition {
+	case ConditionNew:
+		return 1
+	case ConditionUsed:
+		return 0.6
+	default:
+		return 0.8
+	}
+}
+
+func nullableConditionScore(condition *string) any {
+	if condition == nil {
+		return nil
+	}
+	return conditionScore(*condition)
+}
+
+func conditionFromScore(score string) string {
+	switch score {
+	case "1.000":
+		return ConditionNew
+	case "0.600":
+		return ConditionUsed
+	default:
+		return ConditionGood
+	}
 }
 
 type queryer interface {

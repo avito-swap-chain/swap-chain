@@ -22,6 +22,12 @@ var (
 	ErrConflict = errors.New("item conflict")
 )
 
+const (
+	ConditionNew  = "NEW"
+	ConditionGood = "GOOD"
+	ConditionUsed = "USED"
+)
+
 // ValidationError contains field-level item validation errors.
 type ValidationError struct {
 	Fields map[string]string
@@ -33,25 +39,26 @@ func (e *ValidationError) Error() string {
 
 // ItemWish represents a single user wish for an item.
 type ItemWish struct {
-	ID                   int64
-	CategoryID           *int32
-	Description          string
-	Vector               []float32
+	ID          int64
+	CategoryID  *int32
+	Description string
+	Vector      []float32
 }
 
 // Item is the transport-independent item representation.
 type Item struct {
-	ID                        int64
-	UserID                    int64
-	OfferTitle                string
-	OfferDescription          string
-	Wishes                    []ItemWish
-	ImageURLs                 []string
-	Status                    string
-	OfferCategoryID           *int32
-	OfferCategoryIsManual     bool
-	CreatedAt                 time.Time
-	UpdatedAt                 time.Time
+	ID                    int64
+	UserID                int64
+	OfferTitle            string
+	OfferDescription      string
+	Wishes                []ItemWish
+	ImageURLs             []string
+	Status                string
+	OfferCategoryID       *int32
+	OfferCategoryIsManual bool
+	Condition             string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 // CreateInput contains normalized user-provided item fields.
@@ -61,6 +68,7 @@ type CreateInput struct {
 	Wishes           []string
 	ImageURLs        []string
 	OfferCategoryID  *int32
+	Condition        string
 }
 
 // UpdateInput contains a partial item change. Withdraw removes the wish and
@@ -70,6 +78,7 @@ type UpdateInput struct {
 	OfferDescription *string
 	Wishes           []string
 	OfferCategoryID  *int32
+	Condition        *string
 	Withdraw         bool
 }
 
@@ -143,9 +152,9 @@ func normalizeUpdate(input UpdateInput) UpdateInput {
 
 func validateUpdate(input UpdateInput) error {
 	fields := make(map[string]string)
-	hasChange := input.OfferDescription != nil || input.Wishes != nil || input.OfferTitle != nil || input.OfferCategoryID != nil || input.Withdraw
+	hasChange := input.OfferDescription != nil || input.Wishes != nil || input.OfferTitle != nil || input.OfferCategoryID != nil || input.Condition != nil || input.Withdraw
 	if !hasChange {
-		fields["request"] = "must change a description, title, category, or withdraw the item"
+		fields["request"] = "must change a description, title, category, condition, or withdraw the item"
 	}
 	if input.Withdraw && input.Wishes != nil {
 		fields["wishes"] = "cannot be changed while withdrawing the item"
@@ -155,6 +164,9 @@ func validateUpdate(input UpdateInput) error {
 	}
 	if input.OfferDescription != nil {
 		validateText(fields, "offerDescription", *input.OfferDescription, 4000)
+	}
+	if input.Condition != nil && !validCondition(*input.Condition) {
+		fields["condition"] = "must be NEW, GOOD or USED"
 	}
 	if input.Wishes != nil {
 		if len(input.Wishes) < 1 || len(input.Wishes) > 10 {
@@ -195,6 +207,9 @@ func FormatCursor(value int64) string {
 func normalize(input CreateInput) CreateInput {
 	input.OfferTitle = strings.TrimSpace(input.OfferTitle)
 	input.OfferDescription = strings.TrimSpace(input.OfferDescription)
+	if input.Condition == "" {
+		input.Condition = ConditionGood
+	}
 	var wishes []string
 	for _, w := range input.Wishes {
 		w = strings.TrimSpace(w)
@@ -220,6 +235,9 @@ func validate(input CreateInput) error {
 		fields["categoryId"] = "is required"
 	} else if *input.OfferCategoryID <= 0 {
 		fields["categoryId"] = "must be positive"
+	}
+	if !validCondition(input.Condition) {
+		fields["condition"] = "must be NEW, GOOD or USED"
 	}
 
 	if len(input.Wishes) < 1 || len(input.Wishes) > 10 {
@@ -252,6 +270,10 @@ func validate(input CreateInput) error {
 		return &ValidationError{Fields: fields}
 	}
 	return nil
+}
+
+func validCondition(condition string) bool {
+	return condition == ConditionNew || condition == ConditionGood || condition == ConditionUsed
 }
 
 func validateText(fields map[string]string, name, value string, maxLength int) {

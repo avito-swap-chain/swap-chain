@@ -50,6 +50,7 @@ func (s *MemoryService) Create(_ context.Context, userID int64, input CreateInpu
 		Status:                "ANALYZING",
 		OfferCategoryID:       copyInt32Ptr(input.OfferCategoryID),
 		OfferCategoryIsManual: input.OfferCategoryID != nil,
+		Condition:             input.Condition,
 		CreatedAt:             now,
 		UpdatedAt:             now,
 	}
@@ -96,6 +97,9 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 		item.OfferCategoryID = input.OfferCategoryID
 		item.OfferCategoryIsManual = true
 	}
+	if input.Condition != nil {
+		item.Condition = *input.Condition
+	}
 	switch {
 	case input.Withdraw:
 		item.Wishes = []ItemWish{}
@@ -109,6 +113,8 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 	case input.OfferDescription != nil && item.Status != "WITHDRAWN":
 		item.Status = "ANALYZING"
 	case (input.OfferTitle != nil && item.OfferTitle != oldTitle || input.OfferCategoryID != nil) && item.Status != "WITHDRAWN":
+		item.Status = "ANALYZING"
+	case input.Condition != nil && item.Status != "WITHDRAWN":
 		item.Status = "ANALYZING"
 	}
 	item.UpdatedAt = time.Now().UTC()

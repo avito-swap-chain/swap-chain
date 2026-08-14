@@ -191,6 +191,42 @@ func TestMemoryServiceNoOpOnSameOfferTitle(t *testing.T) {
 	}
 }
 
+func TestMemoryServicePersistsConditionAndRestartsMatching(t *testing.T) {
+	service := NewMemoryService()
+	created, err := service.Create(context.Background(), 7, CreateInput{
+		OfferTitle:       "Велосипед",
+		OfferDescription: "Горный велосипед",
+		Wishes:           []string{"Телефон"},
+		OfferCategoryID:  int32PointerForTest(4),
+		Condition:        ConditionNew,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Condition != ConditionNew {
+		t.Fatalf("created condition = %q", created.Condition)
+	}
+
+	service.mu.Lock()
+	item := service.items[created.ID]
+	item.Status = "MATCHING"
+	service.items[created.ID] = item
+	service.mu.Unlock()
+
+	condition := ConditionUsed
+	updated, err := service.Update(context.Background(), 7, created.ID, UpdateInput{Condition: &condition})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Condition != ConditionUsed || updated.Status != "ANALYZING" {
+		t.Fatalf("updated item = %+v", updated)
+	}
+	stored, err := service.Get(context.Background(), created.ID)
+	if err != nil || stored.Condition != ConditionUsed {
+		t.Fatalf("stored item = %+v, %v", stored, err)
+	}
+}
+
 func TestMemoryServiceForeignOwnerTitleUpdate(t *testing.T) {
 	service := NewMemoryService()
 	created, err := service.Create(context.Background(), 7, CreateInput{
