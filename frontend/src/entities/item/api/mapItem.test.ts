@@ -10,6 +10,7 @@ const apiItem = (over: Partial<ApiItem> = {}): ApiItem => ({
   wishes: [{ id: 1, categoryId: 3, description: 'Игровая приставка' }],
   imageUrls: ['/mock/items/bike.jpg'],
   status: 'MATCHING',
+  condition: 'GOOD',
   createdAt: '2026-08-09T10:00:00Z',
   updatedAt: '2026-08-09T10:00:00Z',
   ...over,
@@ -41,11 +42,15 @@ describe('mapItem — вещь из контракта в нашу модель'
     expect(wish).toEqual(['Приставка', 'Велосипед', 'Гитара'])
   })
 
-  it('состояния вещи в контракте нет — не выдумываем его', () => {
-    const item = mapItem(apiItem())
+  /** Состояние приехало в контракте 0.10.0 — до него поле оставалось пустым намеренно. */
+  it('состояние вещи берётся с бэкенда, а не выдумывается', () => {
+    expect(mapItem(apiItem()).condition).toBe('good')
+    expect(mapItem(apiItem({ condition: 'NEW' })).condition).toBe('new')
+    expect(mapItem(apiItem({ condition: 'USED' })).condition).toBe('used')
+  })
 
-    expect(item.category).toBe('')
-    expect(item.condition).toBeUndefined()
+  it('имя категории приходит справочником, а не ответом про вещь', () => {
+    expect(mapItem(apiItem()).category).toBe('')
   })
 
   it('описание доезжает до модели — по нему бэкенд и ищет обмен', () => {
@@ -71,6 +76,7 @@ describe('mapItem — вещь из контракта в нашу модель'
     const item = mapItem(
       apiItem({
         status: 'ACTION_REQUIRED',
+        condition: 'GOOD',
         wishes: [
           { id: 1, categoryId: 3, description: 'Игровая приставка' },
           { id: 2, categoryId: null, description: 'Что-нибудь интересное' },

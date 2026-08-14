@@ -3,12 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   categoryKeys,
+  CONDITION_LABEL,
+  CONDITIONS,
   DescriptionField,
   editItem,
   getCategories,
   getMyItems,
   itemKeys,
   type Item,
+  type ItemCondition,
 } from '@/entities/item'
 import { DescribeWishForm } from '@/features/describe-wish'
 import { WithdrawItem } from '@/features/withdraw-item'
@@ -52,6 +55,7 @@ function EditItemFields({ item, onDone }: { item: Item; onDone: () => void }) {
   const [title, setTitle] = useState(item.title)
   const [description, setDescription] = useState(item.description ?? '')
   const [categoryId, setCategoryId] = useState(item.categoryId)
+  const [condition, setCondition] = useState(item.condition)
 
   const { data: categories = [] } = useQuery({
     queryKey: categoryKeys.list(),
@@ -91,12 +95,30 @@ function EditItemFields({ item, onDone }: { item: Item; onDone: () => void }) {
         </Select>
       </Field>
 
+      {/* Состояние вещи правится с контракта 0.10.0: до этого его хранил только интерфейс,
+          и поправить «новое» на «б/у» после пары месяцев было нечем. */}
+      <Field label="Состояние">
+        <Select
+          value={condition ?? ''}
+          onChange={(event) => setCondition((event.target.value || undefined) as ItemCondition)}
+        >
+          <option value="" disabled>
+            Выберите состояние
+          </option>
+          {CONDITIONS.map((option) => (
+            <option key={option} value={option}>
+              {CONDITION_LABEL[option]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
       <DescribeWishForm
         give={{ ...item, title }}
         initial={item.wish}
         submitLabel="Сохранить"
         pendingLabel="Сохраняем…"
-        onSubmit={(wish) => editItem(item.id, { wish, description, title, categoryId })}
+        onSubmit={(wish) => editItem(item.id, { wish, description, title, categoryId, condition })}
         onDone={onDone}
       />
 

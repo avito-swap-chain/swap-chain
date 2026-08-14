@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { AdminDeliveriesPage } from '@/pages/admin-deliveries'
+import { AdminMetricsPage } from '@/pages/admin-metrics'
 import { AdminAuditPage, AdminModerationPage, AdminReportPage } from '@/pages/admin-moderation'
 import { BlockedPage } from '@/pages/blocked'
 import { ChainPage } from '@/pages/chain'
@@ -52,6 +53,8 @@ export const router = createBrowserRouter(
         { path: '/admin/moderation', element: <AdminModerationPage /> },
         { path: '/admin/moderation/:reportId', element: <AdminReportPage /> },
         { path: '/admin/audit', element: <AdminAuditPage /> },
+        // Воронка: единственный экран про то, работает ли идея, а не про свою вещь.
+        { path: '/admin/metrics', element: <AdminMetricsPage /> },
         // Вложенные экраны: сюда ведут из разделов, путь назад показывают крошки.
         { path: '/items/new', element: <CreateOfferPage /> },
         { path: '/items/:id/barter', element: <EnableBarterPage /> },

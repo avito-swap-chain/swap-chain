@@ -5,6 +5,7 @@
  * Shared REST and realtime contract for the swap-chain MVP.
  * OpenAPI spec version: 0.9.0
  */
+import type { ItemCondition } from './itemCondition';
 
 export interface UpdateItemRequest {
   /**
@@ -22,4 +23,5 @@ export interface UpdateItemRequest {
   withdraw?: boolean;
   /** User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. */
   categoryId?: number;
+  condition?: ItemCondition;
 }

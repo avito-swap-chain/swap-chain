@@ -2,12 +2,14 @@ import { unwrap } from '@/shared/api/fetcher'
 import {
   assignReport,
   decideReport,
+  getAdminFunnelMetrics,
   getAdminReport,
   listAdminAudit,
   listAdminReports,
 } from '@/shared/api/generated/endpoints'
 import type {
   AuditLogList,
+  FunnelMetrics,
   ListAdminReportsParams,
   MessageReport,
   MessageReportList,
@@ -24,6 +26,17 @@ export const moderationKeys = {
   reports: (params: ListAdminReportsParams) => [...moderationKeys.all, 'reports', params] as const,
   report: (id: number) => [...moderationKeys.all, 'report', id] as const,
   audit: () => [...moderationKeys.all, 'audit'] as const,
+  funnel: () => [...moderationKeys.all, 'funnel'] as const,
+}
+
+/**
+ * Снимок воронки: сколько вещей вообще доходит до цепочки, сколько предложений принимают
+ * и сколько обменов доводят до конца. Это и есть ответ на вопрос «работает ли идея»,
+ * а не украшение админки: длина цепочки в три участника выбрана ради процента совпадений,
+ * и проверять его надо цифрами, а не ощущением.
+ */
+export async function getFunnel(): Promise<FunnelMetrics> {
+  return unwrap<FunnelMetrics>(await getAdminFunnelMetrics())
 }
 
 /**

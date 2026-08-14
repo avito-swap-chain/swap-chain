@@ -2,19 +2,26 @@ import { unwrap } from '@/shared/api/fetcher'
 import {
   createItem as createItemRequest,
   listItems,
+  listUserItems,
   resolveItemCategories,
   updateItem,
   uploadMedia,
 } from '@/shared/api/generated/endpoints'
-import type { Item as ApiItem, ItemList, MediaUpload } from '@/shared/api/generated/model'
+import type {
+  Item as ApiItem,
+  ItemCondition as ApiItemCondition,
+  ItemList,
+  MediaUpload,
+} from '@/shared/api/generated/model'
 import { isBackendConnected } from '@/shared/config/backend'
 import * as mock from './itemMocks'
 import { mapItem } from './mapItem'
-import type { Item, ItemDraft } from '../model/types'
+import type { Item, ItemCondition, ItemDraft } from '../model/types'
 
 /** Ключи кэша TanStack Query для вещей. */
 export const itemKeys = {
   my: () => ['my-items'] as const,
+  ofUser: (userId: string) => ['user-items', userId] as const,
   /**
    * Подсказки желания зависят и от вещи, и от уже выбранных вариантов: выбранный вариант
    * из подсказок уходит, а на его место встаёт следующий кандидат.
@@ -35,6 +42,15 @@ export interface ItemEdit {
   title?: string
   /** Категория справочника. Её смена перезапускает разбор вещи на бэкенде. */
   categoryId?: number
+  /** Состояние вещи. Хранится на бэкенде с 0.10.0 — до этого правилось только на моках. */
+  condition?: ItemCondition
+}
+
+/** Наши состояния в контрактные: у нас строчные, у бэкенда — заглавные. */
+const API_CONDITION: Record<ItemCondition, ApiItemCondition> = {
+  new: 'NEW',
+  good: 'GOOD',
+  used: 'USED',
 }
 
 /**
@@ -62,6 +78,19 @@ export async function getMyItems(): Promise<Item[]> {
   return items.map(mapItem)
 }
 
+/**
+ * Вещи чужого человека — то, что он выставил на обмен. В обмене это довод не слабее рейтинга:
+ * прежде чем отдать своё, смотрят, с чем человек вообще пришёл. Появилось в контракте 0.10.0.
+ *
+ * Одной страницей: в профиле показываем первый десяток, листать чужой каталог здесь незачем.
+ */
+export async function getUserItems(userId: string): Promise<Item[]> {
+  if (!isBackendConnected) return mock.listUserItems(userId)
+
+  const { items } = unwrap<ItemList>(await listUserItems(Number(userId), { limit: 10 }))
+  return items.map(mapItem)
+}
+
 /** Новая вещь сразу уходит в подбор — сервис ищет для неё цепочку. */
 export async function createItem(draft: ItemDraft): Promise<Item> {
   const wish = usableWishes(draft.wish)
@@ -69,6 +98,9 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
   // Категория обязательна с контракта 0.9.0: по ней идёт подбор, и угадать её за человека
   // бэкенд больше не берётся. Форма без категории дальше не пускает — это страховка.
   if (!draft.categoryId) throw new Error('Не выбрана категория')
+  // Состояние обязательно с контракта 0.10.0: без него бэкенд отвечает 400. Спрашиваем
+  // его у человека — модель по фото только предлагает, подтверждает всегда он.
+  if (!draft.condition) throw new Error('Не выбрано состояние вещи')
 
   if (!isBackendConnected) return mock.create(draft, wish)
 
@@ -91,6 +123,7 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
       wishes: wish,
       imageUrls: imageUrl ? [imageUrl] : [],
       categoryId: draft.categoryId,
+      condition: API_CONDITION[draft.condition],
     }),
   )
   return mapItem(created)
@@ -106,7 +139,7 @@ export async function createItem(draft: ItemDraft): Promise<Item> {
  */
 export async function editItem(
   id: string,
-  { wish, description, title, categoryId }: ItemEdit,
+  { wish, description, title, categoryId, condition }: ItemEdit,
 ): Promise<Item> {
   const usable = usableWishes(wish)
   if (usable.length === 0) throw new Error('Не указано, что хочется взамен')
@@ -125,6 +158,7 @@ export async function editItem(
         ...(text ? { offerDescription: text } : {}),
         ...(name ? { offerTitle: name } : {}),
         ...(categoryId ? { categoryId } : {}),
+        ...(condition ? { condition: API_CONDITION[condition] } : {}),
       }),
     ),
   )

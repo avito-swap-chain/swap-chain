@@ -5,12 +5,12 @@ import { ActionError, Button, Select } from '@/shared/ui'
 
 interface ResolveWishCategoryProps {
   itemId: string
-  /** Варианты желания, раздел которых модель не определила. */
+  /** Варианты желания, категорию которых модель не определила. */
   wishes: { id: number; description: string }[]
 }
 
 /**
- * Выбрать раздел для желаний, в которых не разобралась модель. Пока раздел не выбран,
+ * Выбрать категорию для желаний, в которых не разобралась модель. Пока она не выбрана,
  * вещь стоит вне подбора, поэтому спрашиваем прямо на карточке, а не прячем в правку
  * объявления: человек пришёл в кабинет и должен увидеть, что от него чего-то ждут.
  *
@@ -48,7 +48,7 @@ export function ResolveWishCategory({ itemId, wishes }: ResolveWishCategoryProps
   if (!open) {
     return (
       <Button variant="ghost" onClick={() => setOpen(true)}>
-        Выбрать раздел
+        Выбрать категорию
       </Button>
     )
   }
@@ -57,7 +57,9 @@ export function ResolveWishCategory({ itemId, wishes }: ResolveWishCategoryProps
     <div className="flex w-full flex-col gap-2">
       {wishes.map((wish) => (
         <label key={wish.id} className="flex flex-col gap-1">
-          <span className="text-[12.5px] text-ink-2">Хочу «{wish.description}» — это раздел</span>
+          <span className="text-[12.5px] text-ink-2">
+            Хочу «{wish.description}» — это категория
+          </span>
           <Select
             value={chosen[wish.id] ?? ''}
             onChange={(event) =>
@@ -66,7 +68,7 @@ export function ResolveWishCategory({ itemId, wishes }: ResolveWishCategoryProps
             disabled={categories.length === 0}
           >
             <option value="" disabled>
-              Выберите раздел
+              Выберите категорию
             </option>
             {categories.map((category) => (
               <option key={category.id} value={category.id}>

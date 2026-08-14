@@ -27,6 +27,7 @@ import type {
   CreateChainRequest,
   CreateItemRequest,
   CreateReportRequest,
+  CreateUserReportRequest,
   CreateUserRequest,
   CreateUserReviewRequest,
   Error,
@@ -69,6 +70,7 @@ import type {
   UpdateUserRequest,
   UploadMediaBody,
   UserProfile,
+  UserReport,
   UserReview,
   UserReviewList,
   ValidationErrorResponse,
@@ -2494,6 +2496,71 @@ export const createReport = async (createReportRequest: CreateReportRequest, opt
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
     body: JSON.stringify(createReportRequest)
+  }
+);}
+
+
+
+export type createUserReportResponse200 = {
+  data: UserReport
+  status: 200
+}
+
+export type createUserReportResponse201 = {
+  data: UserReport
+  status: 201
+}
+
+export type createUserReportResponse400 = {
+  data: BadRequestResponse
+  status: 400
+}
+
+export type createUserReportResponse401 = {
+  data: UnauthorizedResponse
+  status: 401
+}
+
+export type createUserReportResponse404 = {
+  data: NotFoundResponse
+  status: 404
+}
+
+export type createUserReportResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type createUserReportResponseSuccess = (createUserReportResponse200 | createUserReportResponse201) & {
+  headers: Headers;
+};
+export type createUserReportResponseError = (createUserReportResponse400 | createUserReportResponse401 | createUserReportResponse404 | createUserReportResponse500) & {
+  headers: Headers;
+};
+
+export type createUserReportResponse = (createUserReportResponseSuccess | createUserReportResponseError)
+
+export const getCreateUserReportUrl = (userId: number,) => {
+
+
+
+
+  return `/api/v1/users/${userId}/reports`
+}
+
+/**
+ * The authenticated user cannot report themselves. When chainId is supplied, both users must be participants of that chain. Repeated reports for the same user and chain are idempotent. comment is required for reason other.
+ * @summary Report another user
+ */
+export const createUserReport = async (userId: number,
+    createUserReportRequest: CreateUserReportRequest, options?: Parameters<typeof apiFetch>[1]): Promise<createUserReportResponse> => {
+
+  return apiFetch<createUserReportResponse>(getCreateUserReportUrl(userId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createUserReportRequest)
   }
 );}
 

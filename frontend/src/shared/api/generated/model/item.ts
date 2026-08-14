@@ -5,6 +5,7 @@
  * Shared REST and realtime contract for the swap-chain MVP.
  * OpenAPI spec version: 0.9.0
  */
+import type { ItemCondition } from './itemCondition';
 import type { ItemStatus } from './itemStatus';
 import type { ItemWish } from './itemWish';
 
@@ -16,6 +17,7 @@ export interface Item {
   wishes: ItemWish[];
   imageUrls: string[];
   status: ItemStatus;
+  condition: ItemCondition;
   /**
      * User-selected offer category. Required for newly created cards. Maps to offer_category_id.
      * @nullable
