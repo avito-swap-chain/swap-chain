@@ -12,6 +12,7 @@ import type { Section } from '../lib/navigation'
 const ITEMS_URL = '/'
 const EXCHANGE_URL = '/exchange'
 const REVIEWS_URL = '/reviews'
+const BLOCKED_URL = '/blocked'
 const MESSAGES_URL = '/messages'
 const NOTIFICATIONS_URL = '/notifications'
 const ADMIN_URL = '/admin/deliveries'
@@ -138,6 +139,18 @@ export function CabinetNav({ section, className }: { section: Section; className
           Сообщения
           {unread > 0 && <Counter title="Непрочитанные сообщения">{unread}</Counter>}
         </Link>
+
+        {/* Чёрный список — часть защиты, а не настройка: в обмене им пользуются, когда уже
+            столкнулись с человеком, и искать его в профиле в этот момент неоткуда. */}
+        {!user?.isAdmin && (
+          <Link
+            to={BLOCKED_URL}
+            aria-current={pathname === BLOCKED_URL ? 'page' : undefined}
+            className={cx(itemClass, section === 'blocked' ? currentClass : restClass)}
+          >
+            Чёрный список
+          </Link>
+        )}
 
         <Link
           to={NOTIFICATIONS_URL}

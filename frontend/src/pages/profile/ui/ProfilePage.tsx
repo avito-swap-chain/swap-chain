@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
 import { getUserItems, ItemCard, itemKeys } from '@/entities/item'
 import { getMyProfile, getProfile, getReviews, userKeys, type Profile } from '@/entities/user'
@@ -165,10 +165,12 @@ function Cabinet({ onEdit, editing }: { onEdit: () => void; editing: boolean }) 
   const waiting = data?.filter(needsMyAction).length ?? 0
 
   return (
-    <section className="flex flex-col gap-3 lg:hidden">
-      <h2 className="text-[19px] leading-6 font-bold">Кабинет</h2>
+    <section className="flex flex-col gap-3">
+      <h2 className="text-[19px] leading-6 font-bold lg:hidden">Кабинет</h2>
 
-      <TileGroup>
+      {/* Разделы дублируют меню оболочки, поэтому на десктопе их нет — там меню в колонке
+          слева. А правка профиля не дубль: это действие, и живёт оно только здесь. */}
+      <TileGroup className="lg:hidden">
         <TileRow icon={<IconBox size={19} />} to="/">
           Мои объявления
         </TileRow>
@@ -198,7 +200,9 @@ function Cabinet({ onEdit, editing }: { onEdit: () => void; editing: boolean }) 
         <TileRow icon={<IconBan size={19} />} to="/blocked">
           Чёрный список
         </TileRow>
+      </TileGroup>
 
+      <TileGroup>
         <TileRow icon={<IconPencil size={19} />} onClick={onEdit}>
           {editing ? 'Свернуть правку профиля' : 'Изменить имя и фотографию'}
         </TileRow>
@@ -278,7 +282,14 @@ function Reviews({ userId, count }: { userId: string; count?: number }) {
                   src={review.author.avatarUrl}
                   className="size-7"
                 />
-                <b className="text-[13px] font-bold">{review.author.name}</b>
+                {/* Имя ведёт в профиль автора: отзыв — довод о человеке, и первый вопрос
+                    к нему «а кто это написал». */}
+                <Link
+                  to={`/users/${review.author.id}`}
+                  className="rounded-sm text-[13px] font-bold outline-offset-2 hover:text-brand focus-visible:outline-2 focus-visible:outline-brand"
+                >
+                  {review.author.name}
+                </Link>
                 <span className="flex items-center gap-1 text-[13px] text-ink-2">
                   <Stars rating={review.rating} size={13} />
                 </span>
