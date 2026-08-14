@@ -1,7 +1,13 @@
 // Наружу отдаём только то, чем пользуются другие слои: остальное — внутренности слайса.
 // Ленту реплик экраны читают через `useThreadMessages`, а не `getMessages`: там живут
 // курсор, long-poll и склейка, и звать их руками негде.
-export type { Message, MessageDraft, MessageReportReason, ThreadRef } from './model/types'
+export type {
+  Message,
+  MessageDraft,
+  MessageReportReason,
+  MessageRisk,
+  ThreadRef,
+} from './model/types'
 export { MESSAGE_REPORT_REASONS, MESSAGE_REPORT_REASON_LABEL } from './model/types'
 export {
   messageKeys,
