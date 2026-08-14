@@ -1418,6 +1418,52 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/users/{userId}/reports:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
+    post:
+      operationId: createUserReport
+      tags: [moderation]
+      summary: Report another user
+      description: >-
+        The authenticated user cannot report themselves. When chainId is
+        supplied, both users must be participants of that chain. Repeated
+        reports for the same user and chain are idempotent. comment is required
+        for reason other.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserReportRequest"
+      responses:
+        "201":
+          description: Report created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserReport"
+        "200":
+          description: Idempotent duplicate of an existing report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /api/v1/admin/reports:
     get:
       operationId: listAdminReports
@@ -1797,7 +1843,7 @@ components:
 
     CreateItemRequest:
       type: object
-      required: [offerTitle, offerDescription, categoryId, wishes]
+      required: [offerTitle, offerDescription, categoryId, condition, wishes]
       properties:
         offerTitle:
           type: string
@@ -1824,6 +1870,8 @@ components:
           type: integer
           format: int32
           description: Required user-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected. Wish categories are determined by the analysis pipeline from their descriptions.
+        condition:
+          $ref: "#/components/schemas/ItemCondition"
 
     UpdateItemRequest:
       type: object
@@ -1848,6 +1896,13 @@ components:
           type: integer
           format: int32
           description: User-selected offer category. Must reference an existing user-facing category; undefined category (47) is rejected.
+        condition:
+          $ref: "#/components/schemas/ItemCondition"
+
+    ItemCondition:
+      type: string
+      description: User-confirmed physical condition. Vision analysis may suggest it but cannot persist it without user confirmation.
+      enum: [NEW, GOOD, USED]
 
     ResolveItemCategoriesRequest:
       type: object
@@ -1901,6 +1956,7 @@ components:
         - wishes
         - imageUrls
         - status
+        - condition
         - createdAt
         - updatedAt
       properties:
@@ -1925,6 +1981,8 @@ components:
             format: uri-reference
         status:
           $ref: "#/components/schemas/ItemStatus"
+        condition:
+          $ref: "#/components/schemas/ItemCondition"
         categoryId:
           type: integer
           format: int32
@@ -2556,6 +2614,51 @@ components:
           type: string
           maxLength: 1000
           description: Optional for spam/abuse, required for other.
+
+    UserReportReason:
+      type: string
+      enum: [item, noshow, rude, fraud, other]
+
+    CreateUserReportRequest:
+      type: object
+      required: [reason]
+      properties:
+        chainId:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          $ref: "#/components/schemas/UserReportReason"
+        comment:
+          type: string
+          maxLength: 1000
+          description: Optional except for reason other, when it is required.
+
+    UserReport:
+      type: object
+      required: [id, reporterUserId, targetUserId, reason, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        reporterUserId:
+          type: integer
+          format: int64
+        targetUserId:
+          type: integer
+          format: int64
+        chainId:
+          type: integer
+          format: int64
+          nullable: true
+        reason:
+          $ref: "#/components/schemas/UserReportReason"
+        comment:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
 
     MessageReport:
       type: object

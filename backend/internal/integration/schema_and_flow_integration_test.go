@@ -413,13 +413,11 @@ func TestThreeItemsProduceExpectedExchangeChain(t *testing.T) {
 		t.Fatalf("create matching repository: %v", err)
 	}
 	matcher, err := matchingservice.NewMatching(zap.NewNop(), repository, matchingservice.NewScoring(), matchingservice.MatchingConfig{
-		SimilarItemsAmount:              20,
-		CompatibilityThreshold:          0.5,
-		UndefinedCategoryID:             47,
-		UndefinedCompatibilityThreshold: 0.6,
-		ChainLen:                        3,
-		PenaltyFactor:                   0.25,
-		ChainRatingThreshold:            0.3,
+		SimilarItemsAmount:     20,
+		CompatibilityThreshold: 0.5,
+		ChainLen:               3,
+		PenaltyFactor:          0.25,
+		ChainRatingThreshold:   0.3,
 	})
 	if err != nil {
 		t.Fatalf("create matcher: %v", err)

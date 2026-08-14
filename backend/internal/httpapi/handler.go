@@ -655,6 +655,7 @@ func (h *Handler) CreateItem(ctx context.Context, request api.CreateItemRequestO
 		Wishes:           request.Body.Wishes,
 		ImageURLs:        imageURLs,
 		OfferCategoryID:  &offerCategoryID,
+		Condition:        string(request.Body.Condition),
 	})
 	if err != nil {
 		var validationError *items.ValidationError
@@ -704,6 +705,11 @@ func (h *Handler) UpdateItem(ctx context.Context, request api.UpdateItemRequestO
 		offerCategoryID = request.Body.CategoryId
 	}
 
+	var condition *string
+	if request.Body.Condition != nil {
+		value := string(*request.Body.Condition)
+		condition = &value
+	}
 	item, err := h.items.Update(ctx, current.UserID, request.ItemId, items.UpdateInput{
 		OfferTitle:       request.Body.OfferTitle,
 		OfferDescription: request.Body.OfferDescription,
@@ -715,6 +721,7 @@ func (h *Handler) UpdateItem(ctx context.Context, request api.UpdateItemRequestO
 			}
 		}(),
 		OfferCategoryID: offerCategoryID,
+		Condition:       condition,
 		Withdraw:        withdraw,
 	})
 	if err != nil {
@@ -1591,6 +1598,45 @@ func (h *Handler) CreateReport(ctx context.Context, request api.CreateReportRequ
 	return api.CreateReport201JSONResponse(response), nil
 }
 
+// CreateUserReport creates or returns an idempotent complaint about another user.
+func (h *Handler) CreateUserReport(ctx context.Context, request api.CreateUserReportRequestObject) (api.CreateUserReportResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.CreateUserReport401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx)),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateUserReport400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_REQUEST", "JSON request body is required", nil)),
+		}, nil
+	}
+
+	var comment string
+	if request.Body.Comment != nil {
+		comment = *request.Body.Comment
+	}
+	report, created, err := h.moderation.CreateUserReport(ctx, current.UserID, request.UserId, request.Body.ChainId, string(request.Body.Reason), comment)
+	if err != nil {
+		mapped := moderationErrorModel(ctx, err)
+		switch {
+		case isModerationValidationError(err), errors.Is(err, moderationmodel.ErrSelfReport):
+			return api.CreateUserReport400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, moderationmodel.ErrNotFound), errors.Is(err, moderationmodel.ErrUserReportUnavailable):
+			return api.CreateUserReport404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("create user report", zap.Int64("reporter_id", current.UserID), zap.Int64("target_user_id", request.UserId), zap.Error(err))
+			return api.CreateUserReport500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+
+	response := userReportModel(report)
+	if !created {
+		return api.CreateUserReport200JSONResponse(response), nil
+	}
+	return api.CreateUserReport201JSONResponse(response), nil
+}
+
 // ListAdminReports returns the moderation queue.
 func (h *Handler) ListAdminReports(ctx context.Context, request api.ListAdminReportsRequestObject) (api.ListAdminReportsResponseObject, error) {
 	current, ok := session.Current(ctx)
@@ -1838,6 +1884,18 @@ func reportModel(report moderationmodel.Report) api.MessageReport {
 	return model
 }
 
+func userReportModel(report moderationmodel.UserReport) api.UserReport {
+	return api.UserReport{
+		Id:             report.ID,
+		ReporterUserId: report.ReporterID,
+		TargetUserId:   report.TargetID,
+		ChainId:        report.ChainID,
+		Reason:         api.UserReportReason(report.Reason),
+		Comment:        report.Comment,
+		CreatedAt:      report.CreatedAt,
+	}
+}
+
 func reportDetailModel(detail moderationmodel.ReportDetail) api.ReportDetail {
 	context := make([]api.ChatMessage, 0, len(detail.Context))
 	for _, message := range detail.Context {
@@ -1886,9 +1944,11 @@ func moderationErrorModel(ctx context.Context, err error) api.Error {
 	case errors.Is(err, moderationmodel.ErrNotFound):
 		return errorModel(ctx, "NOT_FOUND", "report not found", nil)
 	case errors.Is(err, moderationmodel.ErrSelfReport):
-		return errorModel(ctx, "SELF_REPORT", "cannot report your own message", nil)
+		return errorModel(ctx, "SELF_REPORT", "cannot report yourself or your own message", nil)
 	case errors.Is(err, moderationmodel.ErrReportUnavailable):
 		return errorModel(ctx, "NOT_FOUND", "message is not available to the current user", nil)
+	case errors.Is(err, moderationmodel.ErrUserReportUnavailable):
+		return errorModel(ctx, "NOT_FOUND", "chain is not available for this user report", nil)
 	case errors.Is(err, moderationmodel.ErrStateConflict):
 		return errorModel(ctx, "REPORT_STATE_CONFLICT", "report cannot change in its current state", nil)
 	case errors.Is(err, moderationmodel.ErrAlreadyAssigned):
@@ -1945,6 +2005,7 @@ func itemModel(item items.Item) api.Item {
 		}(),
 		ImageUrls:       append([]string{}, item.ImageURLs...),
 		Status:          api.ItemStatus(item.Status),
+		Condition:       api.ItemCondition(item.Condition),
 		CategoryId:      item.OfferCategoryID,
 		OfferCategoryId: item.OfferCategoryID,
 		CreatedAt:       item.CreatedAt,

@@ -1009,13 +1009,13 @@ func TestMediaUploadAndPublicRead(t *testing.T) {
 		t.Fatalf("read media status=%d content-type=%q", read.StatusCode, read.Header.Get("Content-Type"))
 	}
 
-	created := postJSON(t, client, server.URL+"/api/v1/items", fmt.Sprintf(`{"offerTitle":"Bike","offerDescription":"Good bike","categoryId":1,"wishes": ["Board"],"imageUrls":[%q]}`, result.Url))
+	created := postJSON(t, client, server.URL+"/api/v1/items", fmt.Sprintf(`{"offerTitle":"Bike","offerDescription":"Good bike","categoryId":1,"condition":"GOOD","wishes": ["Board"],"imageUrls":[%q]}`, result.Url))
 	defer closeBody(t, created.Body)
 	if created.StatusCode != http.StatusCreated {
 		t.Fatalf("create item status = %d, want %d; body=%s", created.StatusCode, http.StatusCreated, readBody(t, created.Body))
 	}
 
-	invalid := postJSON(t, client, server.URL+"/api/v1/items", `{"offerTitle":"Bike","offerDescription":"Good bike","categoryId":1,"wishes": ["Board"],"imageUrls":["/api/v1/media/not-an-object.png"]}`)
+	invalid := postJSON(t, client, server.URL+"/api/v1/items", `{"offerTitle":"Bike","offerDescription":"Good bike","categoryId":1,"condition":"GOOD","wishes": ["Board"],"imageUrls":["/api/v1/media/not-an-object.png"]}`)
 	defer closeBody(t, invalid.Body)
 	if invalid.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid media URL status = %d, want %d; body=%s", invalid.StatusCode, http.StatusUnprocessableEntity, readBody(t, invalid.Body))
@@ -1490,6 +1490,22 @@ func (*testModerationService) CreateReport(_ context.Context, reporterID, messag
 	}, true, nil
 }
 
+func (*testModerationService) CreateUserReport(_ context.Context, reporterID, targetID int64, chainID *int64, reason, comment string) (moderationmodel.UserReport, bool, error) {
+	var normalizedComment *string
+	if comment != "" {
+		normalizedComment = &comment
+	}
+	return moderationmodel.UserReport{
+		ID:         2,
+		ReporterID: reporterID,
+		TargetID:   targetID,
+		ChainID:    chainID,
+		Reason:     reason,
+		Comment:    normalizedComment,
+		CreatedAt:  time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
+	}, true, nil
+}
+
 func (*testModerationService) ListReports(_ context.Context, _ int64, _ moderationmodel.ReportFilter, _ int64, _ int) ([]moderationmodel.Report, *int64, error) {
 	return []moderationmodel.Report{}, nil, nil
 }
@@ -1784,6 +1800,7 @@ const validItemPayload = `{
   "offerTitle": "Books",
   "offerDescription": "A set of science fiction books",
   "categoryId": 1,
+  "condition": "GOOD",
   "wishes": ["A strategy board game"]
 }`
 
@@ -1995,6 +2012,7 @@ func TestBlocklistAndModerationRoutesRequireSession(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/blocks", body: `{"blockedUserId":2}`},
 		{method: http.MethodDelete, path: "/api/v1/blocks/2"},
 		{method: http.MethodPost, path: "/api/v1/reports", body: `{"messageId":1,"reason":"spam"}`},
+		{method: http.MethodPost, path: "/api/v1/users/2/reports", body: `{"reason":"rude"}`},
 		{method: http.MethodGet, path: "/api/v1/admin/reports"},
 		{method: http.MethodGet, path: "/api/v1/admin/reports/1"},
 		{method: http.MethodPost, path: "/api/v1/admin/reports/1/assign"},
@@ -2064,6 +2082,19 @@ func TestBlockAndReportRoutesWithSession(t *testing.T) {
 	defer closeBody(t, reportResponse.Body)
 	if reportResponse.StatusCode != http.StatusCreated {
 		t.Fatalf("POST reports status = %d, want 201; body=%s", reportResponse.StatusCode, readBody(t, reportResponse.Body))
+	}
+
+	userReportResponse := postJSON(t, client, server.URL+"/api/v1/users/2/reports", `{"reason":"rude","comment":"оскорбления"}`)
+	defer closeBody(t, userReportResponse.Body)
+	if userReportResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("POST user report status = %d, want 201; body=%s", userReportResponse.StatusCode, readBody(t, userReportResponse.Body))
+	}
+	var userReport api.UserReport
+	if err := json.NewDecoder(userReportResponse.Body).Decode(&userReport); err != nil {
+		t.Fatalf("decode user report: %v", err)
+	}
+	if userReport.ReporterUserId != 1 || userReport.TargetUserId != 2 || userReport.Reason != api.UserReportReasonRude {
+		t.Fatalf("user report = %+v, want reporter=1 target=2 reason=rude", userReport)
 	}
 }
 
@@ -2328,7 +2359,7 @@ func TestCreateItemWithCategoryIdStoresAndReturnsIt(t *testing.T) {
 	defer server.Close()
 	client := newSessionClient(t, server.URL, 1)
 
-	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wishes": ["Laptop"],"categoryId":1}`
+	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wishes": ["Laptop"],"categoryId":1,"condition":"GOOD"}`
 	resp := postJSON(t, client, server.URL+"/api/v1/items", payload)
 	defer closeBody(t, resp.Body)
 	if resp.StatusCode != http.StatusCreated {
@@ -2351,7 +2382,7 @@ func TestCreateItemRejectsUndefinedCategory47(t *testing.T) {
 	defer server.Close()
 	client := newSessionClient(t, server.URL, 1)
 
-	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wishes": ["Laptop"],"categoryId":47}`
+	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wishes": ["Laptop"],"categoryId":47,"condition":"GOOD"}`
 	resp := postJSON(t, client, server.URL+"/api/v1/items", payload)
 	defer closeBody(t, resp.Body)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -2364,7 +2395,7 @@ func TestCreateItemRejectsInvalidCategoryId(t *testing.T) {
 	defer server.Close()
 	client := newSessionClient(t, server.URL, 1)
 
-	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wishes": ["Laptop"],"categoryId":999}`
+	payload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wishes": ["Laptop"],"categoryId":999,"condition":"GOOD"}`
 	resp := postJSON(t, client, server.URL+"/api/v1/items", payload)
 	defer closeBody(t, resp.Body)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -2377,7 +2408,7 @@ func TestUpdateItemChangesCategoryId(t *testing.T) {
 	defer server.Close()
 	client := newSessionClient(t, server.URL, 1)
 
-	createPayload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wishes": ["Laptop"],"categoryId":1}`
+	createPayload := `{"offerTitle":"Phone","offerDescription":"Smartphone","wishes": ["Laptop"],"categoryId":1,"condition":"GOOD"}`
 	createResp := postJSON(t, client, server.URL+"/api/v1/items", createPayload)
 	defer closeBody(t, createResp.Body)
 	if createResp.StatusCode != http.StatusCreated {
