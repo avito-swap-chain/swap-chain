@@ -117,3 +117,49 @@ func TestSendPropagatesIdempotencyConflict(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 }
+
+func TestNewAndSendValidation(t *testing.T) {
+	t.Parallel()
+	if _, err := New(nil, 100, time.Second, nil); err == nil {
+		t.Fatal("New(nil) succeeded")
+	}
+	repo := &repoStub{}
+	svc, err := New(repo, 2, time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []struct{ id, text string }{
+		{"bad id", "hello"},
+		{"web-1", "   "},
+		{"web-1", string(make([]rune, model.MaxMessageLen+1))},
+	} {
+		if _, _, err := svc.Send(context.Background(), 1, 1, input.id, input.text, false); err == nil {
+			t.Fatalf("Send(%q, text length %d) succeeded", input.id, len([]rune(input.text)))
+		}
+	}
+}
+
+func TestListValidationAndImmediateResult(t *testing.T) {
+	t.Parallel()
+	repo := &repoStub{messages: []model.Message{{ID: 3, ThreadID: 4, Text: "hello"}}}
+	svc, _ := New(repo, 10, time.Second, nil)
+	for _, tc := range []struct {
+		after int64
+		limit int
+		wait  time.Duration
+	}{
+		{-1, 1, 0},
+		{0, 0, 0},
+		{0, 11, 0},
+		{0, 1, -time.Second},
+		{0, 1, 2 * time.Second},
+	} {
+		if _, err := svc.List(context.Background(), 7, 4, tc.after, tc.limit, tc.wait, false); err == nil {
+			t.Fatalf("List(%d, %d, %s) succeeded", tc.after, tc.limit, tc.wait)
+		}
+	}
+	messages, err := svc.List(context.Background(), 7, 4, 0, 10, 0, false)
+	if err != nil || len(messages) != 1 || messages[0].ID != 3 {
+		t.Fatalf("List() = %v, %v", messages, err)
+	}
+}

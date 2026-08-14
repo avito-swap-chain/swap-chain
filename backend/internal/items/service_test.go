@@ -101,3 +101,47 @@ func TestValidateCategoryDecision(t *testing.T) {
 		t.Fatalf("duplicate decision error = %v", err)
 	}
 }
+
+func TestNormalizeUpdateTrimsAndDropsBlankWishes(t *testing.T) {
+	t.Parallel()
+	title, description := "  Часы  ", "  Рабочие  "
+	got := normalizeUpdate(UpdateInput{
+		OfferTitle:       &title,
+		OfferDescription: &description,
+		Wishes:           []string{"  телефон ", "   ", "наушники"},
+	})
+	if *got.OfferTitle != "Часы" || *got.OfferDescription != "Рабочие" {
+		t.Fatalf("normalized text = %q/%q", *got.OfferTitle, *got.OfferDescription)
+	}
+	if want := []string{"телефон", "наушники"}; !reflect.DeepEqual(got.Wishes, want) {
+		t.Fatalf("normalized wishes = %v, want %v", got.Wishes, want)
+	}
+}
+
+func TestConditionScoreRoundTrip(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		condition string
+		score     float64
+		stored    string
+	}{
+		{ConditionNew, 1, "1.000"},
+		{ConditionGood, 0.8, "0.800"},
+		{ConditionUsed, 0.6, "0.600"},
+	}
+	for _, tt := range tests {
+		if got := conditionScore(tt.condition); got != tt.score {
+			t.Fatalf("conditionScore(%q) = %v, want %v", tt.condition, got, tt.score)
+		}
+		if got := conditionFromScore(tt.stored); got != tt.condition {
+			t.Fatalf("conditionFromScore(%q) = %q, want %q", tt.stored, got, tt.condition)
+		}
+		condition := tt.condition
+		if got := nullableConditionScore(&condition); got != tt.score {
+			t.Fatalf("nullableConditionScore(%q) = %v, want %v", tt.condition, got, tt.score)
+		}
+	}
+	if nullableConditionScore(nil) != nil {
+		t.Fatal("nullableConditionScore(nil) must be nil")
+	}
+}
