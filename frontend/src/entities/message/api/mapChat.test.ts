@@ -71,3 +71,16 @@ describe('mapThread — вещь, о которой разговор', () => {
     expect(thread.unreadCount).toBe(2)
   })
 })
+
+describe('mapMessage — предупреждения антифрода', () => {
+  it('метка риска доезжает до модели: её показывают рядом с репликой', () => {
+    const risky = { ...apiMessage(), riskGroup: 'VERIFICATION_CODE' as const }
+
+    expect(mapMessage(risky, DASHA.id).risk).toBe('VERIFICATION_CODE')
+  })
+
+  /** Отсутствие метки — «бэкенд ничего не заподозрил», а не «проверено и безопасно». */
+  it('обычная реплика приходит без метки', () => {
+    expect(mapMessage(apiMessage(), DASHA.id).risk).toBeUndefined()
+  })
+})

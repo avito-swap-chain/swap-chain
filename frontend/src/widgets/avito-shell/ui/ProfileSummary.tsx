@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { getMyProfile, userKeys } from '@/entities/user'
 import { getCurrentUser, sessionKeys } from '@/shared/model/session'
 import { asset, cx, reviewsLabel } from '@/shared/lib'
 import { IconCamera, Stars } from '@/shared/ui'
@@ -9,12 +10,23 @@ import { IconCamera, Stars } from '@/shared/ui'
  * под чертой меню разделов. Это не украшение: кабинет открывается с ответа на вопрос
  * «кто я здесь», а в демо с переключением персон он ещё и показывает, за кого смотрят.
  *
- * Рейтинга и фотографии у пользователя с бэкенда нет — тогда остаются имя и инициал.
+ * Рейтинга и фотографии у пользователя может не быть — тогда остаются имя и инициал.
  * Подставлять сюда чужие звёзды нельзя: рейтинг в обмене это довод при выборе, и
  * выдуманный он врёт ровно там, где на него смотрят.
+ *
+ * Данные берём из профиля, а не только из сессии: сессия отдаёт имя, телефон и роль,
+ * а фотография с рейтингом живут в профиле. Пока колонка читала одну сессию, человек
+ * видел свой аватар на странице профиля и серый инициал слева — на одном экране.
  */
 export function ProfileSummary({ className }: { className?: string }) {
-  const { data: user } = useQuery({ queryKey: sessionKeys.current(), queryFn: getCurrentUser })
+  const { data: session } = useQuery({ queryKey: sessionKeys.current(), queryFn: getCurrentUser })
+  const { data: profile } = useQuery({
+    queryKey: userKeys.me(),
+    queryFn: getMyProfile,
+    enabled: Boolean(session),
+  })
+
+  const user = profile ?? session
   if (!user) return null
 
   return (

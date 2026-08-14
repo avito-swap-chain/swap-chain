@@ -5,6 +5,7 @@
  * Shared REST and realtime contract for the swap-chain MVP.
  * OpenAPI spec version: 0.9.0
  */
+import type { MessageRiskGroup } from './messageRiskGroup';
 import type { UserSummary } from './userSummary';
 
 export interface ChatMessage {
@@ -14,5 +15,7 @@ export interface ChatMessage {
   recipient: UserSummary;
   clientMessageId: string;
   text: string;
+  /** Present when the message contains a known risk marker; absence means no marker was found. */
+  riskGroup?: MessageRiskGroup | null;
   createdAt: string;
 }

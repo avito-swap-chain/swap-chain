@@ -2502,6 +2502,16 @@ components:
           minLength: 1
           maxLength: 2000
 
+    MessageRiskGroup:
+      type: string
+      description: Deterministic anti-scam warning category inferred from message text.
+      enum:
+        - CREDENTIALS
+        - VERIFICATION_CODE
+        - PAYMENT_DETAILS
+        - EXTERNAL_LINK
+        - OFF_PLATFORM_CONTACT
+
     ChatMessage:
       type: object
       required: [id, itemId, sender, recipient, clientMessageId, text, createdAt]
@@ -2520,6 +2530,11 @@ components:
           type: string
         text:
           type: string
+        riskGroup:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/MessageRiskGroup"
+          description: Present when the message contains a known risk marker; absence means no marker was found.
         createdAt:
           type: string
           format: date-time

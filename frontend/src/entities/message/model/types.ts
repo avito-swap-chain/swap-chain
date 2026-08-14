@@ -8,12 +8,22 @@
  */
 export type MessageAuthor = 'me' | 'them' | 'system'
 
+/**
+ * Чем опасна реплика. Бэкенд размечает текст детерминированно и ничего не блокирует —
+ * решение остаётся за человеком, но предупредить его надо там же, где он читает сообщение.
+ * Отсутствие признака означает обычную реплику, а не «проверено и безопасно».
+ */
+export type MessageRisk =
+  'CREDENTIALS' | 'VERIFICATION_CODE' | 'PAYMENT_DETAILS' | 'EXTERNAL_LINK' | 'OFF_PLATFORM_CONTACT'
+
 export interface Message {
   id: string
   author: MessageAuthor
   text: string
   /** ISO-время отправки; в ленте показываем только часы и минуты. */
   createdAt: string
+  /** Предупреждение антифрода, если бэкенд его поставил. */
+  risk?: MessageRisk
 }
 
 /**

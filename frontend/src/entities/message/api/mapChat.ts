@@ -10,6 +10,9 @@ export const mapMessage = (message: ChatMessage, meId: number): Message => ({
   author: message.sender.id === meId ? 'me' : 'them',
   text: message.text,
   createdAt: message.createdAt,
+  // Метку антифрода не переводим в маппере: её смысл — предупреждение в интерфейсе,
+  // и текст живёт рядом с пузырём, а не в модели.
+  risk: message.riskGroup ?? undefined,
 })
 
 /**

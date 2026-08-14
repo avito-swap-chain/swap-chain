@@ -91,6 +91,7 @@ export * from './mediaUpload';
 export * from './mediaUploadContentType';
 export * from './messageReport';
 export * from './messageReportList';
+export * from './messageRiskGroup';
 export * from './notFoundResponse';
 export * from './notificationKind';
 export * from './notificationList';
