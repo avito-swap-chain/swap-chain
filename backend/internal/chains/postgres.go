@@ -42,6 +42,7 @@ func NewPostgresServiceWithOutbox(database *sql.DB, publish PublishEvent, eventO
 }
 
 // Create validates and persists a pending proposal from a closed matching cycle.
+// Selecting the cycle never implies consent: every participant starts in WAITING.
 func (s *PostgresService) Create(ctx context.Context, userID int64, input CreateInput) (Chain, error) {
 	itemIDs, cycleKey, err := validateCreate(input)
 	if err != nil {
@@ -89,14 +90,10 @@ func (s *PostgresService) Create(ctx context.Context, userID int64, input Create
 
 	for _, edge := range input.Edges {
 		ownerID := owners[edge.SourceItemID]
-		status := ParticipantWaiting
-		if ownerID == userID {
-			status = ParticipantApproved
-		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO chain_items (chain_id, item_id, user_id, next_item_id, status, updated_at)
 			VALUES ($1, $2, $3, $4, $5::participant_status, now())`,
-			chainID, edge.SourceItemID, ownerID, edge.TargetItemID, status,
+			chainID, edge.SourceItemID, ownerID, edge.TargetItemID, ParticipantWaiting,
 		); err != nil {
 			return Chain{}, fmt.Errorf("insert chain participant: %w", err)
 		}

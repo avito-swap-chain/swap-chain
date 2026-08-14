@@ -637,6 +637,11 @@ paths:
       operationId: createChain
       tags: [chains]
       summary: Create a pending exchange chain from a matching cycle
+      description: >-
+        Creates a proposal with every participant in WAITING state. Selecting or
+        materializing a matching cycle does not approve it for any participant;
+        each participant, including the owner of the source item, must submit an
+        explicit APPROVED decision before the chain becomes ACCEPTED.
       requestBody:
         required: true
         content:
@@ -645,7 +650,7 @@ paths:
               $ref: "#/components/schemas/CreateChainRequest"
       responses:
         "201":
-          description: Pending exchange chain
+          description: Pending exchange chain whose participants are all WAITING
           content:
             application/json:
               schema:

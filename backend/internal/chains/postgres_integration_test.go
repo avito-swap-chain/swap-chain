@@ -59,8 +59,10 @@ func TestPostgresServiceConcurrentCompetingChainsIntegration(t *testing.T) {
 	if len(known) != 1 {
 		t.Fatalf("KnownCycleKeys() = %#v, want only %q", known, forwardKey)
 	}
-	if participantStatus(first, userIDs[0]) != ParticipantApproved || participantStatus(first, userIDs[1]) != ParticipantWaiting {
-		t.Fatalf("initial participant statuses = %q/%q", participantStatus(first, userIDs[0]), participantStatus(first, userIDs[1]))
+	for _, userID := range userIDs {
+		if status := participantStatus(first, userID); status != ParticipantWaiting {
+			t.Fatalf("initial participant %d status = %q, want WAITING", userID, status)
+		}
 	}
 	rotated := []Edge{forward[1], forward[2], forward[0]}
 	if _, err := service.Create(context.Background(), userIDs[1], CreateInput{Edges: rotated}); !errors.Is(err, ErrConflict) {
@@ -76,11 +78,18 @@ func TestPostgresServiceConcurrentCompetingChainsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create second chain: %v", err)
 	}
-	if _, err := service.Decide(context.Background(), userIDs[1], first.ID, DecisionApproved); err != nil {
-		t.Fatalf("pre-approve first chain: %v", err)
-	}
-	if _, err := service.Decide(context.Background(), userIDs[0], second.ID, DecisionApproved); err != nil {
-		t.Fatalf("pre-approve second chain: %v", err)
+	for _, input := range []struct {
+		chainID int64
+		userID  int64
+	}{
+		{chainID: first.ID, userID: userIDs[0]},
+		{chainID: first.ID, userID: userIDs[1]},
+		{chainID: second.ID, userID: userIDs[0]},
+		{chainID: second.ID, userID: userIDs[1]},
+	} {
+		if _, err := service.Decide(context.Background(), input.userID, input.chainID, DecisionApproved); err != nil {
+			t.Fatalf("pre-approve chain %d as user %d: %v", input.chainID, input.userID, err)
+		}
 	}
 
 	start := make(chan struct{})
@@ -247,8 +256,8 @@ func seedMatchingItems(t *testing.T, database *sql.DB, count int) ([]int64, []in
 			t.Fatalf("insert user %d: %v", i, err)
 		}
 		if err := database.QueryRow(`
-			INSERT INTO items (user_id, offer_title, offer_description, want_description, status)
-			VALUES ($1, $2, 'description', 'wanted', 'MATCHING') RETURNING id`,
+			INSERT INTO items (user_id, offer_title, offer_description, status)
+			VALUES ($1, $2, 'description', 'MATCHING') RETURNING id`,
 			userIDs[i], "item-"+time.Now().Format("150405.000000000"),
 		).Scan(&itemIDs[i]); err != nil {
 			t.Fatalf("insert item %d: %v", i, err)
@@ -296,6 +305,9 @@ func TestPostgresServiceReceiptConfirmationIntegration(t *testing.T) {
 	}
 
 	for _, participant := range chain.Participants {
+		if participant.Status != ParticipantWaiting {
+			t.Fatalf("participant %d status = %q, want WAITING for new chain", participant.User.ID, participant.Status)
+		}
 		if participant.ReceiptConfirmed {
 			t.Fatalf("participant %d receiptConfirmed = true, want false for new chain", participant.User.ID)
 		}
@@ -304,9 +316,19 @@ func TestPostgresServiceReceiptConfirmationIntegration(t *testing.T) {
 		}
 	}
 
-	_, err = service.Decide(context.Background(), userIDs[1], chain.ID, DecisionApproved)
+	pendingChain, err := service.Decide(context.Background(), userIDs[0], chain.ID, DecisionApproved)
+	if err != nil {
+		t.Fatalf("first participant approve: %v", err)
+	}
+	if pendingChain.Status != StatusPending {
+		t.Fatalf("chain status after first approval = %q, want PENDING", pendingChain.Status)
+	}
+	pendingChain, err = service.Decide(context.Background(), userIDs[1], chain.ID, DecisionApproved)
 	if err != nil {
 		t.Fatalf("second participant approve: %v", err)
+	}
+	if pendingChain.Status != StatusPending {
+		t.Fatalf("chain status after second approval = %q, want PENDING", pendingChain.Status)
 	}
 	acceptedChain, err := service.Decide(context.Background(), userIDs[2], chain.ID, DecisionApproved)
 	if err != nil {

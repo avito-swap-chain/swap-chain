@@ -472,6 +472,9 @@ func TestBlockVersusAcceptRace(t *testing.T) {
 		if err != nil {
 			t.Fatalf("iteration %d create chain: %v", iteration, err)
 		}
+		if _, err := chainService.Decide(ctx, userA, pending.ID, chains.DecisionApproved); err != nil {
+			t.Fatalf("iteration %d first participant approval: %v", iteration, err)
+		}
 
 		start := make(chan struct{})
 		var wg sync.WaitGroup
