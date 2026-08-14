@@ -48,7 +48,6 @@ func (r *Matching) ValidateSourceItem(ctx context.Context, itemID int64) error {
 func (r *Matching) FindSimilarItems(
 	ctx context.Context,
 	sourceID int64,
-	undefinedCategoryID int32,
 	limit int,
 ) ([]model.ItemMatch, error) {
 	if limit <= 0 || int64(limit) > math.MaxInt32 {
@@ -56,9 +55,8 @@ func (r *Matching) FindSimilarItems(
 	}
 
 	rows, err := r.queries.FindSimilarItems(ctx, db.FindSimilarItemsParams{
-		ItemID:              sourceID,
-		UndefinedCategoryID: undefinedCategoryID,
-		Limit:               int32(limit),
+		ItemID: sourceID,
+		Limit:  int32(limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("query similar items for source %d: %w", sourceID, err)
@@ -122,8 +120,7 @@ func mapItemMatch(sourceID int64, row db.FindSimilarItemsRow) (model.ItemMatch, 
 				SuccessRate:    userSuccessRate,
 			},
 		},
-		Similarity:            castSimilarity(row.Similarity),
-		UsesUndefinedCategory: row.UsesUndefinedCategory,
+		Similarity: castSimilarity(row.Similarity),
 	}, nil
 }
 

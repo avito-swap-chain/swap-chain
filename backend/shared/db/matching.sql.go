@@ -27,8 +27,6 @@ SELECT candidate_item.id,
        candidate_owner.success_rate AS user_success_rate,
        candidate_item.offer_embedding_local::vector AS offer_embedding_local,
        candidate_item.offer_embedding_external::vector AS offer_embedding_external,
-       BOOL_OR(source_wish.want_category_id = $3::int
-           OR candidate_item.offer_category_id = $3::int) AS uses_undefined_category,
        MAX((1.0 - COALESCE(
            candidate_item.offer_embedding_external <=> source_wish.want_embedding_external,
            candidate_item.offer_embedding_local <=> source_wish.want_embedding_local
@@ -48,9 +46,7 @@ WHERE candidate_item.id != $1
              AND block.blocked_user_id = candidate_item.user_id)
   )
   AND candidate_item.status = 'MATCHING'
-  AND (candidate_item.offer_category_id = source_wish.want_category_id
-       OR candidate_item.offer_category_id = $3::int
-       OR source_wish.want_category_id = $3::int)
+  AND candidate_item.offer_category_id = source_wish.want_category_id
   AND (candidate_item.offer_embedding_external IS NOT NULL OR candidate_item.offer_embedding_local IS NOT NULL)
   AND (source_wish.want_embedding_external IS NOT NULL OR source_wish.want_embedding_local IS NOT NULL)
 GROUP BY candidate_item.id, candidate_owner.id, candidate_reputation.user_id
@@ -59,9 +55,8 @@ LIMIT $2
 `
 
 type FindSimilarItemsParams struct {
-	ItemID              int64 `json:"item_id"`
-	Limit               int32 `json:"limit"`
-	UndefinedCategoryID int32 `json:"undefined_category_id"`
+	ItemID int64 `json:"item_id"`
+	Limit  int32 `json:"limit"`
 }
 
 type FindSimilarItemsRow struct {
@@ -79,12 +74,11 @@ type FindSimilarItemsRow struct {
 	UserSuccessRate        string              `json:"user_success_rate"`
 	OfferEmbeddingLocal    *pgvector_go.Vector `json:"offer_embedding_local"`
 	OfferEmbeddingExternal *pgvector_go.Vector `json:"offer_embedding_external"`
-	UsesUndefinedCategory  bool                `json:"uses_undefined_category"`
 	Similarity             interface{}         `json:"similarity"`
 }
 
 func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsParams) ([]FindSimilarItemsRow, error) {
-	rows, err := q.db.QueryContext(ctx, findSimilarItems, arg.ItemID, arg.Limit, arg.UndefinedCategoryID)
+	rows, err := q.db.QueryContext(ctx, findSimilarItems, arg.ItemID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +101,6 @@ func (q *Queries) FindSimilarItems(ctx context.Context, arg FindSimilarItemsPara
 			&i.UserSuccessRate,
 			&i.OfferEmbeddingLocal,
 			&i.OfferEmbeddingExternal,
-			&i.UsesUndefinedCategory,
 			&i.Similarity,
 		); err != nil {
 			return nil, err

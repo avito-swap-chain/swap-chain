@@ -12,7 +12,7 @@ import (
 )
 
 type MatchingRepo interface {
-	FindSimilarItems(ctx context.Context, sourceID int64, undefinedCategoryID int32, limit int) ([]model.ItemMatch, error)
+	FindSimilarItems(ctx context.Context, sourceID int64, limit int) ([]model.ItemMatch, error)
 	ValidateSourceItem(ctx context.Context, itemID int64) error
 }
 
@@ -28,14 +28,12 @@ type Matching struct {
 }
 
 type MatchingConfig struct {
-	SimilarItemsAmount              int     // сколько похожих вещей мы берём из БД для каждого узла графа
-	CompatibilityThreshold          float64 // минимальный порог для создания ребра
-	UndefinedCategoryID             int32   // fallback-категория для неопределённых offer/want
-	UndefinedCompatibilityThreshold float64 // повышенный порог для ребра с fallback-категорией
-	ChainLen                        int     // длина цепочки (глубина графа)
-	PenaltyFactor                   float64 // штраф за несбалансированные цепи, например: edgesScore = [90, 90, 10]
-	ChainRatingThreshold            float64 // граница рейтинга для цепи, все что ниже, не попадает в выдачу
-	Debug                           bool    // включает подробный диагностический лог matching
+	SimilarItemsAmount     int     // сколько похожих вещей мы берём из БД для каждого узла графа
+	CompatibilityThreshold float64 // минимальный порог для создания ребра
+	ChainLen               int     // длина цепочки (глубина графа)
+	PenaltyFactor          float64 // штраф за несбалансированные цепи, например: edgesScore = [90, 90, 10]
+	ChainRatingThreshold   float64 // граница рейтинга для цепи, все что ниже, не попадает в выдачу
+	Debug                  bool    // включает подробный диагностический лог matching
 }
 
 func NewMatching(
@@ -51,8 +49,6 @@ func NewMatching(
 		return nil, fmt.Errorf("matching init: 'matching repo' is required")
 	case scorer == nil:
 		return nil, fmt.Errorf("matching init: 'scorer implementation' is required")
-	case cfg.UndefinedCategoryID <= 0:
-		return nil, fmt.Errorf("matching init: 'undefined category ID' must be positive")
 	}
 
 	if cfg.ChainLen < 2 || cfg.ChainLen > 3 {
@@ -68,10 +64,6 @@ func NewMatching(
 	if math.IsNaN(cfg.CompatibilityThreshold) || math.IsInf(cfg.CompatibilityThreshold, 0) ||
 		cfg.CompatibilityThreshold < -1 || cfg.CompatibilityThreshold > 1 {
 		return nil, fmt.Errorf("matching init: invalid 'compatibility threshold' range %g", cfg.CompatibilityThreshold)
-	}
-	if math.IsNaN(cfg.UndefinedCompatibilityThreshold) || math.IsInf(cfg.UndefinedCompatibilityThreshold, 0) ||
-		cfg.UndefinedCompatibilityThreshold <= cfg.CompatibilityThreshold || cfg.UndefinedCompatibilityThreshold > 1 {
-		return nil, fmt.Errorf("matching init: invalid 'undefined category threshold' %g", cfg.UndefinedCompatibilityThreshold)
 	}
 	if math.IsNaN(cfg.PenaltyFactor) || math.IsInf(cfg.PenaltyFactor, 0) || cfg.PenaltyFactor < 0 {
 		return nil, fmt.Errorf("matching init: invalid 'penalty factor' %g", cfg.PenaltyFactor)
@@ -138,7 +130,6 @@ func (m *Matching) assembleGraph(ctx context.Context, rootID int64, graph model.
 					zap.Int64("source_item_id", candidateID),
 					zap.Int64("target_item_id", match.TargetItem.ID),
 					zap.Float64("similarity", match.Similarity),
-					zap.Bool("uses_undefined_category", match.UsesUndefinedCategory),
 				)
 
 				if err := graph.AddVertex(model.Vertex{ItemID: match.TargetItem.ID}); err != nil &&
@@ -201,7 +192,6 @@ func (m *Matching) findSimilarItems(ctx context.Context, itemID int64) ([]model.
 	matches, err := m.repo.FindSimilarItems(
 		ctx,
 		itemID,
-		m.cfg.UndefinedCategoryID,
 		m.cfg.SimilarItemsAmount,
 	)
 	if err != nil {
@@ -209,13 +199,6 @@ func (m *Matching) findSimilarItems(ctx context.Context, itemID int64) ([]model.
 	}
 
 	return matches, nil
-}
-
-func (m *Matching) compatibilityThreshold(match model.ItemMatch) float64 {
-	if match.UsesUndefinedCategory {
-		return m.cfg.UndefinedCompatibilityThreshold
-	}
-	return m.cfg.CompatibilityThreshold
 }
 
 // filterChainsByScoreAndRoot - фильтрует цепочки по корневому узлу и рейтингу.

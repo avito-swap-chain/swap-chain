@@ -22,8 +22,7 @@ type ItemMetadata struct {
 
 // ItemMatch - представление связи между вещами, которое в отличии от обычного Edge используется в бизнес-правилах.
 type ItemMatch struct {
-	SourceID              int64
-	TargetItem            Item
-	Similarity            float64
-	UsesUndefinedCategory bool
+	SourceID   int64
+	TargetItem Item
+	Similarity float64
 }

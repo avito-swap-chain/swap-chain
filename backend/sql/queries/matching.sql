@@ -13,8 +13,6 @@ SELECT candidate_item.id,
        candidate_owner.success_rate AS user_success_rate,
        candidate_item.offer_embedding_local::vector AS offer_embedding_local,
        candidate_item.offer_embedding_external::vector AS offer_embedding_external,
-       BOOL_OR(source_wish.want_category_id = sqlc.arg(undefined_category_id)::int
-           OR candidate_item.offer_category_id = sqlc.arg(undefined_category_id)::int) AS uses_undefined_category,
        MAX((1.0 - COALESCE(
            candidate_item.offer_embedding_external <=> source_wish.want_embedding_external,
            candidate_item.offer_embedding_local <=> source_wish.want_embedding_local
@@ -34,9 +32,7 @@ WHERE candidate_item.id != $1
              AND block.blocked_user_id = candidate_item.user_id)
   )
   AND candidate_item.status = 'MATCHING'
-  AND (candidate_item.offer_category_id = source_wish.want_category_id
-       OR candidate_item.offer_category_id = sqlc.arg(undefined_category_id)::int
-       OR source_wish.want_category_id = sqlc.arg(undefined_category_id)::int)
+  AND candidate_item.offer_category_id = source_wish.want_category_id
   AND (candidate_item.offer_embedding_external IS NOT NULL OR candidate_item.offer_embedding_local IS NOT NULL)
   AND (source_wish.want_embedding_external IS NOT NULL OR source_wish.want_embedding_local IS NOT NULL)
 GROUP BY candidate_item.id, candidate_owner.id, candidate_reputation.user_id

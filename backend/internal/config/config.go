@@ -20,7 +20,6 @@ const (
 	defaultChainThreshold         = 0.30
 	defaultCompatibilityThreshold = 0.50
 	defaultUndefinedCategoryID    = 47
-	defaultUndefinedThreshold     = 0.60
 	defaultCategorySimilarity     = 0.65
 	defaultCategoryMargin         = 0.05
 	defaultCategoryModel          = "google/gemini-2.5-flash"
@@ -52,54 +51,53 @@ const (
 
 // Config contains runtime settings loaded from environment variables.
 type Config struct {
-	DatabaseURL                     string
-	MigrationsURL                   string
-	HTTPAddress                     string
-	DBConnectTimeout                time.Duration
-	ShutdownTimeout                 time.Duration
-	SimilarItemsAmount              int
-	ChainLength                     int
-	PenaltyFactor                   float64
-	ChainThreshold                  float64
-	CompatibilityThreshold          float64
-	UndefinedCategoryID             int32
-	UndefinedCompatibilityThreshold float64
-	MatchingDebug                   bool
-	DisableMatchingWorker           bool
-	CategorySimilarityThreshold     float64
-	CategoryConfidenceMargin        float64
-	CategoryModel                   string
-	CategoryModelTimeout            time.Duration
-	AnalysisPollInterval            time.Duration
-	AnalysisTimeout                 time.Duration
-	AnalysisStaleAfter              time.Duration
-	AnalysisBatchSize               int
-	AnalysisBootstrapTimeout        time.Duration
-	AnalysisConcurrency             int
-	AdminMaxListLimit               int
-	ChatMaxListLimit                int
-	ChatMaxWait                     time.Duration
-	BlocklistMaxListLimit           int
-	ModerationMaxListLimit          int
-	CORSAllowedOrigin               string
-	SessionTTL                      time.Duration
-	CookieSecure                    bool
-	OllamaBaseURL                   string
-	OllamaChatModel                 string
-	OllamaEmbeddingsModel           string
-	OllamaEmbeddingsDimensions      int
-	OllamaTimeout                   time.Duration
-	OpenRouterAPIKey                string
-	OpenRouterModel                 string
-	VoyageAPIKey                    string
-	VoyageModel                     string
-	GigaChatAuthKey                 string
-	MinIOEndpoint                   string
-	MinIOAccessKey                  string
-	MinIOSecretKey                  string
-	MinIOBucket                     string
-	MinIOUseSSL                     bool
-	MediaMaxUploadBytes             int64
+	DatabaseURL                 string
+	MigrationsURL               string
+	HTTPAddress                 string
+	DBConnectTimeout            time.Duration
+	ShutdownTimeout             time.Duration
+	SimilarItemsAmount          int
+	ChainLength                 int
+	PenaltyFactor               float64
+	ChainThreshold              float64
+	CompatibilityThreshold      float64
+	UndefinedCategoryID         int32
+	MatchingDebug               bool
+	DisableMatchingWorker       bool
+	CategorySimilarityThreshold float64
+	CategoryConfidenceMargin    float64
+	CategoryModel               string
+	CategoryModelTimeout        time.Duration
+	AnalysisPollInterval        time.Duration
+	AnalysisTimeout             time.Duration
+	AnalysisStaleAfter          time.Duration
+	AnalysisBatchSize           int
+	AnalysisBootstrapTimeout    time.Duration
+	AnalysisConcurrency         int
+	AdminMaxListLimit           int
+	ChatMaxListLimit            int
+	ChatMaxWait                 time.Duration
+	BlocklistMaxListLimit       int
+	ModerationMaxListLimit      int
+	CORSAllowedOrigin           string
+	SessionTTL                  time.Duration
+	CookieSecure                bool
+	OllamaBaseURL               string
+	OllamaChatModel             string
+	OllamaEmbeddingsModel       string
+	OllamaEmbeddingsDimensions  int
+	OllamaTimeout               time.Duration
+	OpenRouterAPIKey            string
+	OpenRouterModel             string
+	VoyageAPIKey                string
+	VoyageModel                 string
+	GigaChatAuthKey             string
+	MinIOEndpoint               string
+	MinIOAccessKey              string
+	MinIOSecretKey              string
+	MinIOBucket                 string
+	MinIOUseSSL                 bool
+	MediaMaxUploadBytes         int64
 }
 
 // Migration contains the settings required by the migration command only.
@@ -180,12 +178,6 @@ func Load() (Config, error) {
 	}
 	if cfg.UndefinedCategoryID, err = positiveInt32FromEnv("UNDEFINED_CATEGORY_ID", defaultUndefinedCategoryID); err != nil {
 		return Config{}, err
-	}
-	if cfg.UndefinedCompatibilityThreshold, err = boundedFloatFromEnv("MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD", defaultUndefinedThreshold, 0, 1); err != nil {
-		return Config{}, err
-	}
-	if cfg.UndefinedCompatibilityThreshold <= cfg.CompatibilityThreshold {
-		return Config{}, fmt.Errorf("MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD must be greater than MATCHING_COMPATIBILITY_THRESHOLD")
 	}
 	if cfg.MatchingDebug, err = boolFromEnv("MATCHING_DEBUG", false); err != nil {
 		return Config{}, err

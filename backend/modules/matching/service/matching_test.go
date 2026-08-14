@@ -14,13 +14,11 @@ import (
 
 func TestNewMatchingValidatesDependenciesAndConfig(t *testing.T) {
 	valid := MatchingConfig{
-		SimilarItemsAmount:              5,
-		CompatibilityThreshold:          0.5,
-		UndefinedCategoryID:             47,
-		UndefinedCompatibilityThreshold: 0.8,
-		ChainLen:                        3,
-		PenaltyFactor:                   0.2,
-		ChainRatingThreshold:            0.4,
+		SimilarItemsAmount:     5,
+		CompatibilityThreshold: 0.5,
+		ChainLen:               3,
+		PenaltyFactor:          0.2,
+		ChainRatingThreshold:   0.4,
 	}
 	repository := &repoStub{matchable: true}
 	scorer := scorerStub{score: 1}
@@ -37,7 +35,6 @@ func TestNewMatchingValidatesDependenciesAndConfig(t *testing.T) {
 		{name: "invalid chain length", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.ChainLen = 4; return c }()},
 		{name: "invalid amount", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.SimilarItemsAmount = 0; return c }()},
 		{name: "invalid compatibility", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.CompatibilityThreshold = math.NaN(); return c }()},
-		{name: "invalid undefined threshold", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.UndefinedCompatibilityThreshold = 0.4; return c }()},
 		{name: "invalid rating", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.ChainRatingThreshold = 2; return c }()},
 		{name: "invalid penalty", logger: zap.NewNop(), repo: repository, scorer: scorer, cfg: func() MatchingConfig { c := valid; c.PenaltyFactor = -1; return c }()},
 	}
@@ -54,9 +51,8 @@ func TestNewMatchingValidatesDependenciesAndConfig(t *testing.T) {
 }
 
 type repoCall struct {
-	itemID            int64
-	undefinedCategory int32
-	limit             int
+	itemID int64
+	limit  int
 }
 
 type repoStub struct {
@@ -67,8 +63,8 @@ type repoStub struct {
 	calls         []repoCall
 }
 
-func (r *repoStub) FindSimilarItems(_ context.Context, itemID int64, undefinedCategoryID int32, limit int) ([]model.ItemMatch, error) {
-	r.calls = append(r.calls, repoCall{itemID: itemID, undefinedCategory: undefinedCategoryID, limit: limit})
+func (r *repoStub) FindSimilarItems(_ context.Context, itemID int64, limit int) ([]model.ItemMatch, error) {
+	r.calls = append(r.calls, repoCall{itemID: itemID, limit: limit})
 	if err := r.errByItem[itemID]; err != nil {
 		return nil, err
 	}
@@ -111,7 +107,7 @@ func TestMatchingFindCyclesReturnsEmptyResultWhenNoCandidatesExist(t *testing.T)
 	if len(cycles) != 0 {
 		t.Fatalf("FindCycles() cycles = %+v, want empty", cycles)
 	}
-	if len(repo.calls) != 1 || repo.calls[0].limit != 5 || repo.calls[0].undefinedCategory != 99 {
+	if len(repo.calls) != 1 || repo.calls[0].limit != 5 {
 		t.Fatalf("repository calls = %+v", repo.calls)
 	}
 }
@@ -173,12 +169,10 @@ func TestMatchingAcceptsTwoItemChainLength(t *testing.T) {
 func TestMatchingDebugLogsCandidatesAndCycles(t *testing.T) {
 	core, logs := observer.New(zap.InfoLevel)
 	matching, err := NewMatching(zap.New(core), cycleRepo(map[int64]int64{1: 2, 2: 1}), scorerStub{score: 1}, MatchingConfig{
-		SimilarItemsAmount:              5,
-		CompatibilityThreshold:          0.5,
-		UndefinedCategoryID:             99,
-		UndefinedCompatibilityThreshold: 0.8,
-		ChainLen:                        2,
-		Debug:                           true,
+		SimilarItemsAmount:     5,
+		CompatibilityThreshold: 0.5,
+		ChainLen:               2,
+		Debug:                  true,
 	})
 	if err != nil {
 		t.Fatalf("NewMatching() error = %v", err)
@@ -217,11 +211,9 @@ func TestApplyElbowMethodCutsSharpSimilarityDrop(t *testing.T) {
 func newTestMatching(t *testing.T, repo MatchingRepo, chainLen int) *Matching {
 	t.Helper()
 	m, err := NewMatching(zap.NewNop(), repo, scorerStub{score: 1}, MatchingConfig{
-		SimilarItemsAmount:              5,
-		CompatibilityThreshold:          0.5,
-		UndefinedCategoryID:             99,
-		UndefinedCompatibilityThreshold: 0.8,
-		ChainLen:                        chainLen,
+		SimilarItemsAmount:     5,
+		CompatibilityThreshold: 0.5,
+		ChainLen:               chainLen,
 	})
 	if err != nil {
 		t.Fatalf("NewMatching() error = %v", err)

@@ -292,14 +292,12 @@ func run(logger *zap.Logger) error {
 		matchingRepo,
 		service.NewScoring(),
 		service.MatchingConfig{
-			SimilarItemsAmount:              cfg.SimilarItemsAmount,
-			CompatibilityThreshold:          cfg.CompatibilityThreshold,
-			UndefinedCategoryID:             cfg.UndefinedCategoryID,
-			UndefinedCompatibilityThreshold: cfg.UndefinedCompatibilityThreshold,
-			ChainLen:                        cfg.ChainLength,
-			PenaltyFactor:                   cfg.PenaltyFactor,
-			ChainRatingThreshold:            cfg.ChainThreshold,
-			Debug:                           cfg.MatchingDebug,
+			SimilarItemsAmount:     cfg.SimilarItemsAmount,
+			CompatibilityThreshold: cfg.CompatibilityThreshold,
+			ChainLen:               cfg.ChainLength,
+			PenaltyFactor:          cfg.PenaltyFactor,
+			ChainRatingThreshold:   cfg.ChainThreshold,
+			Debug:                  cfg.MatchingDebug,
 		},
 	)
 	if err != nil {

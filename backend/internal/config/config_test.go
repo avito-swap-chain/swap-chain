@@ -18,7 +18,6 @@ func TestLoadDefaults(t *testing.T) {
 		"MATCHING_PENALTY_FACTOR",
 		"MATCHING_CHAIN_THRESHOLD",
 		"MATCHING_COMPATIBILITY_THRESHOLD",
-		"MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD",
 		"MATCHING_DEBUG",
 		"UNDEFINED_CATEGORY_ID",
 		"ANALYSIS_CATEGORY_SIMILARITY_THRESHOLD",
@@ -149,7 +148,6 @@ func TestLoadReadsMatchingSettings(t *testing.T) {
 	t.Setenv("MATCHING_PENALTY_FACTOR", "0.4")
 	t.Setenv("MATCHING_CHAIN_THRESHOLD", "0.5")
 	t.Setenv("MATCHING_COMPATIBILITY_THRESHOLD", "0.6")
-	t.Setenv("MATCHING_UNDEFINED_COMPATIBILITY_THRESHOLD", "0.8")
 	t.Setenv("UNDEFINED_CATEGORY_ID", "47")
 	t.Setenv("MATCHING_DEBUG", "true")
 
@@ -159,7 +157,7 @@ func TestLoadReadsMatchingSettings(t *testing.T) {
 	}
 
 	if cfg.SimilarItemsAmount != 12 || cfg.ChainLength != 3 || cfg.PenaltyFactor != 0.4 || cfg.ChainThreshold != 0.5 ||
-		cfg.CompatibilityThreshold != 0.6 || cfg.UndefinedCompatibilityThreshold != 0.8 || cfg.UndefinedCategoryID != 47 || !cfg.MatchingDebug {
+		cfg.CompatibilityThreshold != 0.6 || cfg.UndefinedCategoryID != 47 || !cfg.MatchingDebug {
 		t.Fatalf("unexpected matching config: %+v", cfg)
 	}
 }
