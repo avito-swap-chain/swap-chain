@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
-import { getThreads, isServiceThread, messageKeys, ThreadCard } from '@/entities/message'
+import { getThreads, messageKeys, orderThreads, ThreadCard } from '@/entities/message'
 import { cx } from '@/shared/lib'
-import { IconArrowRight, IconArrowUp } from '@/shared/ui'
+import { Counter, IconArrowRight, IconArrowUp } from '@/shared/ui'
 
 /**
  * Плавающий мессенджер в правом нижнем углу — как у Авито: переписка догоняет человека
@@ -26,28 +26,21 @@ export function MiniMessenger() {
   if (pathname.startsWith('/messages')) return null
 
   const unread = data?.totalUnread ?? 0
-  // Канал сервиса держим первым всегда — как в списке раздела.
-  const threads = [...(data?.threads ?? [])].sort(
-    (a, b) => Number(isServiceThread(b)) - Number(isServiceThread(a)),
-  )
+  const threads = orderThreads(data?.threads ?? [])
 
   return (
     /* Геометрия с их виджета: свёрнутый 250×40, развёрнутый 411 в ширину,
        прижат к нижнему краю окна и приподнят тенью, а не рамкой. */
     <div
       className={cx(
-        'fixed right-5 bottom-0 z-20 hidden rounded-t-[3px] bg-card shadow-pop max-lg:hidden lg:block',
+        'fixed right-5 bottom-0 z-20 rounded-t-[3px] bg-card shadow-pop max-lg:hidden',
         open ? 'w-[411px]' : 'w-[250px]',
       )}
     >
       <div className={cx('flex items-center gap-2 pr-2 pl-4', open ? 'h-[74px]' : 'h-10')}>
         <span className="flex items-center gap-1.5 text-[18px] leading-6 font-bold">
           Сообщения
-          {unread > 0 && (
-            <span className="grid size-4 place-items-center rounded-full bg-accent-red text-[11px] leading-none font-normal text-white">
-              {unread}
-            </span>
-          )}
+          {unread > 0 && <Counter>{unread}</Counter>}
         </span>
 
         {open && (

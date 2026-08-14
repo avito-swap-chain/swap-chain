@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { cx } from '@/shared/lib'
+import { cx, formatWhen } from '@/shared/lib'
 import type { AppNotification, NotificationKind } from '@/shared/model/notifications'
 import { IconBox, IconChat, IconClock, IconSwap } from '@/shared/ui'
 
@@ -11,14 +11,6 @@ const ICONS: Record<NotificationKind, { icon: typeof IconChat; tone: string }> =
   chain: { icon: IconSwap, tone: 'bg-ok-bg text-ok' },
   offer: { icon: IconClock, tone: 'bg-attention-bg text-attention' },
   delivery: { icon: IconBox, tone: 'bg-line-2 text-ink-2' },
-}
-
-/** «14:03» сегодня, «21 апр.» раньше — как в списках Авито. */
-const formatWhen = (iso: string): string => {
-  const date = new Date(iso)
-  return date.toDateString() === new Date().toDateString()
-    ? date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-    : date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 }
 
 /**

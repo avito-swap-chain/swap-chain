@@ -4,7 +4,7 @@ import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
 import { asset, cx } from '@/shared/lib'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
 import { getCurrentUser, sessionKeys } from '@/shared/model/session'
-import { IconBox, IconChat, IconFlag, IconSwap } from '@/shared/ui'
+import { Counter, IconBox, IconChat, IconFlag, IconSwap } from '@/shared/ui'
 import type { Section } from '../lib/navigation'
 
 /**
@@ -75,11 +75,7 @@ export function MobileTabBar({ section }: { section: Section }) {
           >
             <span className="relative">
               <IconSwap size={24} />
-              {waiting > 0 && (
-                <span className="absolute -top-1 -right-2 grid min-w-[16px] place-items-center rounded-full bg-accent-red px-1 text-[10px] leading-4 font-bold text-white">
-                  {waiting}
-                </span>
-              )}
+              {waiting > 0 && <Counter className="absolute -top-1 -right-2">{waiting}</Counter>}
             </span>
             Обмен
           </Link>
@@ -95,11 +91,17 @@ export function MobileTabBar({ section }: { section: Section }) {
         Сообщения
       </Link>
 
-      {/* Профиля нет в MVP — показываем неактивным, как в остальном кабинете. */}
-      <span className={cx(tabClass, 'cursor-not-allowed text-ink-3')} title="В демо не открывается">
+      {/* Профиль — вход во всё, чего нет в панели: отзывы, чёрный список, правка имени.
+          Раньше вкладка была неактивной заглушкой, и на телефоне эти разделы оставались
+          недостижимы — меню кабинета там свёрнуто в эту самую панель. */}
+      <Link
+        to="/profile"
+        aria-current={pathname === '/profile' ? 'page' : undefined}
+        className={cx(tabClass, pathname === '/profile' ? 'text-ink' : 'text-ink-3')}
+      >
         <img src={asset(persona.avatarUrl)} alt="" className="size-6 rounded-full object-cover" />
         Профиль
-      </span>
+      </Link>
     </nav>
   )
 }

@@ -129,7 +129,10 @@ export function SwitchPersona() {
 
   return (
     <div
-      className="relative flex pl-2"
+      /* `shrink-0` обязателен: верхний ярус шапки на узком десктопе переполняется,
+         и без него флекс сжимал аватар до нуля — переключатель персон пропадал
+         в диапазоне 900–1150px, а другого входа в него на этих ширинах нет. */
+      className="relative flex shrink-0 pl-2"
       onKeyDown={(event) => {
         if (event.key === 'Escape') setOpen(false)
       }}

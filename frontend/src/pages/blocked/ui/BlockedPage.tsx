@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { chainKeys } from '@/entities/chain'
 import { getBlocked, unblockUser, userKeys } from '@/entities/user'
-import { Avatar, Button, Notice, Screen } from '@/shared/ui'
+import { ActionError, Avatar, Button, Notice, Screen } from '@/shared/ui'
 
 /**
  * Чёрный список — обратная сторона блокировки: заблокировать человека можно было из его
@@ -51,6 +51,10 @@ export function BlockedPage() {
               С этими людьми сервис не соберёт общий обмен. Разблокировка вернёт их в подбор, но
               отменённые цепочки не восстановит.
             </p>
+
+            {/* Разблокировка тоже может не получиться — молчащая кнопка была
+                первым замечанием ментора, и повторять его здесь незачем. */}
+            <ActionError error={unblock.error} />
 
             <ul className="flex flex-col">
               {data.map((user) => (

@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
 import { getThreads, messageKeys } from '@/entities/message'
 import { getNotifications, notificationKeys } from '@/entities/notification'
 import { cx } from '@/shared/lib'
+import { Counter } from '@/shared/ui'
 import { getCurrentUser, sessionKeys } from '@/shared/model/session'
 import type { Section } from '../lib/navigation'
 
@@ -31,22 +31,6 @@ const currentClass = 'bg-line-2 text-ink lg:bg-transparent lg:font-bold lg:text-
 /* Группа пунктов. На узких окнах обёртки нет вовсе (`contents`) — там лента чипов;
  * от `lg` группы разделены линией, как разделы меню в их кабинете. */
 const groupClass = 'contents lg:block lg:border-t lg:border-line lg:py-3 lg:first:border-0'
-
-/**
- * Счётчик у пункта меню. Стоит вплотную к названию, как бейджи у Авито: у края колонки
- * он читался отдельной колонкой цифр и терял связь с пунктом. Красный, а не азур:
- * азур в их системе означает ссылку, а не тревогу.
- */
-function NavBadge({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <span
-      title={title}
-      className="grid min-w-[18px] place-items-center rounded-full bg-accent-red px-1.5 text-[10.5px] leading-[18px] font-bold text-white lg:text-[13px] lg:leading-4"
-    >
-      {children}
-    </span>
-  )
-}
 
 /**
  * Меню личного кабинета — единственный верхний уровень навигации.
@@ -113,7 +97,7 @@ export function CabinetNav({ section, className }: { section: Section; className
             className={cx(itemClass, 'gap-2', isExchange ? currentClass : restClass)}
           >
             Обмен
-            {waiting > 0 && <NavBadge title="Ждут вашего действия">{waiting}</NavBadge>}
+            {waiting > 0 && <Counter title="Ждут вашего действия">{waiting}</Counter>}
           </Link>
         </div>
       )}
@@ -137,7 +121,7 @@ export function CabinetNav({ section, className }: { section: Section; className
           className={cx(itemClass, 'gap-2', section === 'messages' ? currentClass : restClass)}
         >
           Сообщения
-          {unread > 0 && <NavBadge title="Непрочитанные сообщения">{unread}</NavBadge>}
+          {unread > 0 && <Counter title="Непрочитанные сообщения">{unread}</Counter>}
         </Link>
 
         <Link
@@ -146,7 +130,7 @@ export function CabinetNav({ section, className }: { section: Section; className
           className={cx(itemClass, 'gap-2', section === 'notifications' ? currentClass : restClass)}
         >
           Уведомления
-          {news > 0 && <NavBadge title="Новые уведомления">{news}</NavBadge>}
+          {news > 0 && <Counter title="Новые уведомления">{news}</Counter>}
         </Link>
       </div>
 

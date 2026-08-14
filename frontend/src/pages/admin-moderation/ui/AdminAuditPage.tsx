@@ -1,14 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ACTION_LABEL, getAudit, moderationKeys } from '@/entities/moderation'
+import { formatDateTime } from '@/shared/lib'
 import { EmptyState, Notice, Screen } from '@/shared/ui'
-
-const formatDate = (iso: string): string =>
-  new Date(iso).toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 
 /**
  * Журнал административных действий. Дописываемый и неизменяемый: он существует ровно
@@ -55,7 +48,7 @@ export function AdminAuditPage() {
                   <b className="font-bold">{entry.admin.username}</b> — {ACTION_LABEL[entry.action]}
                 </p>
                 <p className="text-[13px] leading-4 text-ink-2">
-                  {entry.targetType} №{entry.targetId} · {formatDate(entry.createdAt)}
+                  {entry.targetType} №{entry.targetId} · {formatDateTime(entry.createdAt)}
                 </p>
               </div>
             ))}

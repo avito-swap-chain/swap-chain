@@ -1,18 +1,8 @@
 import { Link } from 'react-router-dom'
-import { asset, cx } from '@/shared/lib'
+import { asset, cx, formatWhen } from '@/shared/lib'
 import { BrandDots, IconBox } from '@/shared/ui'
 import { isServiceThread, threadPath } from '../lib/thread'
 import type { Thread } from '../model/types'
-
-/** «14:03» для сегодняшних, «21 апр.» для остальных — как в списке диалогов Авито. */
-const formatWhen = (iso: string): string => {
-  const date = new Date(iso)
-  const today = new Date()
-  const sameDay = date.toDateString() === today.toDateString()
-  return sameDay
-    ? date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-    : date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-}
 
 /**
  * Строка списка переписок: фото вещи с аватаром собеседника в углу, имя, о какой вещи речь

@@ -13,3 +13,11 @@ export const sameThread = (a: ThreadKey, b: ThreadKey): boolean =>
 
 /** Адрес экрана переписки. Собран в одном месте: на него ссылаются список, карточка и уведомления. */
 export const threadPath = (key: ThreadKey): string => `/messages/${key.itemId}/${key.counterpartId}`
+
+/**
+ * Порядок списка переписок: служебный канал сервиса всегда первый, остальные — как отдал
+ * бэкенд (по свежести последней реплики). Правило одно на раздел и на плавающий мессенджер:
+ * два списка одних и тех же разговоров не должны расходиться порядком.
+ */
+export const orderThreads = <T extends ThreadKey>(threads: T[]): T[] =>
+  [...threads].sort((a, b) => Number(isServiceThread(b)) - Number(isServiceThread(a)))

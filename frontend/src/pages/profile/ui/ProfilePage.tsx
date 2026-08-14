@@ -9,6 +9,7 @@ import { ReportUser } from '@/features/report-user'
 import { exchangesLabel, reviewsLabel } from '@/shared/lib'
 import {
   Avatar,
+  Counter,
   IconNotifications,
   IconBan,
   IconBox,
@@ -169,13 +170,7 @@ function Cabinet({ onEdit, editing }: { onEdit: () => void; editing: boolean }) 
         <TileRow
           icon={<IconSwap size={19} />}
           to="/exchange"
-          trailing={
-            waiting > 0 && (
-              <span className="rounded-chip bg-stop px-1.5 py-0.5 font-sans text-[12px] leading-4 font-bold text-white">
-                {waiting}
-              </span>
-            )
-          }
+          trailing={waiting > 0 && <Counter title="Ждут вашего действия">{waiting}</Counter>}
         >
           Обмены
         </TileRow>

@@ -7,6 +7,7 @@ import { getNotifications, notificationKeys } from '@/entities/notification'
 import { SwitchPersona } from '@/features/switch-persona'
 import {
   BrandMark,
+  Counter,
   IconAdd,
   IconBusiness,
   IconCart,
@@ -140,11 +141,7 @@ function IconAction({
       className="relative flex px-[11px] pt-4 pb-2 text-ink-4 outline-offset-[-4px] hover:text-ink-3 focus-visible:outline-2 focus-visible:outline-brand"
     >
       {children}
-      {count > 0 && (
-        <span className="absolute top-[15px] right-1.5 grid size-[15px] place-items-center rounded-full bg-accent-red text-[11px] leading-none text-white">
-          {count}
-        </span>
-      )}
+      {count > 0 && <Counter className="absolute top-[15px] right-1.5">{count}</Counter>}
     </Link>
   )
 }

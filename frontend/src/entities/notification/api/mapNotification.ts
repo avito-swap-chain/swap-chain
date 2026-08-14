@@ -15,7 +15,7 @@ const KIND: Record<ApiKind, NotificationKind> = {
  * Куда ведёт уведомление. Бэкенд отдаёт `chainId` и `itemId`, а не готовую ссылку —
  * маршруты дело фронта, и это правильно: адрес экрана он менять не должен.
  *
- * Переписка — исключение: тред адресуется парой «цепочка + собеседник», а собеседника
+ * Переписка — исключение: тред адресуется парой «вещь + собеседник», а собеседника
  * в уведомлении нет, поэтому ведём в общий список, а не в конкретный разговор.
  * Доставку тоже ведём в обмен: рабочее место ПВЗ — не для того, кто ждёт свою вещь.
  */
@@ -44,7 +44,9 @@ const REASON_TEXT: Record<string, string> = {
 
 const humanizeReason = (text: string): string =>
   text.replace(/:\s*([a-z_]+)\s*$/, (whole, code: string) =>
-    REASON_TEXT[code] ? `: ${REASON_TEXT[code]}` : whole,
+    // `hasOwn`, а не просто чтение: `constructor` и прочие члены прототипа проходят
+    // по маске кода, и уведомление показало бы исходник функции вместо причины.
+    Object.hasOwn(REASON_TEXT, code) ? `: ${REASON_TEXT[code]}` : whole,
   )
 
 export const mapNotification = (notification: ApiNotification): AppNotification => ({

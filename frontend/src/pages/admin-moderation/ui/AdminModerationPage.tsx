@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { ListAdminReportsParams, MessageReport } from '@/shared/api/generated/model'
 import { getReports, moderationKeys, REASON_LABEL, ReportStatusLabel } from '@/entities/moderation'
+import { formatDateTime } from '@/shared/lib'
 import { Button, EmptyState, Notice, Screen } from '@/shared/ui'
 
 /**
@@ -15,21 +16,13 @@ const VIEWS: { key: string; label: string; params: ListAdminReportsParams }[] = 
   { key: 'all', label: 'Все', params: {} },
 ]
 
-const formatDate = (iso: string): string =>
-  new Date(iso).toLocaleString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-
 function ReportRow({ report }: { report: MessageReport }) {
   return (
     <div className="flex flex-col gap-3 border-b border-line py-3.5 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-[15px] leading-5 font-bold">{REASON_LABEL[report.reason]}</p>
         <p className="mt-0.5 text-[13px] leading-4 text-ink-2">
-          {report.reporter.username} · {formatDate(report.createdAt)}
+          {report.reporter.username} · {formatDateTime(report.createdAt)}
           {/* Кто взял жалобу — единственное, что отличает две одинаковые строки в очереди. */}
           {report.assignee && ` · разбирает ${report.assignee.username}`}
         </p>

@@ -1,17 +1,19 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { chainKeys, findNeighbours, getMyChains } from '@/entities/chain'
+import {
+  chainKeys,
+  findNeighbours,
+  getMyChains,
+  type Chain,
+  type ChainParticipant,
+} from '@/entities/chain'
 import { getMyProfile, getReviews, userKeys } from '@/entities/user'
 import { LeaveReview } from '@/features/leave-review'
-import { asset, cx, reviewsLabel } from '@/shared/lib'
+import { asset, cx, formatDate, reviewsLabel } from '@/shared/lib'
 import { Avatar, IconBox, Notice, Screen, Stars } from '@/shared/ui'
 
 type Tab = 'pending' | 'about'
-
-/** Дата отзыва — как в профиле Авито: «12 августа 2026». */
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 
 /**
  * «Мои отзывы» — отдельный раздел кабинета, как у Авито: там он тоже вынесен в меню
@@ -25,7 +27,10 @@ const formatDate = (iso: string) =>
 export function ReviewsPage() {
   const [tab, setTab] = useState<Tab>('pending')
 
-  const { data: me } = useQuery({ queryKey: userKeys.me(), queryFn: getMyProfile })
+  const { data: me, isError: meFailed } = useQuery({
+    queryKey: userKeys.me(),
+    queryFn: getMyProfile,
+  })
 
   return (
     <Screen width="wide">
@@ -38,7 +43,11 @@ export function ReviewsPage() {
           <Tabs tab={tab} onChange={setTab} />
         </div>
 
-        {tab === 'pending' ? <PendingList /> : <AboutList userId={me?.id} count={me?.reviews} />}
+        {tab === 'pending' ? (
+          <PendingList meId={me?.id} />
+        ) : (
+          <AboutList userId={me?.id} count={me?.reviews} failed={meFailed} />
+        )}
       </div>
     </Screen>
   )
@@ -76,30 +85,55 @@ function Tabs({ tab, onChange }: { tab: Tab; onChange: (next: Tab) => void }) {
  * Завершённые обмены. Оцениваем того, от кого получили вещь, — с ним человек и имел дело;
  * тот же сосед, что и на экране цепочки, поэтому оценка здесь тем же компонентом.
  */
-function PendingList() {
+function PendingList({ meId }: { meId?: string }) {
   const { data, isPending, isError } = useQuery({ queryKey: chainKeys.my(), queryFn: getMyChains })
+
+  // Соседи по завершённым обменам — те, кого можно оценить. Считаем до ранних возвратов:
+  // ниже на этом списке висят запросы, а хуки не переживают условный вызов.
+  const pairs = (data ?? [])
+    .filter((chain) => chain.status === 'completed')
+    .map((chain) => ({ chain, giver: findNeighbours(chain)?.giver }))
+    .filter((pair): pair is { chain: Chain; giver: ChainParticipant } => Boolean(pair.giver))
+
+  /**
+   * Оставлен ли отзыв, контракт не отдаёт: признака у цепочки нет, а второй отзыв бэкенд
+   * отклоняет как 409. Поэтому спрашиваем отзывы самого соседа и ищем среди них свой —
+   * иначе вкладка обещала бы оценку по обмену, который человек уже оценил.
+   *
+   * Запрос на соседа, но завершённых обменов у человека единицы, и ответы шарятся с профилем
+   * по тому же ключу — лишней нагрузки это не создаёт.
+   */
+  const reviews = useQueries({
+    queries: pairs.map((pair) => ({
+      queryKey: userKeys.reviews(pair.giver.userId),
+      queryFn: () => getReviews(pair.giver.userId),
+      enabled: Boolean(meId),
+    })),
+  })
 
   if (isPending) return <Notice>Загрузка…</Notice>
   if (isError) return <Notice tone="error">Не удалось загрузить обмены</Notice>
 
-  const completed = data.filter((chain) => chain.status === 'completed')
+  const waiting = pairs.filter((_, index) => {
+    const given = reviews[index]?.data
+    // Пока отзывы соседа не загрузились, строку показываем: пропасть она может только
+    // по факту, а не по незнанию.
+    return !given || !given.some((review) => review.author.id === meId)
+  })
 
-  if (completed.length === 0) {
+  if (waiting.length === 0) {
     return (
       <p className="py-4 text-[13px] text-ink-2">
-        Оценивать пока некого — отзыв оставляют соседу после завершённого обмена.
+        {pairs.length === 0
+          ? 'Оценивать пока некого — отзыв оставляют соседу после завершённого обмена.'
+          : 'Все завершённые обмены оценены. Спасибо: рейтинг — единственный довод о человеке, с которым меняются.'}
       </p>
     )
   }
 
   return (
     <ul className="flex flex-col">
-      {completed.map((chain) => {
-        const neighbours = findNeighbours(chain)
-        // Чужую цепочку в «мои обмены» бэкенд не отдаёт, но если отдал — оценивать в ней некого.
-        if (!neighbours) return null
-        const { giver } = neighbours
-
+      {waiting.map(({ chain, giver }) => {
         return (
           <li
             key={chain.id}
@@ -138,13 +172,23 @@ function PendingList() {
 }
 
 /** Отзывы о самом человеке — тот же список, что видят на его профиле. */
-function AboutList({ userId, count }: { userId?: string; count?: number }) {
+function AboutList({
+  userId,
+  count,
+  failed,
+}: {
+  userId?: string
+  count?: number
+  failed?: boolean
+}) {
   const { data, isPending, isError } = useQuery({
     queryKey: userKeys.reviews(userId ?? ''),
     queryFn: () => getReviews(userId ?? ''),
     enabled: Boolean(userId),
   })
 
+  // Профиль не загрузился — своих отзывов не найти, и «Загрузка…» здесь врала бы вечно.
+  if (failed) return <Notice tone="error">Не удалось загрузить профиль</Notice>
   if (!userId || isPending) return <Notice>Загрузка…</Notice>
   if (isError) return <Notice tone="error">Не удалось загрузить отзывы</Notice>
 

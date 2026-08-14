@@ -20,8 +20,11 @@ const SERVICE_MESSAGE: Message = {
  * Отметка о прочтении. Живёт в `localStorage`, а не в памяти вкладки: канала нет на бэкенде,
  * а в памяти он «забывал» прочтение на каждой перезагрузке — человек читал пояснение, обновлял
  * страницу и снова видел непрочитанное сообщение и счётчик в шапке.
+ *
+ * Ключ — на владельца сессии: демо переключает персон, и общая отметка гасила бы канал
+ * у всех сразу, стоило одному из них его открыть.
  */
-const READ_KEY = 'avito-chain:service-thread-read'
+const readKey = (ownerId: string) => `avito-chain:service-thread-read:${ownerId}`
 
 /** Хранилища может не быть — приватный режим, запрет, тесты вне браузера. */
 const storage = (): Storage | undefined => {
@@ -32,26 +35,30 @@ const storage = (): Storage | undefined => {
   }
 }
 
-let isRead = storage()?.getItem(READ_KEY) === '1'
+/** Прочитанное в этой вкладке: хранилище может быть недоступно, а счётчик гаснуть должен. */
+const readInMemory = new Set<string>()
 
-export const markServiceRead = (): void => {
-  isRead = true
-  storage()?.setItem(READ_KEY, '1')
+const isRead = (ownerId: string): boolean =>
+  readInMemory.has(ownerId) || storage()?.getItem(readKey(ownerId)) === '1'
+
+export const markServiceRead = (ownerId: string): void => {
+  readInMemory.add(ownerId)
+  storage()?.setItem(readKey(ownerId), '1')
 }
 
 export const serviceMessages = (): Message[] => [SERVICE_MESSAGE]
 
-export const serviceThread = (): Thread => ({
+export const serviceThread = (ownerId: string): Thread => ({
   itemId: 'service',
   counterpartId: 'service',
   peerName: 'Авито Обмен',
   itemTitle: 'Обмен без доплат',
   lastMessage: SERVICE_MESSAGE,
-  unreadCount: isRead ? 0 : 1,
+  unreadCount: isRead(ownerId) ? 0 : 1,
 })
 
 /** Сброс для тестов: канал общий на приложение, иначе прочитанность течёт между случаями. */
 export const resetServiceThread = (): void => {
-  isRead = false
-  storage()?.removeItem(READ_KEY)
+  for (const ownerId of readInMemory) storage()?.removeItem(readKey(ownerId))
+  readInMemory.clear()
 }

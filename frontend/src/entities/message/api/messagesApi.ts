@@ -13,6 +13,7 @@ import type {
   MessageReport,
 } from '@/shared/api/generated/model'
 import { isBackendConnected } from '@/shared/config/backend'
+import { currentPersonaId } from '@/shared/model/persona'
 import { currentUserId } from '@/shared/model/session'
 import { isServiceThread } from '../lib/thread'
 import type {
@@ -53,6 +54,13 @@ export const QUICK_QUESTIONS = [
   'Давно пользуетесь?',
 ] as const
 
+/**
+ * Чей это служебный канал. С бэкендом — владелец сессии, на моках — выбранная персона:
+ * отметка о прочтении привязана к аккаунту, иначе демо гасило бы канал сразу всем.
+ */
+const serviceOwner = async (): Promise<string> =>
+  isBackendConnected ? String(await currentUserId()) : currentPersonaId()
+
 /** Все переписки текущего пользователя, свежие сверху, вместе со счётчиком для шапки. */
 export async function getThreads(): Promise<ThreadList> {
   let threads: Thread[]
@@ -71,7 +79,7 @@ export async function getThreads(): Promise<ThreadList> {
 
   // Служебный канал стоит первым и считается наравне с остальными: для человека это такая же
   // непрочитанная переписка, хотя на бэкенде её нет.
-  const service = serviceThread()
+  const service = serviceThread(await serviceOwner())
   return {
     threads: [service, ...threads],
     totalUnread: totalUnread + service.unreadCount,
@@ -127,7 +135,7 @@ export async function sendMessage(ref: ThreadRef, draft: MessageDraft): Promise<
  * к старому сообщению «разучивал» бы то, что человек уже видел.
  */
 export async function markThreadRead(key: ThreadKey, lastMessageId: string): Promise<void> {
-  if (isServiceThread(key)) return markServiceRead()
+  if (isServiceThread(key)) return markServiceRead(await serviceOwner())
   if (!isBackendConnected) return mock.markRead(key, lastMessageId)
 
   unwrap(

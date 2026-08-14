@@ -5,8 +5,9 @@ import { getBreadcrumbs } from '../lib/navigation'
 
 /**
  * Крошки считаются из роута — страницы о своём месте в навигации Авито не знают.
- * Есть только на вложенных экранах, а они все узкие, поэтому ширина крошек
- * совпадает с `Screen width="narrow"` — иначе на десктопе строка уезжала бы влево.
+ * Есть только на вложенных экранах, а они все узкие, поэтому ширина крошек совпадает
+ * с `Screen width="narrow"`. Обе строки прижаты к левому краю колонки, как в кабинете
+ * Авито: когда экран центрировали, а крошки нет, они расходились на добрую сотню пикселей.
  */
 export function Breadcrumbs({ pathname, className }: { pathname: string; className?: string }) {
   const crumbs = getBreadcrumbs(pathname)
@@ -16,7 +17,7 @@ export function Breadcrumbs({ pathname, className }: { pathname: string; classNa
     <nav
       aria-label="Хлебные крошки"
       className={cx(
-        'mx-auto flex w-full max-w-2xl items-center gap-1.5 px-4 pt-2 text-[12px] text-ink-3 sm:pt-2.5 lg:px-0 lg:pt-0 lg:pb-2.5',
+        'flex w-full max-w-2xl items-center gap-1.5 px-4 pt-2 text-[12px] text-ink-3 sm:pt-2.5 lg:px-0 lg:pt-0 lg:pb-2.5',
         className,
       )}
     >

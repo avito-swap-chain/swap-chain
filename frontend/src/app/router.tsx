@@ -61,8 +61,8 @@ export const router = createBrowserRouter(
         { path: '/profile', element: <ProfilePage mine /> },
         { path: '/users/:id', element: <ProfilePage /> },
         { path: '/exchange/:id', element: <ChainPage /> },
-        // Переписка адресуется парой «цепочка + собеседник»: она привязана к ребру круга
-        // обмена, а не к вещи — с одним человеком в двух цепочках это два разных разговора.
+        // Переписка адресуется парой «вещь + собеседник»: разговор идёт о вещи, которая
+        // переезжает, и в скольких вариантах обмена она ни участвовала бы, история одна.
         { path: '/messages/:itemId/:counterpartId', element: <ThreadPage /> },
       ],
     },

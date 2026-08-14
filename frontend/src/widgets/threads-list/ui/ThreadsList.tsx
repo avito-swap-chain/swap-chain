@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getThreads, isServiceThread, messageKeys, ThreadCard } from '@/entities/message'
+import { getThreads, messageKeys, orderThreads, ThreadCard } from '@/entities/message'
 import { cx } from '@/shared/lib'
 import { IconSearch, Notice } from '@/shared/ui'
 
@@ -44,8 +44,7 @@ export function ThreadsList() {
       .some((field) => norm(field).includes(search))
   })
 
-  // Канал сервиса держим первым всегда: он не участвует в сортировке по времени.
-  const threads = [...found].sort((a, b) => Number(isServiceThread(b)) - Number(isServiceThread(a)))
+  const threads = orderThreads(found)
 
   return (
     <div className="flex flex-col gap-3">
