@@ -22,6 +22,7 @@ type Querier interface {
 	CountUnreceivedAdminDeliveries(ctx context.Context, chainID int64) (int64, error)
 	CreateAdminDeliveryEvent(ctx context.Context, arg CreateAdminDeliveryEventParams) error
 	DecideMessageReport(ctx context.Context, arg DecideMessageReportParams) (int64, error)
+	ExchangeAdminChainItems(ctx context.Context, chainID int64) (ExchangeAdminChainItemsRow, error)
 	FindAdminDeliveryChain(ctx context.Context, id int64) (int64, error)
 	FindCategory(ctx context.Context, arg FindCategoryParams) ([]FindCategoryRow, error)
 	FindSimilarItems(ctx context.Context, arg FindSimilarItemsParams) ([]FindSimilarItemsRow, error)

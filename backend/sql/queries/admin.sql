@@ -24,7 +24,7 @@ JOIN chain_items AS recipient_leg
  AND recipient_leg.next_item_id = delivery.item_id
 JOIN users AS recipient ON recipient.id = recipient_leg.user_id
 WHERE chain.status IN ('ACCEPTED', 'COMPLETED')
-  AND item.status = 'LOCKED'
+  AND item.status IN ('LOCKED', 'EXCHANGED')
   AND delivery.id > sqlc.arg(after_id)
   AND (sqlc.arg(delivery_status)::text = ''
        OR delivery.delivery_status::text = sqlc.arg(delivery_status)::text)
@@ -95,6 +95,23 @@ SET status = 'COMPLETED',
     updated_at = now()
 WHERE id = $1
   AND status = 'ACCEPTED';
+
+-- name: ExchangeAdminChainItems :one
+WITH target AS (
+    SELECT participant.item_id
+    FROM chain_items AS participant
+    WHERE participant.chain_id = sqlc.arg(chain_id)
+), exchanged AS (
+    UPDATE items AS item
+    SET status = 'EXCHANGED',
+        updated_at = now()
+    FROM target
+    WHERE item.id = target.item_id
+      AND item.status = 'LOCKED'
+    RETURNING item.id
+)
+SELECT (SELECT count(*) FROM target)::bigint AS item_count,
+       (SELECT count(*) FROM exchanged)::bigint AS exchanged_count;
 
 -- name: GetAdminDelivery :one
 SELECT delivery.id,

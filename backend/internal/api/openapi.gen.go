@@ -224,6 +224,7 @@ func (e HealthResponseStatus) Valid() bool {
 const (
 	ACTIONREQUIRED ItemStatus = "ACTION_REQUIRED"
 	ANALYZING      ItemStatus = "ANALYZING"
+	EXCHANGED      ItemStatus = "EXCHANGED"
 	LOCKED         ItemStatus = "LOCKED"
 	MATCHING       ItemStatus = "MATCHING"
 	WITHDRAWN      ItemStatus = "WITHDRAWN"
@@ -235,6 +236,8 @@ func (e ItemStatus) Valid() bool {
 	case ACTIONREQUIRED:
 		return true
 	case ANALYZING:
+		return true
+	case EXCHANGED:
 		return true
 	case LOCKED:
 		return true

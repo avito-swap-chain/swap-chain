@@ -271,16 +271,15 @@ func lockDelivery(ctx context.Context, queries *db.Queries, deliveryID int64) (s
 }
 
 func canApplyTransition(chainStatus, itemStatus, currentStatus, targetStatus string) bool {
-	if itemStatus != "LOCKED" || !model.CanTransition(currentStatus, targetStatus) {
-		return false
-	}
-	if chainStatus == model.ChainAccepted {
-		return true
+	if chainStatus == model.ChainCompleted {
+		return itemStatus == "EXCHANGED" &&
+			currentStatus == model.DeliveryReceived &&
+			targetStatus == model.DeliveryReceived
 	}
 
-	return chainStatus == model.ChainCompleted &&
-		currentStatus == model.DeliveryReceived &&
-		targetStatus == model.DeliveryReceived
+	return chainStatus == model.ChainAccepted &&
+		itemStatus == "LOCKED" &&
+		model.CanTransition(currentStatus, targetStatus)
 }
 
 func updateDelivery(
@@ -367,6 +366,17 @@ func completeChainIfReceived(
 	}
 	if updated != 1 {
 		return "", fmt.Errorf("complete delivery chain: unexpected affected rows count %d", updated)
+	}
+	exchanged, err := queries.ExchangeAdminChainItems(ctx, chainID)
+	if err != nil {
+		return "", fmt.Errorf("exchange completed chain items: %w", err)
+	}
+	if exchanged.ItemCount == 0 || exchanged.ExchangedCount != exchanged.ItemCount {
+		return "", fmt.Errorf(
+			"exchange completed chain items: exchanged %d of %d",
+			exchanged.ExchangedCount,
+			exchanged.ItemCount,
+		)
 	}
 
 	return model.ChainCompleted, nil

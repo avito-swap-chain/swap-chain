@@ -1975,7 +1975,7 @@ components:
 
     ItemStatus:
       type: string
-      enum: [ANALYZING, ACTION_REQUIRED, MATCHING, LOCKED, WITHDRAWN]
+      enum: [ANALYZING, ACTION_REQUIRED, MATCHING, LOCKED, EXCHANGED, WITHDRAWN]
 
     Category:
       type: object

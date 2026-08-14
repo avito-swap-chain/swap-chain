@@ -38,7 +38,7 @@ func TestCanApplyTransition(t *testing.T) {
 		{
 			name:         "completed retry",
 			chainStatus:  model.ChainCompleted,
-			itemStatus:   "LOCKED",
+			itemStatus:   "EXCHANGED",
 			current:      model.DeliveryReceived,
 			target:       model.DeliveryReceived,
 			wantAccepted: true,
@@ -53,8 +53,15 @@ func TestCanApplyTransition(t *testing.T) {
 		{
 			name:        "completed chain mutation",
 			chainStatus: model.ChainCompleted,
-			itemStatus:  "LOCKED",
+			itemStatus:  "EXCHANGED",
 			current:     model.DeliveryInTransit,
+			target:      model.DeliveryReceived,
+		},
+		{
+			name:        "completed chain with stale locked item",
+			chainStatus: model.ChainCompleted,
+			itemStatus:  "LOCKED",
+			current:     model.DeliveryReceived,
 			target:      model.DeliveryReceived,
 		},
 	}

@@ -268,7 +268,7 @@ func (r *postgresRepository) Update(ctx context.Context, userID, itemID int64, i
 	if current.UserID != userID {
 		return updateResult{}, ErrForbidden
 	}
-	if current.Status == "LOCKED" {
+	if current.Status == "LOCKED" || current.Status == "EXCHANGED" {
 		return updateResult{}, ErrConflict
 	}
 
@@ -710,7 +710,6 @@ func loadWishesTx(ctx context.Context, q queryer, itemID int64) ([]ItemWish, err
 	}
 	return wishes, nil
 }
-
 
 func loadWishesDB(ctx context.Context, db *sql.DB, itemID int64) ([]ItemWish, error) {
 	return loadWishesTx(ctx, db, itemID)

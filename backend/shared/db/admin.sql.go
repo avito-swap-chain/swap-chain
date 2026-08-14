@@ -72,6 +72,36 @@ func (q *Queries) CreateAdminDeliveryEvent(ctx context.Context, arg CreateAdminD
 	return err
 }
 
+const exchangeAdminChainItems = `-- name: ExchangeAdminChainItems :one
+WITH target AS (
+    SELECT participant.item_id
+    FROM chain_items AS participant
+    WHERE participant.chain_id = $1
+), exchanged AS (
+    UPDATE items AS item
+    SET status = 'EXCHANGED',
+        updated_at = now()
+    FROM target
+    WHERE item.id = target.item_id
+      AND item.status = 'LOCKED'
+    RETURNING item.id
+)
+SELECT (SELECT count(*) FROM target)::bigint AS item_count,
+       (SELECT count(*) FROM exchanged)::bigint AS exchanged_count
+`
+
+type ExchangeAdminChainItemsRow struct {
+	ItemCount      int64 `json:"item_count"`
+	ExchangedCount int64 `json:"exchanged_count"`
+}
+
+func (q *Queries) ExchangeAdminChainItems(ctx context.Context, chainID int64) (ExchangeAdminChainItemsRow, error) {
+	row := q.db.QueryRowContext(ctx, exchangeAdminChainItems, chainID)
+	var i ExchangeAdminChainItemsRow
+	err := row.Scan(&i.ItemCount, &i.ExchangedCount)
+	return i, err
+}
+
 const findAdminDeliveryChain = `-- name: FindAdminDeliveryChain :one
 SELECT delivery.chain_id
 FROM chain_items AS delivery
@@ -171,7 +201,7 @@ JOIN chain_items AS recipient_leg
  AND recipient_leg.next_item_id = delivery.item_id
 JOIN users AS recipient ON recipient.id = recipient_leg.user_id
 WHERE chain.status IN ('ACCEPTED', 'COMPLETED')
-  AND item.status = 'LOCKED'
+  AND item.status IN ('LOCKED', 'EXCHANGED')
   AND delivery.id > $1
   AND ($2::text = ''
        OR delivery.delivery_status::text = $2::text)

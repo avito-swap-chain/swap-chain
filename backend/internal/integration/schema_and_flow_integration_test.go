@@ -24,6 +24,7 @@ import (
 	applicationmatching "swap-chain/internal/application/matching"
 	"swap-chain/internal/chains"
 	"swap-chain/internal/events"
+	itemservice "swap-chain/internal/items"
 	"swap-chain/internal/outbox"
 	adminmodel "swap-chain/modules/admin/model"
 	adminrepository "swap-chain/modules/admin/repository"
@@ -784,6 +785,39 @@ func TestAdminRepositoryCoversDeliveryLifecycleAndAuthorization(t *testing.T) {
 	if chainStatus != adminmodel.ChainCompleted {
 		t.Fatalf("chain status = %q, want COMPLETED", chainStatus)
 	}
+	var exchangedItems int
+	if err := database.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM items AS item
+		JOIN chain_items AS participant ON participant.item_id = item.id
+		WHERE participant.chain_id = $1
+		  AND item.status::text = 'EXCHANGED'`, chainID).Scan(&exchangedItems); err != nil {
+		t.Fatalf("count exchanged items: %v", err)
+	}
+	if exchangedItems != len(deliveryIDs) {
+		t.Fatalf("exchanged items = %d, want %d", exchangedItems, len(deliveryIDs))
+	}
+	var exchangedItemID, exchangedItemOwnerID int64
+	if err := database.QueryRowContext(ctx, `
+		SELECT participant.item_id, item.user_id
+		FROM chain_items AS participant
+		JOIN items AS item ON item.id = participant.item_id
+		WHERE participant.chain_id = $1
+		ORDER BY participant.id
+		LIMIT 1`, chainID).Scan(&exchangedItemID, &exchangedItemOwnerID); err != nil {
+		t.Fatalf("load exchanged item: %v", err)
+	}
+	itemService := itemservice.NewPostgresService(database, nil, nil, zap.NewNop(), time.Second)
+	t.Cleanup(itemService.Close)
+	changedDescription := "should stay immutable"
+	if _, err := itemService.Update(ctx, exchangedItemOwnerID, exchangedItemID, itemservice.UpdateInput{
+		OfferDescription: &changedDescription,
+	}); !errors.Is(err, itemservice.ErrConflict) {
+		t.Fatalf("update exchanged item error = %v, want ErrConflict", err)
+	}
+	if receipt, err := repository.ConfirmReceipt(ctx, userIDs[0], chainID); err != nil || receipt.ChainStatus != adminmodel.ChainCompleted {
+		t.Fatalf("repeat completed receipt = %+v, error = %v", receipt, err)
+	}
 	var repeatedAuditRows int
 	if err := database.QueryRowContext(ctx, `
 		SELECT count(*) FROM admin_delivery_events
@@ -863,9 +897,9 @@ func seedDeliveryChain(t *testing.T, database *sql.DB, status string) (int64, []
 			t.Fatalf("create delivery user %d: %v", index, err)
 		}
 		if err := database.QueryRowContext(ctx, `
-			INSERT INTO items (user_id, offer_title, status)
-			VALUES ($1, $2, 'LOCKED')
-			RETURNING id`, userIDs[index], fmt.Sprintf("delivery-item-%d", index)).Scan(&itemIDs[index]); err != nil {
+			INSERT INTO items (user_id, offer_title, offer_description, status)
+			VALUES ($1, $2, $3, 'LOCKED')
+			RETURNING id`, userIDs[index], fmt.Sprintf("delivery-item-%d", index), "delivery item for integration test").Scan(&itemIDs[index]); err != nil {
 			t.Fatalf("create delivery item %d: %v", index, err)
 		}
 	}

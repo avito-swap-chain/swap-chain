@@ -81,7 +81,7 @@ func (s *MemoryService) Update(_ context.Context, userID, itemID int64, input Up
 		s.mu.Unlock()
 		return Item{}, ErrForbidden
 	}
-	if item.Status == "LOCKED" {
+	if item.Status == "LOCKED" || item.Status == "EXCHANGED" {
 		s.mu.Unlock()
 		return Item{}, ErrConflict
 	}

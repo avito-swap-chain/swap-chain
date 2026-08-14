@@ -71,7 +71,7 @@ func TestMemoryServiceRestartsAnalysisWhenWishChanges(t *testing.T) {
 	}
 }
 
-func TestMemoryServiceRefusesLockedOrForeignItemUpdate(t *testing.T) {
+func TestMemoryServiceRefusesTerminalOrForeignItemUpdate(t *testing.T) {
 	service := NewMemoryService()
 	created, err := service.Create(context.Background(), 7, CreateInput{
 		OfferTitle:       "Велосипед",
@@ -86,13 +86,15 @@ func TestMemoryServiceRefusesLockedOrForeignItemUpdate(t *testing.T) {
 	if _, err := service.Update(context.Background(), 8, created.ID, UpdateInput{OfferDescription: &description}); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("foreign Update() error = %v, want ErrForbidden", err)
 	}
-	service.mu.Lock()
-	item := service.items[created.ID]
-	item.Status = "LOCKED"
-	service.items[created.ID] = item
-	service.mu.Unlock()
-	if _, err := service.Update(context.Background(), 7, created.ID, UpdateInput{OfferDescription: &description}); !errors.Is(err, ErrConflict) {
-		t.Fatalf("locked Update() error = %v, want ErrConflict", err)
+	for _, status := range []string{"LOCKED", "EXCHANGED"} {
+		service.mu.Lock()
+		item := service.items[created.ID]
+		item.Status = status
+		service.items[created.ID] = item
+		service.mu.Unlock()
+		if _, err := service.Update(context.Background(), 7, created.ID, UpdateInput{OfferDescription: &description}); !errors.Is(err, ErrConflict) {
+			t.Fatalf("%s Update() error = %v, want ErrConflict", status, err)
+		}
 	}
 }
 

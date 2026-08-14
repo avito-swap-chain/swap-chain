@@ -156,6 +156,7 @@ const (
 	ItemStatusLOCKED         ItemStatus = "LOCKED"
 	ItemStatusWITHDRAWN      ItemStatus = "WITHDRAWN"
 	ItemStatusACTIONREQUIRED ItemStatus = "ACTION_REQUIRED"
+	ItemStatusEXCHANGED      ItemStatus = "EXCHANGED"
 )
 
 func (e *ItemStatus) Scan(src interface{}) error {

@@ -19,6 +19,8 @@ import (
 	adminrepository "swap-chain/modules/admin/repository"
 	blocklistmodel "swap-chain/modules/blocklist/model"
 	blocklistrepository "swap-chain/modules/blocklist/repository"
+	chatrepository "swap-chain/modules/chat/repository"
+	chatservice "swap-chain/modules/chat/service"
 	matchingrepository "swap-chain/modules/matching/repository"
 	matchingservice "swap-chain/modules/matching/service"
 	moderationmodel "swap-chain/modules/moderation/model"
@@ -27,6 +29,12 @@ import (
 )
 
 const migrationBeforeBlocklist = 23
+
+const migrationBeforeExplicitChainApproval = 24
+
+const migrationBeforeItemScopedChat = 25
+
+const migrationBeforeExchangedItemStatus = 26
 
 func seedTestUser(t *testing.T, database *sql.DB, suffix int64, role string) int64 {
 	t.Helper()
@@ -104,6 +112,80 @@ func newBlocklistRepository(t *testing.T, database *sql.DB) (*blocklistrepositor
 		t.Fatalf("create blocklist repository: %v", err)
 	}
 	return repository, chainService
+}
+
+func TestItemScopedChatCollapsesSameTransferAcrossChains(t *testing.T) {
+	database := newMigratedDatabase(t, 0)
+	ctx := context.Background()
+	_, chainService := newBlocklistRepository(t, database)
+
+	userA := seedTestUser(t, database, 90, "USER")
+	userB := seedTestUser(t, database, 91, "USER")
+	categoryIDs := loadCategoryIDs(t, database, 2)
+	itemA1 := seedMatchingItem(t, database, userA, 90, categoryIDs[0], categoryIDs[1], 0, 1)
+	itemA2 := seedMatchingItem(t, database, userA, 91, categoryIDs[0], categoryIDs[1], 0, 1)
+	itemB := seedMatchingItem(t, database, userB, 92, categoryIDs[1], categoryIDs[0], 1, 0)
+
+	for index, itemA := range []int64{itemA1, itemA2} {
+		if _, err := chainService.Create(ctx, userA, chains.CreateInput{Edges: []chains.Edge{
+			{SourceItemID: itemA, TargetItemID: itemB},
+			{SourceItemID: itemB, TargetItemID: itemA},
+		}}); err != nil {
+			t.Fatalf("create chain %d: %v", index+1, err)
+		}
+	}
+
+	repository, err := chatrepository.NewPostgreSQL(database)
+	if err != nil {
+		t.Fatalf("create chat repository: %v", err)
+	}
+	chat, err := chatservice.New(repository, chatservice.ChatConfig{MaxListLimit: 100, MaxWait: time.Second})
+	if err != nil {
+		t.Fatalf("create chat service: %v", err)
+	}
+
+	threads, err := chat.ListThreads(ctx, userA)
+	if err != nil {
+		t.Fatalf("list chat threads: %v", err)
+	}
+	if len(threads) != 1 || threads[0].Item.ID != itemB || threads[0].Counterpart.ID != userB {
+		t.Fatalf("user A threads = %+v, want only user B item %d", threads, itemB)
+	}
+
+	ownerThreads, err := chat.ListThreads(ctx, userB)
+	if err != nil {
+		t.Fatalf("list owner chat threads: %v", err)
+	}
+	if len(ownerThreads) != 2 || ownerThreads[0].Item.ID == itemB || ownerThreads[1].Item.ID == itemB {
+		t.Fatalf("user B threads = %+v, want only user A incoming items", ownerThreads)
+	}
+
+	sent, created, err := chat.Send(ctx, itemB, userA, userB, "same-item-across-chains", "Одна история для одной вещи")
+	if err != nil || !created {
+		t.Fatalf("send item-scoped message: message=%+v created=%v err=%v", sent, created, err)
+	}
+	messages, err := chat.List(ctx, itemB, userB, userA, 0, 10, 0)
+	if err != nil || len(messages) != 1 || messages[0].ID != sent.ID {
+		t.Fatalf("list shared item history: messages=%+v err=%v", messages, err)
+	}
+	ownerThreads, err = chat.ListThreads(ctx, userB)
+	if err != nil {
+		t.Fatalf("list owner threads after message: %v", err)
+	}
+	foundReplyThread := false
+	for _, thread := range ownerThreads {
+		if thread.Item.ID == itemB && thread.Counterpart.ID == userA {
+			foundReplyThread = true
+		}
+	}
+	if !foundReplyThread {
+		t.Fatalf("owner cannot find reply thread for item %d: %+v", itemB, ownerThreads)
+	}
+
+	repeated, created, err := chat.Send(ctx, itemB, userA, userB, "same-item-across-chains", "Одна история для одной вещи")
+	if err != nil || created || repeated.ID != sent.ID {
+		t.Fatalf("repeat item-scoped message: message=%+v created=%v err=%v", repeated, created, err)
+	}
 }
 
 func TestBlocklistCancelsPendingChainsAndKeepsTerminal(t *testing.T) {
@@ -708,6 +790,320 @@ func TestBlocklistModerationMigrationUpAndDown(t *testing.T) {
 		if exists {
 			t.Fatalf("table %s still exists after rollback", table)
 		}
+	}
+}
+
+func TestExplicitChainApprovalMigrationResetsOnlyPendingApprovals(t *testing.T) {
+	databaseURL, cleanup := newTestDatabase(t)
+	t.Cleanup(cleanup)
+
+	migrator := newMigrator(t, databaseURL)
+	if err := migrator.Steps(migrationBeforeExplicitChainApproval); err != nil {
+		t.Fatalf("apply migrations through 24: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database := openDatabase(t, databaseURL)
+	userA := seedTestUser(t, database, 3000, "USER")
+	userB := seedTestUser(t, database, 3001, "USER")
+	categoryIDs := loadCategoryIDs(t, database, 2)
+	itemA := seedMatchingItem(t, database, userA, 3000, categoryIDs[0], categoryIDs[1], 0, 1)
+	itemB := seedMatchingItem(t, database, userB, 3001, categoryIDs[1], categoryIDs[0], 1, 0)
+
+	var pendingID, acceptedID int64
+	if err := database.QueryRow(`
+		INSERT INTO chains (status, cycle_key)
+		VALUES ('PENDING', 'explicit-approval-pending')
+		RETURNING id`).Scan(&pendingID); err != nil {
+		t.Fatalf("create pending chain: %v", err)
+	}
+	if err := database.QueryRow(`
+		INSERT INTO chains (status, cycle_key)
+		VALUES ('ACCEPTED', 'explicit-approval-accepted')
+		RETURNING id`).Scan(&acceptedID); err != nil {
+		t.Fatalf("create accepted chain: %v", err)
+	}
+	for _, chainID := range []int64{pendingID, acceptedID} {
+		if _, err := database.Exec(`
+			INSERT INTO chain_items (chain_id, item_id, user_id, next_item_id, status)
+			VALUES ($1, $2, $3, $4, 'APPROVED'),
+			       ($1, $4, $5, $2, 'APPROVED')`,
+			chainID, itemA, userA, itemB, userB,
+		); err != nil {
+			t.Fatalf("create participants for chain %d: %v", chainID, err)
+		}
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 24 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Steps(1); err != nil {
+		t.Fatalf("apply explicit approval migration: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	assertChainParticipantStatuses(t, database, pendingID, "WAITING")
+	assertChainParticipantStatuses(t, database, acceptedID, "APPROVED")
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 25 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Migrate(migrationBeforeExplicitChainApproval); err != nil {
+		t.Fatalf("roll back explicit approval migration: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	t.Cleanup(func() { _ = database.Close() })
+	assertChainParticipantStatuses(t, database, pendingID, "WAITING")
+}
+
+func TestItemScopedChatMigrationUpAndDown(t *testing.T) {
+	databaseURL, cleanup := newTestDatabase(t)
+	t.Cleanup(cleanup)
+
+	migrator := newMigrator(t, databaseURL)
+	if err := migrator.Steps(migrationBeforeItemScopedChat); err != nil {
+		t.Fatalf("apply migrations through 25: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database := openDatabase(t, databaseURL)
+	userA := seedTestUser(t, database, 3100, "USER")
+	userB := seedTestUser(t, database, 3101, "USER")
+	userC := seedTestUser(t, database, 3102, "USER")
+	categoryIDs := loadCategoryIDs(t, database, 3)
+	itemA := seedMatchingItem(t, database, userA, 3100, categoryIDs[0], categoryIDs[1], 0, 1)
+	itemB := seedMatchingItem(t, database, userB, 3101, categoryIDs[1], categoryIDs[2], 1, 2)
+	itemC := seedMatchingItem(t, database, userC, 3102, categoryIDs[2], categoryIDs[0], 2, 0)
+	itemB2 := seedMatchingItem(t, database, userB, 3103, categoryIDs[1], categoryIDs[2], 1, 2)
+	itemC2 := seedMatchingItem(t, database, userC, 3104, categoryIDs[2], categoryIDs[0], 2, 0)
+
+	var chainID int64
+	if err := database.QueryRow(`
+		INSERT INTO chains (status, cycle_key)
+		VALUES ('PENDING', 'item-chat-migration')
+		RETURNING id`).Scan(&chainID); err != nil {
+		t.Fatalf("create migration chain: %v", err)
+	}
+	for _, row := range []struct {
+		itemID int64
+		userID int64
+		nextID int64
+	}{{itemA, userA, itemB}, {itemB, userB, itemC}, {itemC, userC, itemA}} {
+		if _, err := database.Exec(`
+			INSERT INTO chain_items (chain_id, item_id, user_id, next_item_id, status)
+			VALUES ($1, $2, $3, $4, 'WAITING')`, chainID, row.itemID, row.userID, row.nextID); err != nil {
+			t.Fatalf("create migration chain item: %v", err)
+		}
+	}
+	var secondChainID int64
+	if err := database.QueryRow(`
+		INSERT INTO chains (status, cycle_key)
+		VALUES ('PENDING', 'item-chat-migration-second')
+		RETURNING id`).Scan(&secondChainID); err != nil {
+		t.Fatalf("create second migration chain: %v", err)
+	}
+	for _, row := range []struct {
+		itemID int64
+		userID int64
+		nextID int64
+	}{{itemA, userA, itemB2}, {itemB2, userB, itemC2}, {itemC2, userC, itemA}} {
+		if _, err := database.Exec(`
+			INSERT INTO chain_items (chain_id, item_id, user_id, next_item_id, status)
+			VALUES ($1, $2, $3, $4, 'WAITING')`, secondChainID, row.itemID, row.userID, row.nextID); err != nil {
+			t.Fatalf("create second migration chain item: %v", err)
+		}
+	}
+
+	var messageID int64
+	if err := database.QueryRow(`
+		INSERT INTO chat_messages (chain_id, sender_user_id, recipient_user_id, client_message_id, message_text)
+		VALUES ($1, $2, $3, 'legacy-item-chat', 'legacy message')
+		RETURNING id`, chainID, userA, userC).Scan(&messageID); err != nil {
+		t.Fatalf("create legacy chat message: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO chat_messages (chain_id, sender_user_id, recipient_user_id, client_message_id, message_text)
+		VALUES ($1, $2, $3, 'legacy-item-chat', 'same client key in another chain')`, secondChainID, userA, userC); err != nil {
+		t.Fatalf("create duplicate legacy client key: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO chat_read_states (chain_id, user_id, counterpart_user_id, last_read_message_id)
+		VALUES ($1, $2, $3, $4)`, chainID, userC, userA, messageID); err != nil {
+		t.Fatalf("create legacy chat read state: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 25 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Steps(1); err != nil {
+		t.Fatalf("apply item-scoped chat migration: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	var migratedItemID int64
+	if err := database.QueryRow(`SELECT item_id FROM chat_messages WHERE id = $1`, messageID).Scan(&migratedItemID); err != nil {
+		t.Fatalf("load migrated chat message: %v", err)
+	}
+	if migratedItemID != itemA {
+		t.Fatalf("migrated message item = %d, want %d", migratedItemID, itemA)
+	}
+	var migratedMessages, distinctClientKeys int
+	if err := database.QueryRow(`
+		SELECT count(*), count(DISTINCT client_message_id)
+		FROM chat_messages
+		WHERE item_id = $1 AND sender_user_id = $2 AND recipient_user_id = $3`,
+		itemA, userA, userC,
+	).Scan(&migratedMessages, &distinctClientKeys); err != nil {
+		t.Fatalf("load migrated idempotency keys: %v", err)
+	}
+	if migratedMessages != 2 || distinctClientKeys != 2 {
+		t.Fatalf("migrated messages=%d distinct client keys=%d, want 2 and 2", migratedMessages, distinctClientKeys)
+	}
+	var readItemID int64
+	if err := database.QueryRow(`
+		SELECT item_id FROM chat_read_states
+		WHERE user_id = $1 AND counterpart_user_id = $2`, userC, userA).Scan(&readItemID); err != nil {
+		t.Fatalf("load migrated chat read state: %v", err)
+	}
+	if readItemID != itemA {
+		t.Fatalf("migrated read state item = %d, want %d", readItemID, itemA)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 26 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Migrate(migrationBeforeItemScopedChat); err != nil {
+		t.Fatalf("roll back item-scoped chat migration: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	t.Cleanup(func() { _ = database.Close() })
+	var itemColumnExists bool
+	if err := database.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'chat_messages' AND column_name = 'item_id'
+		)`).Scan(&itemColumnExists); err != nil {
+		t.Fatalf("check rolled-back chat message schema: %v", err)
+	}
+	if itemColumnExists {
+		t.Fatal("chat_messages.item_id still exists after rollback")
+	}
+	var restoredChainID int64
+	if err := database.QueryRow(`
+		SELECT chain_id FROM chat_read_states
+		WHERE user_id = $1 AND counterpart_user_id = $2`, userC, userA).Scan(&restoredChainID); err != nil {
+		t.Fatalf("load restored chat read state: %v", err)
+	}
+	if restoredChainID != chainID {
+		t.Fatalf("restored read state chain = %d, want %d", restoredChainID, chainID)
+	}
+}
+
+func TestExchangedItemStatusMigrationUpAndDown(t *testing.T) {
+	databaseURL, cleanup := newTestDatabase(t)
+	t.Cleanup(cleanup)
+
+	migrator := newMigrator(t, databaseURL)
+	if err := migrator.Steps(migrationBeforeExchangedItemStatus); err != nil {
+		t.Fatalf("apply migrations through 26: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database := openDatabase(t, databaseURL)
+	completedChainID, _, completedDeliveries := seedDeliveryChain(t, database, adminmodel.ChainCompleted)
+	acceptedChainID, _, acceptedDeliveries := seedDeliveryChain(t, database, adminmodel.ChainAccepted)
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 26 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Steps(2); err != nil {
+		t.Fatalf("apply exchanged item migrations: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	assertChainItemStatusCount(t, database, completedChainID, "EXCHANGED", len(completedDeliveries))
+	assertChainItemStatusCount(t, database, acceptedChainID, "LOCKED", len(acceptedDeliveries))
+	if err := database.Close(); err != nil {
+		t.Fatalf("close version 28 database: %v", err)
+	}
+
+	migrator = newMigrator(t, databaseURL)
+	if err := migrator.Migrate(migrationBeforeExchangedItemStatus); err != nil {
+		t.Fatalf("roll back exchanged item migrations: %v", err)
+	}
+	closeMigrator(t, migrator)
+
+	database = openDatabase(t, databaseURL)
+	t.Cleanup(func() { _ = database.Close() })
+	assertChainItemStatusCount(t, database, completedChainID, "LOCKED", len(completedDeliveries))
+	var exchangedEnumExists bool
+	if err := database.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_enum AS value
+			JOIN pg_type AS enum_type ON enum_type.oid = value.enumtypid
+			WHERE enum_type.typname = 'item_status'
+			  AND value.enumlabel = 'EXCHANGED'
+		)`).Scan(&exchangedEnumExists); err != nil {
+		t.Fatalf("check exchanged enum after rollback: %v", err)
+	}
+	if exchangedEnumExists {
+		t.Fatal("EXCHANGED item status still exists after rollback")
+	}
+}
+
+func assertChainItemStatusCount(t *testing.T, database *sql.DB, chainID int64, status string, want int) {
+	t.Helper()
+	var count int
+	if err := database.QueryRow(`
+		SELECT count(*)
+		FROM items AS item
+		JOIN chain_items AS participant ON participant.item_id = item.id
+		WHERE participant.chain_id = $1
+		  AND item.status::text = $2`, chainID, status).Scan(&count); err != nil {
+		t.Fatalf("count chain %d items in %s: %v", chainID, status, err)
+	}
+	if count != want {
+		t.Fatalf("chain %d items in %s = %d, want %d", chainID, status, count, want)
+	}
+}
+
+func assertChainParticipantStatuses(t *testing.T, database *sql.DB, chainID int64, want string) {
+	t.Helper()
+	rows, err := database.Query(`SELECT status::text FROM chain_items WHERE chain_id = $1 ORDER BY user_id`, chainID)
+	if err != nil {
+		t.Fatalf("load participants for chain %d: %v", chainID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	count := 0
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			t.Fatalf("scan participant for chain %d: %v", chainID, err)
+		}
+		if status != want {
+			t.Fatalf("chain %d participant status = %q, want %q", chainID, status, want)
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate participants for chain %d: %v", chainID, err)
+	}
+	if count != 2 {
+		t.Fatalf("chain %d participant count = %d, want 2", chainID, count)
 	}
 }
 

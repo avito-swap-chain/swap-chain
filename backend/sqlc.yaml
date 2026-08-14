@@ -25,6 +25,8 @@ sql:
       - "migrations/000021_migrate_undefined_categories.up.sql"
       - "migrations/000024_add_blocklist_and_moderation.up.sql"
       - "migrations/000026_scope_chat_to_item.up.sql"
+      - "migrations/000027_add_exchanged_item_status.up.sql"
+      - "migrations/000028_backfill_exchanged_items.up.sql"
     queries: "sql/queries"
     gen:
       go:
