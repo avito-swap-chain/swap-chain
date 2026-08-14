@@ -1087,6 +1087,150 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /api/v1/support/thread:
+    get:
+      operationId: getSupportThread
+      tags: [support]
+      summary: Get the authenticated user's persistent support thread
+      responses:
+        "200": {description: Support thread, content: {application/json: {schema: {$ref: "#/components/schemas/SupportThread"}}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/support/messages:
+    get:
+      operationId: listSupportMessages
+      tags: [support]
+      parameters:
+        - {name: afterId, in: query, schema: {type: integer, format: int64, minimum: 0, default: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: waitSeconds, in: query, schema: {type: integer, minimum: 0, maximum: 25, default: 0}}
+      responses:
+        "200": {description: Messages or an empty list after long-poll timeout, content: {application/json: {schema: {$ref: "#/components/schemas/SupportMessageList"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: sendSupportMessage
+      tags: [support]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SendChatMessageRequest"}}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/SupportMessage"}}}}
+        "200": {description: Idempotent retry, content: {application/json: {schema: {$ref: "#/components/schemas/SupportMessage"}}}}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/support/read:
+    post:
+      operationId: markSupportRead
+      tags: [support]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/MarkChatThreadReadRequest"}}}}
+      responses:
+        "200": {description: Read state, content: {application/json: {schema: {$ref: "#/components/schemas/SupportReadState"}}}}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/admin/support/threads:
+    get:
+      operationId: listAdminSupportThreads
+      tags: [support, admin]
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 100}}
+      responses:
+        "200": {description: Support queue, content: {application/json: {schema: {type: object, required: [threads], properties: {threads: {type: array, items: {$ref: "#/components/schemas/SupportThread"}}}}}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/admin/support/threads/{threadId}:
+    parameters:
+      - {name: threadId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+    get:
+      operationId: getAdminSupportThread
+      tags: [support, admin]
+      responses:
+        "200": {description: Thread, content: {application/json: {schema: {$ref: "#/components/schemas/SupportThread"}}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/admin/support/threads/{threadId}/join:
+    parameters:
+      - {name: threadId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+    post:
+      operationId: joinSupportThread
+      tags: [support, admin]
+      responses:
+        "200": {description: Joined or already joined, content: {application/json: {schema: {$ref: "#/components/schemas/SupportThread"}}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/admin/support/threads/{threadId}/leave:
+    parameters:
+      - {name: threadId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+    post:
+      operationId: leaveSupportThread
+      tags: [support, admin]
+      responses:
+        "200": {description: Left or already disconnected, content: {application/json: {schema: {$ref: "#/components/schemas/SupportThread"}}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/admin/support/threads/{threadId}/messages:
+    parameters:
+      - {name: threadId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+    get:
+      operationId: listAdminSupportMessages
+      tags: [support, admin]
+      parameters:
+        - {name: afterId, in: query, schema: {type: integer, format: int64, minimum: 0, default: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: waitSeconds, in: query, schema: {type: integer, minimum: 0, maximum: 25, default: 0}}
+      responses:
+        "200": {description: Messages, content: {application/json: {schema: {$ref: "#/components/schemas/SupportMessageList"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+    post:
+      operationId: sendAdminSupportMessage
+      tags: [support, admin]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SendChatMessageRequest"}}}}
+      responses:
+        "201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/SupportMessage"}}}}
+        "200": {description: Idempotent retry, content: {application/json: {schema: {$ref: "#/components/schemas/SupportMessage"}}}}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/admin/support/threads/{threadId}/read:
+    parameters:
+      - {name: threadId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+    post:
+      operationId: markAdminSupportRead
+      tags: [support, admin]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/MarkChatThreadReadRequest"}}}}
+      responses:
+        "200": {description: Read state, content: {application/json: {schema: {$ref: "#/components/schemas/SupportReadState"}}}}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
   /api/v1/admin/deliveries:
     get:
       operationId: listAdminDeliveries
@@ -2415,6 +2559,53 @@ components:
           type: integer
           format: int64
           minimum: 0
+
+    SupportSenderType:
+      type: string
+      enum: [USER, MODERATOR, SYSTEM]
+
+    SupportMessage:
+      type: object
+      required: [id, threadId, senderType, text, createdAt]
+      properties:
+        id: {type: integer, format: int64}
+        threadId: {type: integer, format: int64}
+        senderType: {$ref: "#/components/schemas/SupportSenderType"}
+        sender:
+          nullable: true
+          allOf: [{$ref: "#/components/schemas/UserSummary"}]
+        clientMessageId: {type: string, nullable: true}
+        text: {type: string}
+        createdAt: {type: string, format: date-time}
+
+    SupportMessageList:
+      type: object
+      required: [messages]
+      properties:
+        messages: {type: array, items: {$ref: "#/components/schemas/SupportMessage"}}
+        nextAfterId: {type: integer, format: int64, nullable: true}
+
+    SupportThread:
+      type: object
+      required: [id, user, moderators, lastMessage, unreadCount, createdAt, updatedAt]
+      properties:
+        id: {type: integer, format: int64}
+        user: {$ref: "#/components/schemas/UserSummary"}
+        moderators: {type: array, items: {$ref: "#/components/schemas/UserSummary"}}
+        lastMessage:
+          nullable: true
+          allOf: [{$ref: "#/components/schemas/SupportMessage"}]
+        unreadCount: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+
+    SupportReadState:
+      type: object
+      required: [threadId, lastReadMessageId, unreadCount]
+      properties:
+        threadId: {type: integer, format: int64}
+        lastReadMessageId: {type: integer, format: int64}
+        unreadCount: {type: integer, format: int64, minimum: 0}
 
     AdminDeliveryStatus:
       type: string

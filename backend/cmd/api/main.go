@@ -46,6 +46,8 @@ import (
 	notificationservice "swap-chain/modules/notifications/service"
 	reputationrepository "swap-chain/modules/reputation/repository"
 	reputationservice "swap-chain/modules/reputation/service"
+	supportrepository "swap-chain/modules/support/repository"
+	supportservice "swap-chain/modules/support/service"
 	"swap-chain/shared/db"
 
 	"go.uber.org/zap"
@@ -393,6 +395,16 @@ func run(logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("create chat service: %w", err)
 	}
+	supportRepo, err := supportrepository.New(database)
+	if err != nil {
+		return fmt.Errorf("create support repository: %w", err)
+	}
+	supportModule, err := supportservice.New(supportRepo, cfg.ChatMaxListLimit, cfg.ChatMaxWait, func(userIDs []int64, threadID int64) {
+		eventHub.PublishToUsers(userIDs, "support.thread.updated", strconv.FormatInt(threadID, 10), nil)
+	})
+	if err != nil {
+		return fmt.Errorf("create support service: %w", err)
+	}
 
 	blocklistRepo, err := blocklistrepository.NewPostgreSQL(database, chainService)
 	if err != nil {
@@ -431,6 +443,7 @@ func run(logger *zap.Logger) error {
 		userService,
 		adminModule,
 		chatModule,
+		supportModule,
 		blocklistModule,
 		moderationModule,
 		notificationService,

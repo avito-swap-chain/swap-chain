@@ -36,6 +36,7 @@ import (
 	notificationservice "swap-chain/modules/notifications/service"
 	reputationmodel "swap-chain/modules/reputation/model"
 	reputationservice "swap-chain/modules/reputation/service"
+	supportservice "swap-chain/modules/support/service"
 )
 
 type databasePinger interface {
@@ -69,6 +70,7 @@ type Handler struct {
 	users         users.Service
 	admin         adminservice.Service
 	chat          chatservice.Service
+	support       *supportservice.Chat
 	blocklist     blocklistservice.Service
 	moderation    moderationservice.Service
 	notifications notificationservice.Service
@@ -93,6 +95,7 @@ func NewHandler(
 	userService users.Service,
 	adminService adminservice.Service,
 	chatService chatservice.Service,
+	supportService *supportservice.Chat,
 	blocklistService blocklistservice.Service,
 	moderationService moderationservice.Service,
 	notificationService notificationservice.Service,
@@ -114,6 +117,7 @@ func NewHandler(
 		users:         userService,
 		admin:         adminService,
 		chat:          chatService,
+		support:       supportService,
 		blocklist:     blocklistService,
 		moderation:    moderationService,
 		notifications: notificationService,

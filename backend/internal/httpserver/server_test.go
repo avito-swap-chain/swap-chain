@@ -108,6 +108,7 @@ func TestLivenessDoesNotDependOnReadiness(t *testing.T) {
 		users.NewMemoryService(testUser(1)),
 		&testAdminService{},
 		newTestChatService(),
+		nil,
 		&testBlocklistService{},
 		&testModerationService{},
 		nil,
@@ -1196,7 +1197,7 @@ func newTestServerWithAllServicesAndVision(t *testing.T, chainService chains.Ser
 			eventHub.PublishToUser(userID, eventType, entityID, data)
 		})
 	}
-	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), &testBlocklistService{}, &testModerationService{}, nil, &testReputationService{}, &testMetricsService{}, vision)
+	handler := httpapi.NewHandler(testDatabase{}, testFinder{}, logger, itemService, mediaService, chainService, &testCategoriesService{}, eventHub, sessions, userService, &testAdminService{}, newTestChatService(), nil, &testBlocklistService{}, &testModerationService{}, nil, &testReputationService{}, &testMetricsService{}, vision)
 	router, err := New(logger, handler, sessions, "http://localhost:5173", 10<<20)
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1955,6 +1956,7 @@ func newTestServerWithNotifications(t *testing.T, notificationService notificati
 		userService,
 		&testAdminService{},
 		newTestChatService(),
+		nil,
 		&testBlocklistService{},
 		&testModerationService{},
 		notificationService,
