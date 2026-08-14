@@ -1,5 +1,12 @@
 /** Раздел кабинета — единственный верхний уровень навигации: им подсвечивается меню. */
-export type Section = 'items' | 'exchange' | 'messages' | 'reviews' | 'notifications' | 'blocked'
+export type Section =
+  | 'items'
+  | 'exchange'
+  | 'messages'
+  | 'reviews'
+  | 'notifications'
+  | 'blocked'
+  | 'profile'
 
 /**
  * Раздел по текущему роуту. «Обмен» — это и список сделок (`/exchange`), и открытая
@@ -13,5 +20,8 @@ export function getSection(pathname: string): Section {
   // Чёрный список — раздел без пункта в меню: подсвечивать вместо него объявления неправильно.
   if (pathname === '/blocked') return 'blocked'
   if (pathname === '/notifications') return 'notifications'
+  // Свой профиль — пункт меню; чужой (`/users/:id`) им не подсвечивается, туда приходят
+  // из цепочки или переписки, а не из кабинета.
+  if (pathname === '/profile') return 'profile'
   return 'items'
 }

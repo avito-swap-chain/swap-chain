@@ -28,6 +28,11 @@ describe('getSection', () => {
     expect(getSection('/notifications')).toBe('notifications')
   })
 
+  it('свой профиль — пункт меню, чужой — нет', () => {
+    expect(getSection('/profile')).toBe('profile')
+    expect(getSection('/users/u2')).toBe('items')
+  })
+
   it('незнакомый роут не ломает подсветку', () => {
     expect(getSection('/whatever')).toBe('items')
   })

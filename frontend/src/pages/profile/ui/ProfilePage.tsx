@@ -72,7 +72,13 @@ export function ProfilePage({ mine = false }: { mine?: boolean }) {
 
   return (
     <Screen>
-      <ScreenHeader title={mine ? 'Мой профиль' : 'Профиль'} onBack={() => navigate(-1)} />
+      {/* Свой профиль — раздел кабинета, в меню он есть, и возвращаться из него некуда:
+          кнопка «назад» тут увела бы на случайный прошлый экран. У чужого она нужна —
+          туда попадают из цепочки или переписки. */}
+      <ScreenHeader
+        title={mine ? 'Управление профилем' : 'Профиль'}
+        onBack={mine ? undefined : () => navigate(-1)}
+      />
 
       <main className="flex flex-1 flex-col gap-5 p-4">
         {isPending && <Notice>Загрузка…</Notice>}

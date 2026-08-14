@@ -15,6 +15,7 @@ const REVIEWS_URL = '/reviews'
 const BLOCKED_URL = '/blocked'
 const MESSAGES_URL = '/messages'
 const NOTIFICATIONS_URL = '/notifications'
+const PROFILE_URL = '/profile'
 const ADMIN_URL = '/admin/deliveries'
 const MODERATION_URL = '/admin/moderation'
 const AUDIT_URL = '/admin/audit'
@@ -159,6 +160,18 @@ export function CabinetNav({ section, className }: { section: Section; className
         >
           Уведомления
           {news > 0 && <Counter title="Новые уведомления">{news}</Counter>}
+        </Link>
+      </div>
+
+      {/* Свой профиль у Авито — отдельный пункт меню, а не только аватар над ним:
+          туда ходят редактировать данные, и искать вход в аватаре человек не станет. */}
+      <div className={groupClass}>
+        <Link
+          to={PROFILE_URL}
+          aria-current={pathname === PROFILE_URL ? 'page' : undefined}
+          className={cx(itemClass, section === 'profile' ? currentClass : restClass)}
+        >
+          Управление профилем
         </Link>
       </div>
 
