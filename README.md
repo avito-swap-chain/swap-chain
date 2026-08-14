@@ -7,8 +7,11 @@ Backend ищет замкнутые цепочки обмена, в которы
 ## Что уже работает
 
 - регистрация/вход по телефону с opaque cookie-сессией;
-- создание карточек обмена с загрузкой фото;
-- автоматическое распознавание и векторизация через Ollama (bge-m3 + chat model);
+- создание карточек обмена с загрузкой фото и обязательным выбранным пользователем
+  состоянием (`NEW`, `GOOD`, `USED`);
+- подсказка описания, категории и состояния по фото через vision-модель; результат
+  не сохраняется автоматически и подтверждается пользователем;
+- классификация и векторизация через OpenRouter/Voyage с локальным Ollama fallback;
 - обязательная ручная категория отдаваемой вещи и определение категории каждого
   текстового пожелания по цепочке Flash → embedding; неоднозначное пожелание
   переводит карточку в `ACTION_REQUIRED` до выбора владельца;
@@ -16,6 +19,9 @@ Backend ищет замкнутые цепочки обмена, в которы
 - создание, согласование и завершение обменных цепочек
   (`PENDING → ACCEPTED/REJECTED`, затем `ACCEPTED → COMPLETED`);
 - личные диалоги соседей подобранной цепочки через long-polling;
+- жалобы на сообщение или пользователя, административная очередь решений и аудит;
+- чёрный список, исключающий пару пользователей из matching и активных вариантов;
+- отзывы после завершённого обмена и рассчитанная по ним репутация;
 - персональный SSE для real-time уведомлений;
 - хранение и выдача изображений через MinIO (только через backend);
 - PostgreSQL 17 с pgvector, версионируемые up/down миграции;
@@ -74,7 +80,8 @@ make up
 docker compose up -d --build
 ```
 
-Первая загрузка скачает образы и модели Ollama (`bge-m3` и `llama3.1`),
+Первая загрузка скачает образы и настроенные в `.env` модели Ollama
+(`bge-m3` и `llama3.1` в `.env.example`),
 что может занять 10–15 минут. Следить за процессом можно командой:
 
 ```bash
@@ -262,7 +269,9 @@ make test-integration запустить миграционные и сквоз�
 | `GET /api/v1/session` | Текущая сессия (user id, username, phone) |
 | `DELETE /api/v1/session` | Выход |
 | `POST /api/v1/items` | Создать карточку обмена |
+| `PATCH /api/v1/items/{id}` | Изменить карточку или снять вещь с подбора |
 | `GET /api/v1/items`, `GET /api/v1/items/{id}` | Список/одна карточка (только свои) |
+| `POST /api/v1/vision/analyze` | Асинхронно предложить описание, категорию и состояние по фотографии |
 | `GET /api/v1/items/{id}/matching` | Эфемерные цепочки для карточки (MATCHING-статус) |
 | `POST /api/v1/chains` | Создать цепочку из matching-кандидатов |
 | `GET /api/v1/chains`, `GET /api/v1/chains/{id}` | Список/детали цепочек |
@@ -273,9 +282,18 @@ make test-integration запустить миграционные и сквоз�
 | `GET /api/v1/chat/threads` | Все личные диалоги и счётчик непрочитанных сообщений |
 | `GET`, `POST /api/v1/items/{id}/chat/{counterpartId}/messages` | История/long-poll и отправка сообщений по передаваемой вещи |
 | `POST /api/v1/items/{id}/chat/{counterpartId}/read` | Идемпотентная отметка сообщений прочитанными |
+| `POST /api/v1/reports` | Пожаловаться на сообщение чата |
+| `POST /api/v1/users/{id}/reports` | Пожаловаться на пользователя с опциональным контекстом цепочки |
+| `GET`, `POST /api/v1/blocks` | Получить чёрный список или заблокировать пользователя |
+| `DELETE /api/v1/blocks/{id}` | Разблокировать пользователя |
+| `GET /api/v1/notifications`, `POST /api/v1/notifications/read` | Журнал уведомлений и отметка прочтения |
 | `GET /api/v1/admin/deliveries` | Очередь товаров принятых цепочек для сотрудника ПВЗ |
 | `POST /api/v1/admin/deliveries/{id}/transition` | Приём на ПВЗ, отправка или выдача получателю |
 | `GET /api/v1/admin/metrics/funnel` | Снимок продуктовой воронки и причин распада цепочек (только ADMIN) |
+| `GET /api/v1/admin/reports`, `GET /api/v1/admin/reports/{id}` | Очередь и детали жалоб (только ADMIN) |
+| `POST /api/v1/admin/reports/{id}/assign` | Взять жалобу в работу |
+| `POST /api/v1/admin/reports/{id}/decision` | Зафиксировать терминальное решение по жалобе |
+| `GET /api/v1/admin/audit` | Неизменяемый журнал административных действий |
 | `POST /api/v1/media` | Загрузить изображение (multipart) |
 | `GET /api/v1/media/{objectKey}` | Получить изображение (публично) |
 | `GET /api/v1/events` | Персональный SSE-поток |
@@ -286,8 +304,10 @@ make test-integration запустить миграционные и сквоз�
 
 ## SSE события
 
-- `item.status.updated` — карточка перешла ANALYZING → MATCHING → LOCKED
-- `chain.created`, `chain.updated`, `chain.accepted`, `chain.rejected`
+- `item.status.updated` — карточка перешла `ANALYZING → MATCHING → LOCKED`;
+- `vision.analysis.completed`, `vision.analysis.failed` — завершена подсказка по фото;
+- `chain.created`, `chain.updated`, `chain.accepted`, `chain.rejected`;
+- `notification.created` — журнал пользователя пополнился.
 
 События приходят только участникам. После переподключения клиент восстанавливает
 состояние через REST. События изменения доставки сначала записываются в
@@ -303,14 +323,16 @@ make test-integration запустить миграционные и сквоз�
 | `MIGRATIONS_URL` | Каталог миграций | `file://migrations` |
 | `BACKEND_PORT` | Опубликованный порт API | `8080` |
 | `HTTP_ADDR` | Адрес HTTP-сервера | `:8080` |
-| `CORS_ALLOWED_ORIGIN` | Разрешённый origin | `http://localhost:5173` |
+| `CORS_ALLOWED_ORIGIN` | Разрешённый origin | `http://localhost:18080` |
 | `SESSION_TTL` | Время жизни сессии | `24h` |
 | `COOKIE_SECURE` | Secure-флаг cookie | `false` |
-| `OLLAMA_BASE_URL` | Адрес Ollama | `http://localhost:11434` |
+| `OLLAMA_BASE_URL` | Адрес Ollama | `http://ollama:11434` |
 | `OLLAMA_CHAT_MODEL` | Модель для анализа | `llama3.1` |
 | `OLLAMA_EMBEDDINGS_MODEL` | Модель для эмбеддингов | `bge-m3` |
 | `OLLAMA_TIMEOUT` | Таймаут одного запроса к локальной модели | `4m` |
-| `GIGACHAT_AUTH_KEY` | Опциональный Authorization Key основного LLM; при ошибке используется Ollama | пусто |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Опциональный Flash-классификатор и vision/enrichment | пусто |
+| `VOYAGE_API_KEY`, `VOYAGE_MODEL` | Опциональный embedding-провайдер; Ollama остаётся fallback | пусто / `voyageai/voyage-4-large` |
+| `GIGACHAT_AUTH_KEY` | Опциональный Authorization Key дополнительного LLM | пусто |
 | `MINIO_ACCESS_KEY` | Ключ MinIO | `minioadmin` |
 | `MINIO_SECRET_KEY` | Секрет MinIO | `minioadmin` |
 | `MINIO_BUCKET` | Бакет для медиа | `swap-chain-media` |
@@ -320,11 +342,16 @@ make test-integration запустить миграционные и сквоз�
 | `MATCHING_CHAIN_LENGTH` | Макс. длина цепочки | `3` |
 | `MATCHING_PENALTY_FACTOR` | Штраф за разброс score | `0.25` |
 | `MATCHING_CHAIN_THRESHOLD` | Мин. итоговый score | `0.30` |
+| `MATCHING_COMPATIBILITY_THRESHOLD` | Мин. совместимость конкретной пары вещей | `0.4` |
 | `MATCHING_DEBUG` | Подробный лог кандидатов, рёбер и циклов matching | `false` |
 | `ANALYSIS_BOOTSTRAP_TIMEOUT` | Таймаут проверки моделей и bootstrap категорий | `5m` |
 | `ANALYSIS_TIMEOUT` | Общий таймаут полного анализа одной вещи | `5m` |
 | `ANALYSIS_STALE_AFTER` | Возраст зависшего анализа до запуска recovery | `6m` |
 | `SWAGGER_PORT` | Порт Swagger UI | `8081` |
+
+Состояние влияет на matching через сохраняемый коэффициент качества: `NEW=1.0`,
+`GOOD=0.8`, `USED=0.6`. Vision только предлагает значение; источником истины
+остаётся выбор пользователя из `POST/PATCH /items`.
 
 `.env` не коммитится. Значения примера — только для локальной разработки.
 
@@ -382,6 +409,16 @@ SSE hub каждого инстанса; после рестарта непод�
 каждого участника содержат статус и время последнего изменения его входящей
 доставки: `incomingDeliveryStatus` и `incomingDeliveryUpdatedAt`.
 
+Миграция `000024` добавляет двусторонний чёрный список и модерацию жалоб на
+сообщения. Миграция `000029` расширяет ту же очередь жалобами на пользователей,
+которые могут содержать контекст цепочки без обязательной ссылки на сообщение.
+Назначение, терминальное решение (`resolved`/`rejected`) и actor фиксируются в
+административном аудите. Блокировка пользователя остаётся отдельным действием.
+
+Миграция `000030` делает состояние карточки пользовательским сохраняемым полем:
+старые данные переводятся в один из трёх коэффициентов, новые запросы обязаны
+передавать `NEW`, `GOOD` или `USED`.
+
 `GET /api/v1/admin/metrics/funnel` возвращает согласованный снимок из PostgreSQL:
 
 - время до первого варианта — среднее число секунд между созданием вещи и первой
@@ -417,8 +454,7 @@ make build
 изолированные базы, но указанный сервер PostgreSQL должен разрешать создание и
 удаление баз. Не направляйте эту команду на общую или production-базу.
 
-Frontend проверяется отдельно, потому что корневые `make lint` и `make test`
-пока запускают только Go-линтер, Go-тесты и TypeScript typecheck:
+Frontend проверяется отдельно:
 
 ```bash
 pnpm --dir frontend run lint
@@ -477,7 +513,7 @@ Frontend использует `oxlint`: он быстро проверяет Jav
 
 - Ollama в Docker работает CPU-only; для GPU-ускорения установите Ollama на хосте и задайте `OLLAMA_BASE_URL=http://host.docker.internal:11434` в `.env`;
 - CI и production deployment пока не добавлены;
-- фото-распознавание (GigaChat/CV) не подключено к API, только analyze-пайплайн;
+- vision зависит от доступности настроенного внешнего провайдера или локальной модели;
 - привязка администраторов и доставок к нескольким конкретным ПВЗ пока не реализована.
 
 Общие правила архитектуры, миграций, тестирования и работы с ветками описаны в
