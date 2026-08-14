@@ -99,6 +99,9 @@ export function ItemReview({
     !values.title.trim() && 'названия',
     !values.description?.trim() && 'описания',
     !values.categoryId && 'категории',
+    // Состояние обязательно с контракта 0.10.0 — молчать о нём нельзя: кнопка заблокирована,
+    // а человек не понимает, чего от него хотят.
+    !values.condition && 'состояния',
   ].filter((item): item is string => Boolean(item))
 
   return (

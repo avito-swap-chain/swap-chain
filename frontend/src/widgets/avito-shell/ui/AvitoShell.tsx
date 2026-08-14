@@ -1,5 +1,4 @@
 import { Outlet, useLocation } from 'react-router-dom'
-import { Breadcrumbs } from './Breadcrumbs'
 import { CabinetNav } from './CabinetNav'
 import { MobileTabBar } from './MobileTabBar'
 import { ProfileSummary } from './ProfileSummary'
@@ -36,8 +35,9 @@ export function AvitoShell() {
           <CabinetNav section={section} />
         </aside>
 
+        {/* Крошек нет: у Авито их нет ни на одной странице кабинета, а у нас они ещё
+            и дублировали стрелку назад в шапке экрана — путь наверх и так один. */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <Breadcrumbs pathname={pathname} className="max-lg:hidden" />
           <Outlet />
         </div>
       </div>

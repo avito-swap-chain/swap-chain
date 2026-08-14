@@ -9,3 +9,4 @@ export {
 } from './api/deliveryApi'
 export { nextStatus, ACTION_LABEL, type DeliveryTransition } from './lib/transitions'
 export { DeliveryStatusLabel } from './ui/DeliveryStatusLabel'
+export { DeliveryProgress } from './ui/DeliveryProgress'
