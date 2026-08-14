@@ -24,6 +24,10 @@ export type ItemFormValues = Omit<ItemDraft, 'wish'>
  */
 const capitalize = (text: string) => text[0].toUpperCase() + text.slice(1)
 
+/** «названия, описания и категории» — запятые между всеми, «и» перед последним. */
+const enumerate = (parts: string[]): string =>
+  parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} и ${parts.at(-1)}`
+
 interface ItemReviewProps {
   values: ItemFormValues
   patch: (part: Partial<ItemFormValues>) => void
@@ -87,11 +91,12 @@ export function ItemReview({
     onSubmit()
   }
 
-  // Чего не хватает для подбора — в родительном падеже, потому что дальше «не хватает».
-  // Название сюда не входит: без него объявление вообще не опубликовать, и говорит
-  // об этом заблокированная кнопка, а не совет в баннере. Категория с контракта 0.9.0
-  // тоже обязательна, но её в баннере оставляем: кнопка молчит о том, чего именно ждёт.
+  // Чего не хватает — в родительном падеже, потому что дальше «не хватает». Название
+  // входит наравне с остальным: раньше его тут не было, и на пустом названии баннер
+  // бодро говорил «Всё на месте», пока кнопка внизу оставалась заблокированной, —
+  // сводка противоречила и полю, и кнопке.
   const missing = [
+    !values.title.trim() && 'названия',
     !values.description?.trim() && 'описания',
     !values.categoryId && 'категории',
   ].filter((item): item is string => Boolean(item))
@@ -105,7 +110,7 @@ export function ItemReview({
           {missing.length > 0 ? (
             <>
               <b className="font-bold">Расскажите о вещи чуть больше.</b> Не хватает{' '}
-              {missing.join(' и ')} — по ним сервис и ищет обмен.
+              {enumerate(missing)} — по ним сервис и ищет обмен.
             </>
           ) : (
             <>

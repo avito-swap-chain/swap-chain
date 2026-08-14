@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { PERSONAS, usePersonaStore } from '@/shared/model/persona'
 import {
   DEMO_USERS,
@@ -9,9 +11,9 @@ import {
   sessionKeys,
   type CurrentUser,
 } from '@/shared/model/session'
-import { asset } from '@/shared/lib'
+import { asset, cx } from '@/shared/lib'
 import { isBackendConnected } from '@/shared/config/backend'
-import { ActionError } from '@/shared/ui'
+import { ActionError, IconCheck } from '@/shared/ui'
 
 /** Строка переключателя: имя в поле, телефон для входа, корона у сотрудника ПВЗ. */
 interface SwitchOption {
@@ -20,12 +22,17 @@ interface SwitchOption {
   isAdmin?: boolean
 }
 
-const SELECT_CLASS =
-  'cursor-pointer rounded-chip border border-line bg-page py-1 pr-1.5 pl-2 font-sans text-[12.5px] font-bold text-ink focus-visible:outline-2 focus-visible:outline-brand'
+/** Разделы кабинета — как в меню профиля у Авито: из шапки видно, куда идти. */
+const SECTIONS = [
+  { label: 'Мои объявления', to: '/' },
+  { label: 'Обмен', to: '/exchange' },
+  { label: 'Сообщения', to: '/messages' },
+  { label: 'Уведомления', to: '/notifications' },
+]
 
 /**
  * Аватар аккаунта — крайний правый элемент шапки, как у Авито (40px, круглый).
- * Он же показывает, за кого сейчас смотрят: имя в поле дублируется лицом. У пользователя
+ * Он же показывает, за кого сейчас смотрят: имя в меню дублируется лицом. У пользователя
  * с бэкенда фотографии нет — тогда кружок с инициалом, выдумывать ему лицо незачем.
  *
  * Админа помечаем короной: на демо переключаются между обычным человеком и сотрудником ПВЗ,
@@ -49,16 +56,15 @@ function AccountAvatar({ user }: { user: CurrentUser }) {
     </span>
   )
 
-  if (!user.isAdmin) return <span className="shrink-0">{face}</span>
+  if (!user.isAdmin) return face
 
   return (
-    <span className="relative shrink-0" title="Аккаунт сотрудника ПВЗ">
+    <span className="relative block">
       {face}
       {/* Корона садится на угол аватара, но не вылезает за ярус шапки: выше ей места нет. */}
       <span aria-hidden className="absolute -top-0.5 -right-1 text-[13px] leading-none">
         👑
       </span>
-      <span className="sr-only">Аккаунт сотрудника ПВЗ</span>
     </span>
   )
 }
@@ -67,11 +73,17 @@ function AccountAvatar({ user }: { user: CurrentUser }) {
  * Демо-инструмент: посмотреть один и тот же обмен глазами разных участников — иначе
  * цепочку из трёх человек по ссылке не показать.
  *
- * На моках он только меняет, кто «я»: в бизнес-логику не вмешивается, `isMe` и состав
- * кабинета считает api. С бэкендом смотреть чужими глазами можно только по-настоящему —
- * пользователя опознаёт кука, поэтому переключение это выход и вход под другим телефоном.
+ * Живёт там же, где у Авито меню аккаунта: аватар в шапке, по клику — карточка со списком.
+ * Сверху «Смотрю как» (этого пункта у Авито нет, но и персон у него нет), ниже разделы
+ * кабинета и выход — как у них.
+ *
+ * На моках переключатель только меняет, кто «я»: в бизнес-логику не вмешивается, `isMe`
+ * и состав кабинета считает api. С бэкендом смотреть чужими глазами можно только
+ * по-настоящему — пользователя опознаёт кука, поэтому переключение это выход и вход
+ * под другим телефоном.
  */
 export function SwitchPersona() {
+  const [open, setOpen] = useState(false)
   const personaId = usePersonaStore((state) => state.personaId)
   const setPersonaId = usePersonaStore((state) => state.setPersonaId)
   const queryClient = useQueryClient()
@@ -101,57 +113,106 @@ export function SwitchPersona() {
       ]
     : PERSONAS.map((persona) => ({ name: persona.name, phone: persona.id }))
 
+  const currentValue = isBackendConnected ? (user.phone ?? '') : personaId
+
+  const choose = (value: string) => {
+    setOpen(false)
+
+    if (!isBackendConnected) {
+      setPersonaId(value)
+      queryClient.resetQueries()
+      return
+    }
+
+    switchUser.mutate(value)
+  }
+
   return (
-    <span className="relative flex items-center gap-2">
+    <div
+      className="relative flex pl-2"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') setOpen(false)
+      }}
+    >
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={user.isAdmin ? `${user.name} — сотрудник ПВЗ` : user.name}
+        onClick={() => setOpen((was) => !was)}
+        className="cursor-pointer rounded-full outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand"
+      >
+        <AccountAvatar user={user} />
+      </button>
+
       {/* Переключение — это настоящие выход и вход, и оно тоже может не получиться.
           Сообщение висит под шапкой: в самой шапке для него нет ряда. */}
       {switchUser.isError && (
-        <span className="absolute top-full right-0 z-10 mt-1 rounded-card bg-card px-2.5 py-1.5 shadow-lg">
+        <span className="absolute top-full right-0 z-30 mt-1 w-max rounded-card bg-card px-2.5 py-1.5 shadow-pop">
           <ActionError error={switchUser.error} />
         </span>
       )}
 
-      <label className="flex items-center gap-2">
-        {/* На узких окнах подпись прячется: в одну строку шапки лезут лок-ап, поиск и аккаунт,
-            а смысл переключателя и так виден по имени в поле. Экранным читалкам она остаётся. */}
-        <span className="text-[11px] leading-tight text-ink-3 max-sm:sr-only">Смотрю как</span>
-        {/* Значение пункта — телефон (на моках его роль играет id персоны), а не имя:
-            имена не уникальны и меняются, и выбор по ним промахивался. */}
-        <select
-          title="Смотрю как"
-          value={isBackendConnected ? (user.phone ?? '') : personaId}
-          disabled={switchUser.isPending}
-          onChange={(event) => {
-            if (!isBackendConnected) {
-              setPersonaId(event.target.value)
-              queryClient.resetQueries()
-              return
-            }
-
-            switchUser.mutate(event.target.value)
-          }}
-          className={SELECT_CLASS}
-        >
-          {options.map((option) => (
-            <option key={option.phone || option.name} value={option.phone}>
-              {/* Корона и в списке — иначе на демо не видно, под кем открывать админку ПВЗ. */}
-              {option.isAdmin ? `${option.name} 👑` : option.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {isBackendConnected && (
-        <button
-          type="button"
-          onClick={() => logout().then(() => queryClient.resetQueries())}
-          className="cursor-pointer rounded-sm text-[11px] leading-tight text-ink-3 hover:text-ink-2 focus-visible:outline-2 focus-visible:outline-brand"
-        >
-          Выйти
-        </button>
+      {open && (
+        /* Подложка ловит клик мимо меню: без неё карточка залипает поверх страницы.
+           Она выше плавающего мессенджера — иначе клик по нему меню не закрывает. */
+        <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
       )}
 
-      <AccountAvatar user={user} />
-    </span>
+      <div className={cx('absolute top-full right-0 z-50 pt-1.5', !open && 'hidden')}>
+        <div className="w-[221px] rounded-[24px] bg-card py-2 text-[15px] leading-[22px] shadow-pop">
+          <div role="listbox" aria-label="Смотрю как" className="px-6 py-4">
+            <p className="pb-1.5 text-[13px] leading-4 text-ink-3">Смотрю как</p>
+            {options.map((option) => {
+              const selected = option.phone === currentValue
+
+              return (
+                <button
+                  key={option.phone || option.name}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  disabled={switchUser.isPending}
+                  onClick={() => choose(option.phone)}
+                  className="flex w-full cursor-pointer items-center justify-between gap-2 py-1 text-left hover:text-brand"
+                >
+                  {/* Корона и в списке — иначе на демо не видно, под кем открывать админку ПВЗ. */}
+                  {option.isAdmin ? `${option.name} 👑` : option.name}
+                  {selected && <IconCheck size={14} className="shrink-0 text-brand" />}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="border-t border-line px-6 py-4">
+            {SECTIONS.map((section) => (
+              <Link
+                key={section.to}
+                to={section.to}
+                onClick={() => setOpen(false)}
+                className="block py-1 hover:text-brand"
+              >
+                {section.label}
+              </Link>
+            ))}
+          </div>
+
+          {isBackendConnected && (
+            <div className="border-t border-line px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  logout().then(() => queryClient.resetQueries())
+                }}
+                className="cursor-pointer py-1 hover:text-brand"
+              >
+                Выйти
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

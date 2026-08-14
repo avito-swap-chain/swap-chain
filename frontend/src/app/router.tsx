@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { AdminDeliveriesPage } from '@/pages/admin-deliveries'
 import { AdminAuditPage, AdminModerationPage, AdminReportPage } from '@/pages/admin-moderation'
+import { BlockedPage } from '@/pages/blocked'
 import { ChainPage } from '@/pages/chain'
 import { CreateOfferPage } from '@/pages/create-offer'
 import { EditItemPage } from '@/pages/edit-item'
@@ -10,8 +11,10 @@ import { ItemsPage } from '@/pages/items'
 import { MessagesPage } from '@/pages/messages'
 import { NotificationsPage } from '@/pages/notifications'
 import { ProfilePage } from '@/pages/profile'
+import { ReviewsPage } from '@/pages/reviews'
 import { ThreadPage } from '@/pages/thread'
 import { AvitoShell } from '@/widgets/avito-shell'
+import { MiniMessenger } from '@/widgets/mini-messenger'
 import { RouteError } from './RouteError'
 import { SessionGate } from './SessionGate'
 
@@ -22,6 +25,9 @@ export const router = createBrowserRouter(
       element: (
         <SessionGate>
           <AvitoShell />
+          {/* Плавающий мессенджер живёт поверх всех экранов кабинета, поэтому подключён
+              здесь, а не внутри оболочки: два виджета одного слоя друг о друге не знают. */}
+          <MiniMessenger />
         </SessionGate>
       ),
       // Исключение при рендере любого экрана: без этого роутер показал бы служебную
@@ -32,6 +38,12 @@ export const router = createBrowserRouter(
         { path: '/', element: <ItemsPage /> },
         { path: '/exchange', element: <ExchangePage /> },
         { path: '/messages', element: <MessagesPage /> },
+        // «Мои отзывы» — отдельный раздел меню, как у Авито: рейтинг в обмене это довод,
+        // а не украшение профиля.
+        { path: '/reviews', element: <ReviewsPage /> },
+        // Чёрный список — вторая половина блокировки: заблокировать можно было из профиля,
+        // а посмотреть, кого уже заблокировал, было негде.
+        { path: '/blocked', element: <BlockedPage /> },
         { path: '/notifications', element: <NotificationsPage /> },
         // Админка ПВЗ живёт в том же кабинете: у сотрудника это рабочее место, а не
         // отдельный продукт. Роут открыт всем, кто вошёл, — доступ решает бэкенд по роли.
@@ -51,7 +63,7 @@ export const router = createBrowserRouter(
         { path: '/exchange/:id', element: <ChainPage /> },
         // Переписка адресуется парой «цепочка + собеседник»: она привязана к ребру круга
         // обмена, а не к вещи — с одним человеком в двух цепочках это два разных разговора.
-        { path: '/messages/:chainId/:counterpartId', element: <ThreadPage /> },
+        { path: '/messages/:itemId/:counterpartId', element: <ThreadPage /> },
       ],
     },
   ],

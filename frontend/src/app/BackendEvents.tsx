@@ -41,7 +41,12 @@ export function BackendEvents() {
 
     return subscribeToBackendEvents({
       onItems: invalidateItems,
-      onChains: invalidateChains,
+      // Цепочка тянет за собой вещи: завершение обмена переводит их в `EXCHANGED` той же
+      // транзакцией, и без перечитывания списка вещь осталась бы «в цепочке» навсегда.
+      onChains: () => {
+        invalidateChains()
+        invalidateItems()
+      },
       onNotifications: invalidateNotifications,
       // Пропущенное за время обрыва сервер не переотправит — после подключения
       // перечитываем всё, иначе экран останется с состоянием до разрыва.

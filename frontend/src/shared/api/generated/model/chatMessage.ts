@@ -9,7 +9,7 @@ import type { UserSummary } from './userSummary';
 
 export interface ChatMessage {
   id: number;
-  chainId: number;
+  itemId: number;
   sender: UserSummary;
   recipient: UserSummary;
   clientMessageId: string;

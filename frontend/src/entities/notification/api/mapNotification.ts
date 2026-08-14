@@ -26,11 +26,32 @@ function routeOf(notification: ApiNotification): string {
   return '/exchange'
 }
 
+/**
+ * Причина отмены варианта приходит в тексте уведомления служебным кодом — бэкенд
+ * подставляет его как есть («Вариант обмена отменён: item_unavailable»). Человеку такой
+ * текст не говорит ничего, поэтому коды переводим здесь. Незнакомый код не трогаем: пусть
+ * лучше останется как есть, чем пропадёт причина целиком.
+ */
+const REASON_TEXT: Record<string, string> = {
+  item_unavailable: 'одна из вещей ушла в другой обмен',
+  item_withdrawn: 'вещь сняли с обмена',
+  item_changed: 'вещь изменили',
+  declined: 'участник отказался',
+  expired: 'время на ответ вышло',
+  blocked: 'участники не могут меняться друг с другом',
+  unknown: 'подробностей нет',
+}
+
+const humanizeReason = (text: string): string =>
+  text.replace(/:\s*([a-z_]+)\s*$/, (whole, code: string) =>
+    REASON_TEXT[code] ? `: ${REASON_TEXT[code]}` : whole,
+  )
+
 export const mapNotification = (notification: ApiNotification): AppNotification => ({
   id: String(notification.id),
   kind: KIND[notification.kind],
   title: notification.title,
-  text: notification.text,
+  text: humanizeReason(notification.text),
   to: routeOf(notification),
   createdAt: notification.createdAt,
   read: notification.read,

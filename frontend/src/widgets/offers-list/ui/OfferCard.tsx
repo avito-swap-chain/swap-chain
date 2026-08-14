@@ -31,10 +31,10 @@ export function OfferCard({ chain, variants }: OfferCardProps) {
   const total = chain.participants.length
   const cancelled = chain.status === 'cancelled'
 
-  // Собеседник — тот, кто отдаёт вещь мне: переписка привязана к ребру круга обмена,
-  // и спрашивают о состоянии именно того, что получаешь.
+  // Собеседник — тот, кто отдаёт вещь мне, а тема разговора — сама эта вещь: спрашивают
+  // о состоянии того, что получаешь, и история держится за вещью, а не за вариантом обмена.
   const askThread = {
-    chainId: chain.id,
+    itemId: neighbours.giver.givesItem.id,
     counterpartId: neighbours.giver.userId,
     peerName: neighbours.giver.name,
     peerAvatarUrl: neighbours.giver.avatarUrl,

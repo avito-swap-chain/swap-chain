@@ -11,7 +11,7 @@ import { ActionError } from '@/shared/ui'
  * после нажатия поздно. Вернуть всё как было одной кнопкой нельзя: желание придётся указать
  * заново, потому что снятие его стирает.
  */
-export function WithdrawItem({ itemId }: { itemId: string }) {
+export function WithdrawItem({ itemId, onDone }: { itemId: string; onDone?: () => void }) {
   const [asking, setAsking] = useState(false)
   const queryClient = useQueryClient()
 
@@ -26,6 +26,9 @@ export function WithdrawItem({ itemId }: { itemId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: itemKeys.my() })
       queryClient.invalidateQueries({ queryKey: chainKeys.all })
+      // Экран правки после снятия теряет смысл: желания у вещи больше нет, и править
+      // на нём нечего — уводим туда, откуда пришли.
+      onDone?.()
     },
   })
 

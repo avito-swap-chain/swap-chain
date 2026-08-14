@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { ListAdminReportsParams, MessageReport } from '@/shared/api/generated/model'
 import { getReports, moderationKeys, REASON_LABEL, ReportStatusLabel } from '@/entities/moderation'
-import { Button, Card, EmptyState, Notice, Screen } from '@/shared/ui'
+import { Button, EmptyState, Notice, Screen } from '@/shared/ui'
 
 /**
  * Что показывать в очереди. «Свободные» — жалобы, которые ещё никто не взял: с них разбор
@@ -25,7 +25,7 @@ const formatDate = (iso: string): string =>
 
 function ReportRow({ report }: { report: MessageReport }) {
   return (
-    <Card padded className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 border-b border-line py-3.5 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-[15px] leading-5 font-bold">{REASON_LABEL[report.reason]}</p>
         <p className="mt-0.5 text-[13px] leading-4 text-ink-2">
@@ -44,7 +44,7 @@ function ReportRow({ report }: { report: MessageReport }) {
           <Button variant="ghost">Открыть</Button>
         </Link>
       </div>
-    </Card>
+    </div>
   )
 }
 
@@ -94,7 +94,7 @@ export function AdminModerationPage() {
         )}
 
         {data && data.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             {data.map((report) => (
               <ReportRow key={report.id} report={report} />
             ))}

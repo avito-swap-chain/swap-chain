@@ -6,7 +6,7 @@ import {
   notificationKeys,
   readNotifications,
 } from '@/entities/notification'
-import { Card, EmptyState, Notice, Screen } from '@/shared/ui'
+import { EmptyState, Notice, Screen } from '@/shared/ui'
 
 /**
  * Раздел «Уведомления» — то, что произошло, пока человека не было: ему написали, цепочка
@@ -39,16 +39,13 @@ export function NotificationsPage() {
         {isPending && <Notice>Загрузка…</Notice>}
         {isError && <Notice tone="error">Не удалось загрузить уведомления</Notice>}
 
-        {/* В карточке, а не текстом по серому: без неё пустой раздел выглядел брошенной
-            страницей — заголовок пустого состояния почти совпадал по весу с заголовком
-            раздела и читался как его повтор, а вокруг не было ничего. */}
+        {/* Без рамки: страница кабинета — белый лист, и карточка вокруг пустого состояния
+            на нём читалась бы вставкой из другого интерфейса. */}
         {data && data.items.length === 0 && (
-          <Card className="px-4 lg:px-6">
-            <EmptyState
-              title="Уведомлений пока нет"
-              description="Здесь появится то, что произошло без вас: ответы участников, собравшиеся цепочки и отменённые варианты."
-            />
-          </Card>
+          <EmptyState
+            title="Уведомлений пока нет"
+            description="Здесь появится то, что произошло без вас: ответы участников, собравшиеся цепочки и отменённые варианты."
+          />
         )}
 
         {data && data.items.length > 0 && (

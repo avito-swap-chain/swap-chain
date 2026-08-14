@@ -637,6 +637,11 @@ paths:
       operationId: createChain
       tags: [chains]
       summary: Create a pending exchange chain from a matching cycle
+      description: >-
+        Creates a proposal with every participant in WAITING state. Selecting or
+        materializing a matching cycle does not approve it for any participant;
+        each participant, including the owner of the source item, must submit an
+        explicit APPROVED decision before the chain becomes ACCEPTED.
       requestBody:
         required: true
         content:
@@ -645,7 +650,7 @@ paths:
               $ref: "#/components/schemas/CreateChainRequest"
       responses:
         "201":
-          description: Pending exchange chain
+          description: Pending exchange chain whose participants are all WAITING
           content:
             application/json:
               schema:
@@ -869,10 +874,12 @@ paths:
       tags: [chat]
       summary: List all direct exchange-chain conversations
       description: >-
-        Returns one thread per exchange chain and neighboring participant. A
-        neighbor either gives an item to the authenticated user or receives an
-        item from them. Threads exist as soon as a matched chain is persisted,
-        including while its status is PENDING.
+        Returns one thread per item that the authenticated user receives from a
+        neighboring participant. The user's own outgoing items are not listed
+        unless a conversation about them already contains messages, so the owner
+        can reply. The same item and user pair form one conversation even when
+        they occur in several exchange chains. An incoming-item thread exists as
+        soon as at least one matching chain is persisted, including PENDING.
       responses:
         "200":
           description: Available threads ordered by latest message, then by stable identifiers.
@@ -882,16 +889,14 @@ paths:
                 $ref: "#/components/schemas/ChatThreadList"
               example:
                 threads:
-                  - chainId: 12
-                    counterpart: {id: 9, username: Вера}
-                    giveItem: null
-                    receiveItem:
+                  - item:
                       id: 55
                       title: Samsung Galaxy M54 5G
                       imageUrl: /api/v1/media/demo/samsung.jpg
+                    counterpart: {id: 9, username: Вера}
                     lastMessage:
                       id: 81
-                      chainId: 12
+                      itemId: 55
                       sender: {id: 9, username: Вера}
                       recipient: {id: 7, username: Алиса}
                       clientMessageId: web-550e8400-e29b-41d4-a716-446655440000
@@ -905,12 +910,12 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /api/v1/chains/{chainId}/chat/{counterpartId}/messages:
+  /api/v1/items/{itemId}/chat/{counterpartId}/messages:
     parameters:
-      - name: chainId
+      - name: itemId
         in: path
         required: true
-        description: Exchange-chain identifier.
+        description: Item that is the stable conversation topic.
         schema:
           type: integer
           format: int64
@@ -929,9 +934,9 @@ paths:
       summary: Read or wait for direct-thread messages
       description: >-
         Available only when the authenticated user and counterpart are neighbors
-        in the selected chain. The chain may still be PENDING. Returns immediately
-        when messages newer than afterId exist; otherwise waits up to waitSeconds.
-        PostgreSQL remains the source of truth.
+        on a transfer of this item in at least one persisted chain. Returns
+        immediately when messages newer than afterId exist; otherwise waits up
+        to waitSeconds. PostgreSQL remains the source of truth.
       parameters:
         - name: afterId
           in: query
@@ -968,7 +973,7 @@ paths:
                   value:
                     messages:
                       - id: 81
-                        chainId: 12
+                        itemId: 55
                         sender: {id: 7, username: Алиса}
                         recipient: {id: 9, username: Вера}
                         clientMessageId: web-550e8400-e29b-41d4-a716-446655440000
@@ -995,9 +1000,9 @@ paths:
       summary: Send a direct message to a neighboring participant
       description: >-
         The authenticated session is always the sender. clientMessageId is an
-        idempotency key scoped to the chain, sender and counterpart. Retrying the
+        idempotency key scoped to the item, sender and counterpart. Retrying the
         same key and text returns the original message; reusing the key with
-        different text returns 409. PENDING chains are supported.
+        different text returns 409.
       requestBody:
         required: true
         content:
@@ -1033,9 +1038,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /api/v1/chains/{chainId}/chat/{counterpartId}/read:
+  /api/v1/items/{itemId}/chat/{counterpartId}/read:
     parameters:
-      - name: chainId
+      - name: itemId
         in: path
         required: true
         schema:
@@ -1970,7 +1975,7 @@ components:
 
     ItemStatus:
       type: string
-      enum: [ANALYZING, ACTION_REQUIRED, MATCHING, LOCKED, WITHDRAWN]
+      enum: [ANALYZING, ACTION_REQUIRED, MATCHING, LOCKED, EXCHANGED, WITHDRAWN]
 
     Category:
       type: object
@@ -2240,7 +2245,7 @@ components:
           minLength: 1
           maxLength: 64
           pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
-          description: Client-generated idempotency key scoped to chain, sender and counterpart.
+          description: Client-generated idempotency key scoped to item, sender and counterpart.
         text:
           type: string
           minLength: 1
@@ -2248,12 +2253,12 @@ components:
 
     ChatMessage:
       type: object
-      required: [id, chainId, sender, recipient, clientMessageId, text, createdAt]
+      required: [id, itemId, sender, recipient, clientMessageId, text, createdAt]
       properties:
         id:
           type: integer
           format: int64
-        chainId:
+        itemId:
           type: integer
           format: int64
         sender:
@@ -2283,23 +2288,12 @@ components:
 
     ChatThread:
       type: object
-      required: [chainId, counterpart, giveItem, receiveItem, hasUnread, unreadCount]
+      required: [item, counterpart, hasUnread, unreadCount]
       properties:
-        chainId:
-          type: integer
-          format: int64
+        item:
+          $ref: "#/components/schemas/ChatItemSummary"
         counterpart:
           $ref: "#/components/schemas/UserSummary"
-        giveItem:
-          nullable: true
-          description: Item transferred from the authenticated user to this counterpart, when this thread covers that edge.
-          allOf:
-            - $ref: "#/components/schemas/ChatItemSummary"
-        receiveItem:
-          nullable: true
-          description: Item transferred from this counterpart to the authenticated user, when this thread covers that edge.
-          allOf:
-            - $ref: "#/components/schemas/ChatItemSummary"
         lastMessage:
           nullable: true
           allOf:
@@ -2348,9 +2342,9 @@ components:
 
     ChatReadState:
       type: object
-      required: [chainId, counterpartId, lastReadMessageId, unreadCount]
+      required: [itemId, counterpartId, lastReadMessageId, unreadCount]
       properties:
-        chainId:
+        itemId:
           type: integer
           format: int64
         counterpartId:

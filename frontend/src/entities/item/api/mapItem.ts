@@ -16,6 +16,10 @@ const STATUS: Record<ApiItem['status'], ItemStatus> = {
   ACTION_REQUIRED: 'needs_category',
   MATCHING: 'searching',
   LOCKED: 'reserved',
+  // `LOCKED` — вещь заморожена в собравшейся цепочке, `EXCHANGED` — обмен уже состоялся.
+  // Раньше второго состояния не было, и завершённая цепочка оставляла вещь «в цепочке»
+  // навсегда: карточка врала, что вещь всё ещё едет.
+  EXCHANGED: 'exchanged',
   WITHDRAWN: 'withdrawn',
 }
 

@@ -37,8 +37,8 @@ import { markServiceRead, serviceMessages, serviceThread } from './serviceThread
 export const messageKeys = {
   all: ['messages'] as const,
   list: () => [...messageKeys.all, 'threads'] as const,
-  thread: ({ chainId, counterpartId }: ThreadKey) =>
-    [...messageKeys.all, chainId, counterpartId] as const,
+  thread: ({ itemId, counterpartId }: ThreadKey) =>
+    [...messageKeys.all, itemId, counterpartId] as const,
 }
 
 /**
@@ -90,7 +90,7 @@ export async function getMessages(key: ThreadKey, options: ReadOptions = {}): Pr
   const meId = await currentUserId()
   const { messages } = unwrap<ChatMessageList>(
     await listChatMessages(
-      Number(key.chainId),
+      Number(key.itemId),
       Number(key.counterpartId),
       {
         afterId: options.afterId ? Number(options.afterId) : undefined,
@@ -114,7 +114,7 @@ export async function sendMessage(ref: ThreadRef, draft: MessageDraft): Promise<
 
   const meId = await currentUserId()
   const sent = unwrap<ApiChatMessage>(
-    await sendChatMessage(Number(ref.chainId), Number(ref.counterpartId), {
+    await sendChatMessage(Number(ref.itemId), Number(ref.counterpartId), {
       clientMessageId: draft.clientMessageId,
       text: draft.text,
     }),
@@ -131,7 +131,7 @@ export async function markThreadRead(key: ThreadKey, lastMessageId: string): Pro
   if (!isBackendConnected) return mock.markRead(key, lastMessageId)
 
   unwrap(
-    await markChatThreadRead(Number(key.chainId), Number(key.counterpartId), {
+    await markChatThreadRead(Number(key.itemId), Number(key.counterpartId), {
       lastReadMessageId: Number(lastMessageId),
     }),
   )

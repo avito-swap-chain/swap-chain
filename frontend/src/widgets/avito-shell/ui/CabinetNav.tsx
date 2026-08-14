@@ -1,12 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
+import { getThreads, messageKeys } from '@/entities/message'
+import { getNotifications, notificationKeys } from '@/entities/notification'
 import { cx } from '@/shared/lib'
 import { getCurrentUser, sessionKeys } from '@/shared/model/session'
 import type { Section } from '../lib/navigation'
 
 const ITEMS_URL = '/'
 const EXCHANGE_URL = '/exchange'
+const REVIEWS_URL = '/reviews'
 const MESSAGES_URL = '/messages'
 const NOTIFICATIONS_URL = '/notifications'
 const ADMIN_URL = '/admin/deliveries'
@@ -14,14 +18,35 @@ const MODERATION_URL = '/admin/moderation'
 const AUDIT_URL = '/admin/audit'
 
 // Одна разметка на оба вида: на узких окнах — чипы в горизонтальной ленте,
-// от `lg` — строки вертикального меню слева, как в кабинете Авито.
+// от `lg` — строки вертикального меню слева, как в кабинете Авито: кегль 15 на строке 24,
+// шаг между пунктами 4px.
 const itemClass =
-  'shrink-0 rounded-chip px-2.5 py-1.5 text-[13px] font-semibold outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand lg:w-full lg:rounded-none lg:px-0 lg:py-[7px] lg:text-[15px]'
+  'flex shrink-0 items-center rounded-chip px-2.5 py-1.5 text-[13px] font-semibold outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand lg:mb-1 lg:w-full lg:rounded-none lg:px-0 lg:py-0 lg:text-[15px] lg:leading-6'
 
 /* В кабинете Авито пункты меню — обычные голубые ссылки, а текущий раздел набран
  * чёрным жирным без подложки. Заливка остаётся только чипам на узких экранах. */
-const restClass = 'text-ink-2 hover:bg-line-2 lg:bg-transparent lg:font-normal lg:text-brand'
+const restClass = 'text-ink-2 hover:bg-line-2 lg:bg-transparent lg:font-normal lg:text-brand-hover'
 const currentClass = 'bg-line-2 text-ink lg:bg-transparent lg:font-bold lg:text-ink'
+
+/* Группа пунктов. На узких окнах обёртки нет вовсе (`contents`) — там лента чипов;
+ * от `lg` группы разделены линией, как разделы меню в их кабинете. */
+const groupClass = 'contents lg:block lg:border-t lg:border-line lg:py-3 lg:first:border-0'
+
+/**
+ * Счётчик у пункта меню. Стоит вплотную к названию, как бейджи у Авито: у края колонки
+ * он читался отдельной колонкой цифр и терял связь с пунктом. Красный, а не азур:
+ * азур в их системе означает ссылку, а не тревогу.
+ */
+function NavBadge({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <span
+      title={title}
+      className="grid min-w-[18px] place-items-center rounded-full bg-accent-red px-1.5 text-[10.5px] leading-[18px] font-bold text-white lg:text-[13px] lg:leading-4"
+    >
+      {children}
+    </span>
+  )
+}
 
 /**
  * Меню личного кабинета — единственный верхний уровень навигации.
@@ -33,6 +58,20 @@ export function CabinetNav({ section, className }: { section: Section; className
   const waiting = data?.filter(needsMyAction).length ?? 0
 
   const { data: user } = useQuery({ queryKey: sessionKeys.current(), queryFn: getCurrentUser })
+
+  // Счётчики берутся тем же ключом, что и значки в шапке: данные уже в кэше, лишнего
+  // запроса не будет. Без них пункт меню молчал о непрочитанном, хотя значок сверху уже
+  // горел — и человек не понимал, куда идти.
+  const { data: unread = 0 } = useQuery({
+    queryKey: messageKeys.list(),
+    queryFn: getThreads,
+    select: (list) => list.totalUnread,
+  })
+  const { data: news = 0 } = useQuery({
+    queryKey: notificationKeys.list(),
+    queryFn: getNotifications,
+    select: (list) => list.totalUnread,
+  })
 
   const isExchange = section === 'exchange'
 
@@ -52,59 +91,69 @@ export function CabinetNav({ section, className }: { section: Section; className
     <nav
       aria-label="Личный кабинет"
       className={cx(
-        'no-scrollbar flex gap-1 overflow-x-auto px-3 py-1.5 max-lg:border-b max-lg:border-line-2 sm:py-2 lg:flex-col lg:gap-0 lg:overflow-visible lg:px-0 lg:pt-4 lg:pb-0',
+        'no-scrollbar flex gap-1 overflow-x-auto px-3 py-1.5 max-lg:border-b max-lg:border-line-2 sm:py-2 lg:flex-col lg:gap-0 lg:overflow-visible lg:p-0',
         className,
       )}
     >
-      <Link
-        to={ITEMS_URL}
-        aria-current={pathname === ITEMS_URL ? 'page' : undefined}
-        className={cx(itemClass, isExchange || isAdmin ? restClass : currentClass)}
-      >
-        Мои объявления
-      </Link>
-
-      <Link
-        to={EXCHANGE_URL}
-        aria-current={pathname === EXCHANGE_URL ? 'page' : undefined}
-        className={cx(
-          itemClass,
-          'flex items-center gap-1.5',
-          isExchange ? currentClass : restClass,
-        )}
-      >
-        Обмен
-        {waiting > 0 && (
-          <span
-            title="Ждут вашего действия"
-            /* Счётчики у Авито красные — азур в их системе означает ссылку, а не тревогу. */
-            className="grid min-w-[18px] place-items-center rounded-full bg-accent-red px-1 text-[10.5px] leading-[18px] font-bold text-white lg:ml-auto"
+      {/* У сотрудника ПВЗ своих вещей в кабинете нет: он за стойкой, и объявления,
+          обмен и отзывы ему только мешают найти нужный раздел. */}
+      {!user?.isAdmin && (
+        <div className={groupClass}>
+          <Link
+            to={ITEMS_URL}
+            aria-current={pathname === ITEMS_URL ? 'page' : undefined}
+            className={cx(itemClass, section === 'items' && !isAdmin ? currentClass : restClass)}
           >
-            {waiting}
-          </span>
+            Мои объявления
+          </Link>
+
+          <Link
+            to={EXCHANGE_URL}
+            aria-current={pathname === EXCHANGE_URL ? 'page' : undefined}
+            className={cx(itemClass, 'gap-2', isExchange ? currentClass : restClass)}
+          >
+            Обмен
+            {waiting > 0 && <NavBadge title="Ждут вашего действия">{waiting}</NavBadge>}
+          </Link>
+        </div>
+      )}
+
+      <div className={groupClass}>
+        {/* Отзывы у Авито — отдельный пункт меню, а не вкладка профиля: рейтинг смотрят
+            чаще, чем сам профиль, а в обмене он ещё и единственный довод о человеке. */}
+        {!user?.isAdmin && (
+          <Link
+            to={REVIEWS_URL}
+            aria-current={pathname === REVIEWS_URL ? 'page' : undefined}
+            className={cx(itemClass, section === 'reviews' ? currentClass : restClass)}
+          >
+            Мои отзывы
+          </Link>
         )}
-      </Link>
 
-      <Link
-        to={MESSAGES_URL}
-        aria-current={pathname === MESSAGES_URL ? 'page' : undefined}
-        className={cx(itemClass, section === 'messages' ? currentClass : restClass)}
-      >
-        Сообщения
-      </Link>
+        <Link
+          to={MESSAGES_URL}
+          aria-current={pathname === MESSAGES_URL ? 'page' : undefined}
+          className={cx(itemClass, 'gap-2', section === 'messages' ? currentClass : restClass)}
+        >
+          Сообщения
+          {unread > 0 && <NavBadge title="Непрочитанные сообщения">{unread}</NavBadge>}
+        </Link>
 
-      <Link
-        to={NOTIFICATIONS_URL}
-        aria-current={pathname === NOTIFICATIONS_URL ? 'page' : undefined}
-        className={cx(itemClass, section === 'notifications' ? currentClass : restClass)}
-      >
-        Уведомления
-      </Link>
+        <Link
+          to={NOTIFICATIONS_URL}
+          aria-current={pathname === NOTIFICATIONS_URL ? 'page' : undefined}
+          className={cx(itemClass, 'gap-2', section === 'notifications' ? currentClass : restClass)}
+        >
+          Уведомления
+          {news > 0 && <NavBadge title="Новые уведомления">{news}</NavBadge>}
+        </Link>
+      </div>
 
       {/* Рабочее место сотрудника ПВЗ. Обычному пользователю показывать его нечего:
           в списке чужие вещи и чужие имена, а кнопки всё равно вернут 403. */}
       {user?.isAdmin && (
-        <>
+        <div className={groupClass}>
           <Link
             to={ADMIN_URL}
             aria-current={isDeliveries ? 'page' : undefined}
@@ -128,7 +177,7 @@ export function CabinetNav({ section, className }: { section: Section; className
           >
             Журнал
           </Link>
-        </>
+        </div>
       )}
     </nav>
   )

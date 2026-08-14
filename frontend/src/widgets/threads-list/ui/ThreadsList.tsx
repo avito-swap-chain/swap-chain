@@ -83,7 +83,7 @@ export function ThreadsList() {
       ) : (
         <div className="flex flex-col">
           {threads.map((thread) => (
-            <ThreadCard key={`${thread.chainId}:${thread.counterpartId}`} thread={thread} />
+            <ThreadCard key={`${thread.itemId}:${thread.counterpartId}`} thread={thread} />
           ))}
         </div>
       )}

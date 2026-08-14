@@ -17,17 +17,17 @@ interface ScreenProps {
 /**
  * Каркас экрана. Высоту задаёт оболочка (`widgets/avito-shell`), экран растягивается
  * в остаток — иначе шапка Авито и экран сложились бы в два экрана высоты.
- * На узких окнах — белый лист во всю ширину, как в мобильном вебе Avito;
- * на широких узкий экран становится карточкой на серой странице.
+ *
+ * Белый лист во всю ширину — и на телефоне, и на десктопе: страницы кабинета у Авито
+ * не карточки на серой подложке, содержимое лежит прямо на листе. Узкий экран просто
+ * ограничен по ширине, чтобы форма не растягивалась на всю страницу.
  */
 export function Screen({ width = 'narrow', children }: ScreenProps) {
   return (
     <div
       className={cx(
-        'mx-auto flex w-full flex-1 flex-col bg-card',
-        width === 'narrow'
-          ? 'max-w-2xl lg:flex-none lg:overflow-hidden lg:rounded-card lg:border lg:border-line lg:shadow-card'
-          : 'lg:bg-transparent',
+        'flex w-full flex-1 flex-col bg-card',
+        width === 'narrow' && 'max-w-2xl lg:flex-none',
       )}
     >
       {children}

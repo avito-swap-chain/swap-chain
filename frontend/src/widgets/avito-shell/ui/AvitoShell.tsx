@@ -21,7 +21,9 @@ export function AvitoShell() {
   const section = getSection(pathname)
 
   return (
-    <div className="flex min-h-svh flex-col bg-card lg:bg-page">
+    /* Кабинет Авито — белый лист во всю страницу: серой подложки с карточками у них
+       нет ни на телефоне, ни на десктопе, списки разделены линиями. */
+    <div className="flex min-h-svh flex-col bg-card">
       <ShellHeader />
 
       {/* Отступ снизу — под нижнюю панель: иначе она накрывает конец списка. */}
@@ -29,7 +31,7 @@ export function AvitoShell() {
       <div className="mx-auto flex w-full max-w-page flex-1 flex-col max-lg:pb-[52px] lg:flex-row lg:gap-14 lg:px-6 lg:pt-12 lg:pb-6">
         {/* Левая колонка кабинета Авито: сначала «кто я», под чертой — разделы.
             На узких окнах её роль играет нижняя панель, поэтому колонка целиком скрыта. */}
-        <aside className="max-lg:hidden lg:sticky lg:top-6 lg:w-[300px] lg:shrink-0 lg:self-start">
+        <aside className="max-lg:hidden lg:sticky lg:top-6 lg:w-[231px] lg:shrink-0 lg:self-start">
           <ProfileSummary />
           <CabinetNav section={section} />
         </aside>

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { ACTION_LABEL, getAudit, moderationKeys } from '@/entities/moderation'
-import { Card, EmptyState, Notice, Screen } from '@/shared/ui'
+import { EmptyState, Notice, Screen } from '@/shared/ui'
 
 const formatDate = (iso: string): string =>
   new Date(iso).toLocaleString('ru-RU', {
@@ -43,16 +43,21 @@ export function AdminAuditPage() {
         )}
 
         {data && data.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
+            {/* Строками через разделитель: журнал читают сверху вниз, а рамка вокруг
+                каждой записи превращала ленту в стопку карточек. */}
             {data.map((entry) => (
-              <Card key={entry.id} padded className="flex flex-col gap-0.5">
+              <div
+                key={entry.id}
+                className="flex flex-col gap-0.5 border-b border-line py-3 last:border-0"
+              >
                 <p className="text-[14px] leading-5">
                   <b className="font-bold">{entry.admin.username}</b> — {ACTION_LABEL[entry.action]}
                 </p>
                 <p className="text-[13px] leading-4 text-ink-2">
                   {entry.targetType} №{entry.targetId} · {formatDate(entry.createdAt)}
                 </p>
-              </Card>
+              </div>
             ))}
           </div>
         )}

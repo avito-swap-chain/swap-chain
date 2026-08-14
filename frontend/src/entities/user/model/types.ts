@@ -48,3 +48,9 @@ export interface Report {
   reason: ReportReason
   text?: string
 }
+
+/** Строка чёрного списка: кого человек заблокировал. Имя нужно, чтобы список читался. */
+export interface BlockedUser {
+  id: string
+  name: string
+}

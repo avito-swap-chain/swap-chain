@@ -16,17 +16,33 @@ const SERVICE_MESSAGE: Message = {
   createdAt: new Date(Date.now() - 36e5).toISOString(),
 }
 
-/** Отметка о прочтении живёт в памяти вкладки: хранить её негде и незачем. */
-let isRead = false
+/**
+ * Отметка о прочтении. Живёт в `localStorage`, а не в памяти вкладки: канала нет на бэкенде,
+ * а в памяти он «забывал» прочтение на каждой перезагрузке — человек читал пояснение, обновлял
+ * страницу и снова видел непрочитанное сообщение и счётчик в шапке.
+ */
+const READ_KEY = 'avito-chain:service-thread-read'
+
+/** Хранилища может не быть — приватный режим, запрет, тесты вне браузера. */
+const storage = (): Storage | undefined => {
+  try {
+    return globalThis.localStorage
+  } catch {
+    return undefined
+  }
+}
+
+let isRead = storage()?.getItem(READ_KEY) === '1'
 
 export const markServiceRead = (): void => {
   isRead = true
+  storage()?.setItem(READ_KEY, '1')
 }
 
 export const serviceMessages = (): Message[] => [SERVICE_MESSAGE]
 
 export const serviceThread = (): Thread => ({
-  chainId: 'service',
+  itemId: 'service',
   counterpartId: 'service',
   peerName: 'Авито Обмен',
   itemTitle: 'Обмен без доплат',
@@ -37,4 +53,5 @@ export const serviceThread = (): Thread => ({
 /** Сброс для тестов: канал общий на приложение, иначе прочитанность течёт между случаями. */
 export const resetServiceThread = (): void => {
   isRead = false
+  storage()?.removeItem(READ_KEY)
 }
