@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizePhone } from './phone'
+import { formatPhone, normalizePhone } from './phone'
 
 describe('normalizePhone', () => {
   it.each([
@@ -22,5 +22,16 @@ describe('normalizePhone', () => {
     ['+790010000012', 'лишняя цифра'],
   ])('%s отвергается: %s', (raw) => {
     expect(normalizePhone(raw)).toBeNull()
+  })
+})
+
+describe('formatPhone — номер вместо выдуманного имени', () => {
+  it('приводит к виду «+7 900 100-00-01»: этим подписаны демо-аккаунты до входа', () => {
+    expect(formatPhone('+79001000001')).toBe('+7 900 100-00-01')
+    expect(formatPhone('89001000001')).toBe('+7 900 100-00-01')
+  })
+
+  it('чужой формат оставляет как есть — врать о номере хуже, чем показать его сырым', () => {
+    expect(formatPhone('+1 202 555 0136')).toBe('+1 202 555 0136')
   })
 })

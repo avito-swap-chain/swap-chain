@@ -6,6 +6,7 @@ import {
   logout as logoutRequest,
 } from '@/shared/api/generated/endpoints'
 import type { Session } from '@/shared/api/generated/model'
+import { formatPhone } from '@/shared/lib'
 import { isBackendConnected } from '@/shared/config/backend'
 import { currentPersonaId, personaById, PERSONAS } from './persona'
 
@@ -40,21 +41,36 @@ export interface CurrentUser {
 export const sessionKeys = { current: () => ['session'] as const }
 
 /**
- * Демо-пользователи, засеянные бэкендом при старте. Вход только по телефону: пароля
- * в контракте нет, сессия выдаётся в обмен на номер.
+ * Демо-номера, засеянные бэкендом при старте. Вход только по телефону: пароля в контракте
+ * нет, сессия выдаётся в обмен на номер.
  *
- * Роль здесь наша, из этой же таблицы: бэкенд говорит только про текущую сессию, а список
- * надо помечать до входа — иначе на демо не видно, под кем открывать админку.
+ * Имён здесь намеренно нет. Раньше список был подписан «Алиса», «Борис», «Вера» — а базу
+ * пересеяли, и те же номера стали принадлежать другим людям: кнопка обещала Бориса и пускала
+ * Даниила. Кто стоит за номером, знает только бэкенд, и узнаётся это входом — поэтому до
+ * первого входа показываем номер, а после подставляем настоящее имя из `knownAccounts`.
+ *
+ * Роль — исключение: она задана миграцией, а не сидом, и её надо знать до входа, иначе
+ * на демо не понять, под кем открывать рабочее место ПВЗ.
  */
-export const DEMO_USERS: { name: string; phone: string; isAdmin?: boolean }[] = [
-  { name: 'Алиса', phone: '+79001000001' },
-  { name: 'Борис', phone: '+79001000002' },
-  { name: 'Вера', phone: '+79001000003' },
+export const DEMO_USERS: { phone: string; isAdmin?: boolean }[] = [
+  { phone: '+79001000001' },
+  { phone: '+79001000002' },
+  { phone: '+79001000003' },
   // Сотрудник ПВЗ: проводит вещи по статусам доставки. Без него цепочка не закрывается —
   // отметить получение можно только после того, как вещь ушла в доставку.
-  // Подпись повторяет имя из миграции, иначе в переключателе и в кабинете разные люди.
-  { name: 'ПВЗ Администратор', phone: '+79009999999', isAdmin: true },
+  { phone: '+79009999999', isAdmin: true },
 ]
+
+/**
+ * Как подписать демо-номер: настоящим именем, если под ним уже входили с этого браузера,
+ * иначе самим номером. Выдумывать имя нельзя — оно и было причиной расхождения с базой.
+ */
+export function accountLabel(phone: string, isAdmin?: boolean): string {
+  const known = knownAccounts().find((account) => account.phone === phone)
+  if (known) return known.name
+
+  return isAdmin ? `${formatPhone(phone)} · сотрудник ПВЗ` : formatPhone(phone)
+}
 
 /** Аккаунт, под которым уже входили с этого браузера: то же, из чего состоит `DEMO_USERS`. */
 export interface KnownAccount {

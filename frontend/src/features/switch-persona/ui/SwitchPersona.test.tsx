@@ -11,12 +11,17 @@ vi.mock('@/shared/config/backend', () => ({ isBackendConnected: true }))
 /**
  * Сейчас смотрим глазами Алисы, а своим номером человек входил раньше.
  * Данные лежат внутри фабрики: `vi.mock` поднимается выше объявлений модуля.
+ *
+ * `accountLabel` повторяет настоящую: под кем входили — того зовут по имени, остальных
+ * подписываем номером. Имён в списке демо-номеров нет специально — на них и держался баг,
+ * когда после пересева базы кнопка «Борис» пускала Даниила.
  */
 vi.mock('@/shared/model/session', () => ({
-  DEMO_USERS: [
-    { name: 'Алиса', phone: '+79001000001' },
-    { name: 'ПВЗ Администратор', phone: '+79009999999', isAdmin: true },
-  ],
+  DEMO_USERS: [{ phone: '+79001000001' }, { phone: '+79009999999', isAdmin: true }],
+  accountLabel: (phone: string, isAdmin?: boolean) => {
+    if (phone === '+79001000001') return 'Алиса'
+    return isAdmin ? `${phone} · сотрудник ПВЗ` : phone
+  },
   sessionKeys: { current: () => ['session'] },
   getCurrentUser: () => Promise.resolve({ id: '1', name: 'Алиса', phone: '+79001000001' }),
   knownAccounts: () => [
@@ -70,6 +75,6 @@ describe('переключатель аккаунтов', () => {
 
     const names = (await screen.findAllByRole('option')).map((option) => option.textContent)
 
-    expect(names).toContain('ПВЗ Администратор 👑')
+    expect(names).toContain('+79009999999 · сотрудник ПВЗ 👑')
   })
 })
