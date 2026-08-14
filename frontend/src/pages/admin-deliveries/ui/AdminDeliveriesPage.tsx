@@ -5,6 +5,7 @@ import {
   advanceDelivery,
   confirmParticipantReceipt,
   deliveryKeys,
+  DeliveryProgress,
   DeliveryStatusLabel,
   getChain,
   getChains,
@@ -140,6 +141,10 @@ function ChainDeliveries({ chainId }: { chainId: number }) {
                 падеже они ломаются («от Даша к Марк»). */}
             <span className="mt-0.5 block text-[13px] leading-4 text-ink-2">
               {delivery.sender.username} → {delivery.recipient.username}
+            </span>
+            {/* Путь вещи: по одной кнопке не видно, на каком отрезке круга она стоит. */}
+            <span className="mt-2 block">
+              <DeliveryProgress status={delivery.status} />
             </span>
           </span>
 
