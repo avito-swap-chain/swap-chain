@@ -19,6 +19,10 @@ func (f *fakeRepository) CreateReport(_ context.Context, _, _ int64, _ string, _
 	return f.report, true, f.err
 }
 
+func (f *fakeRepository) CreateUserReport(_ context.Context, _, _ int64, _ *int64, _ string, _ *string) (model.UserReport, bool, error) {
+	return model.UserReport{}, true, f.err
+}
+
 func (f *fakeRepository) ListReports(_ context.Context, _ int64, _ model.ReportFilter, _ int64, _ int) ([]model.Report, *int64, error) {
 	return nil, nil, f.err
 }
@@ -67,6 +71,31 @@ func TestCreateReportValidation(t *testing.T) {
 	}
 	if _, _, err := service.CreateReport(ctx, 1, 1, model.ReasonOther, "spammy"); err != nil {
 		t.Fatalf("CreateReport(other, comment) error = %v", err)
+	}
+}
+
+func TestCreateUserReportValidation(t *testing.T) {
+	service := newTestService()
+	ctx := context.Background()
+
+	if _, _, err := service.CreateUserReport(ctx, 0, 2, nil, model.ReasonRude, ""); !errors.Is(err, model.ErrForbidden) {
+		t.Fatalf("CreateUserReport(reporter=0) error = %v, want ErrForbidden", err)
+	}
+	if _, _, err := service.CreateUserReport(ctx, 1, 1, nil, model.ReasonRude, ""); !errors.Is(err, model.ErrSelfReport) {
+		t.Fatalf("CreateUserReport(self) error = %v, want ErrSelfReport", err)
+	}
+	if _, _, err := service.CreateUserReport(ctx, 1, 2, nil, "invalid", ""); !isValidationError(err) {
+		t.Fatalf("CreateUserReport(reason=invalid) error = %v, want ValidationError", err)
+	}
+	if _, _, err := service.CreateUserReport(ctx, 1, 2, nil, model.ReasonOther, ""); !isValidationError(err) {
+		t.Fatalf("CreateUserReport(other, no comment) error = %v, want ValidationError", err)
+	}
+	chainID := int64(0)
+	if _, _, err := service.CreateUserReport(ctx, 1, 2, &chainID, model.ReasonFraud, ""); !isValidationError(err) {
+		t.Fatalf("CreateUserReport(chain=0) error = %v, want ValidationError", err)
+	}
+	if _, _, err := service.CreateUserReport(ctx, 1, 2, nil, model.ReasonItem, "broken listing"); err != nil {
+		t.Fatalf("CreateUserReport(valid) error = %v", err)
 	}
 }
 

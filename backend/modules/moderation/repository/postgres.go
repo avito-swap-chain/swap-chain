@@ -82,6 +82,86 @@ func (r *PostgreSQL) CreateReport(ctx context.Context, reporterID, messageID int
 	return report, created, nil
 }
 
+// CreateUserReport validates the optional chain relationship and stores an idempotent complaint.
+func (r *PostgreSQL) CreateUserReport(ctx context.Context, reporterID, targetID int64, chainID *int64, reason string, comment *string) (model.UserReport, bool, error) {
+	tx, err := r.database.BeginTx(ctx, nil)
+	if err != nil {
+		return model.UserReport{}, false, fmt.Errorf("begin create user report: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var targetExists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)`, targetID).Scan(&targetExists); err != nil {
+		return model.UserReport{}, false, fmt.Errorf("check reported user: %w", err)
+	}
+	if !targetExists {
+		return model.UserReport{}, false, model.ErrNotFound
+	}
+	if chainID != nil {
+		var participantCount int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT count(DISTINCT user_id)
+			FROM chain_items
+			WHERE chain_id = $1 AND user_id IN ($2, $3)
+		`, *chainID, reporterID, targetID).Scan(&participantCount); err != nil {
+			return model.UserReport{}, false, fmt.Errorf("check report chain: %w", err)
+		}
+		if participantCount != 2 {
+			return model.UserReport{}, false, model.ErrUserReportUnavailable
+		}
+	}
+
+	var chainArg, commentArg any
+	if chainID != nil {
+		chainArg = *chainID
+	}
+	if comment != nil {
+		commentArg = *comment
+	}
+	row := tx.QueryRowContext(ctx, `
+		INSERT INTO user_reports (reporter_user_id, target_user_id, chain_id, reason, comment)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (reporter_user_id, target_user_id, chain_id) DO NOTHING
+		RETURNING id, reporter_user_id, target_user_id, chain_id, reason, comment, created_at
+	`, reporterID, targetID, chainArg, reason, commentArg)
+	report, err := scanUserReport(row)
+	created := err == nil
+	if errors.Is(err, sql.ErrNoRows) {
+		report, err = scanUserReport(tx.QueryRowContext(ctx, `
+			SELECT id, reporter_user_id, target_user_id, chain_id, reason, comment, created_at
+			FROM user_reports
+			WHERE reporter_user_id = $1 AND target_user_id = $2 AND chain_id IS NOT DISTINCT FROM $3
+		`, reporterID, targetID, chainArg))
+	}
+	if err != nil {
+		return model.UserReport{}, false, fmt.Errorf("store user report: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return model.UserReport{}, false, fmt.Errorf("commit create user report: %w", err)
+	}
+	return report, created, nil
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanUserReport(row rowScanner) (model.UserReport, error) {
+	var report model.UserReport
+	var chainID sql.NullInt64
+	var comment sql.NullString
+	if err := row.Scan(&report.ID, &report.ReporterID, &report.TargetID, &chainID, &report.Reason, &comment, &report.CreatedAt); err != nil {
+		return model.UserReport{}, err
+	}
+	if chainID.Valid {
+		report.ChainID = &chainID.Int64
+	}
+	if comment.Valid {
+		report.Comment = &comment.String
+	}
+	return report, nil
+}
+
 // ListReports returns a cursor-paginated moderation queue page.
 func (r *PostgreSQL) ListReports(ctx context.Context, adminID int64, filter model.ReportFilter, afterID int64, limit int) ([]model.Report, *int64, error) {
 	queries := db.New(r.database)

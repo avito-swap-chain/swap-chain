@@ -12,6 +12,7 @@ import (
 // Repository persists and queries reports, assignments and audit entries.
 type Repository interface {
 	CreateReport(ctx context.Context, reporterID, messageID int64, reason string, comment *string) (model.Report, bool, error)
+	CreateUserReport(ctx context.Context, reporterID, targetID int64, chainID *int64, reason string, comment *string) (model.UserReport, bool, error)
 	ListReports(ctx context.Context, adminID int64, filter model.ReportFilter, afterID int64, limit int) ([]model.Report, *int64, error)
 	GetReport(ctx context.Context, adminID, reportID int64) (model.ReportDetail, error)
 	Assign(ctx context.Context, adminID, reportID int64) (model.Report, error)
@@ -22,6 +23,7 @@ type Repository interface {
 // Service defines the moderation operations used by the HTTP layer.
 type Service interface {
 	CreateReport(ctx context.Context, reporterID, messageID int64, reason, comment string) (model.Report, bool, error)
+	CreateUserReport(ctx context.Context, reporterID, targetID int64, chainID *int64, reason, comment string) (model.UserReport, bool, error)
 	ListReports(ctx context.Context, adminID int64, filter model.ReportFilter, afterID int64, limit int) ([]model.Report, *int64, error)
 	GetReport(ctx context.Context, adminID, reportID int64) (model.ReportDetail, error)
 	Assign(ctx context.Context, adminID, reportID int64) (model.Report, error)
@@ -46,6 +48,30 @@ func New(repository Repository, cfg ModerationConfig) (*Moderation, error) {
 		return nil, fmt.Errorf("moderation init: repository is required")
 	}
 	return &Moderation{repository: repository, cfg: cfg}, nil
+}
+
+// CreateUserReport validates and stores a complaint about another user.
+func (s *Moderation) CreateUserReport(ctx context.Context, reporterID, targetID int64, chainID *int64, reason, comment string) (model.UserReport, bool, error) {
+	if reporterID <= 0 {
+		return model.UserReport{}, false, model.ErrForbidden
+	}
+	if targetID <= 0 {
+		return model.UserReport{}, false, &model.ValidationError{Field: "userId", Message: "must be positive"}
+	}
+	if reporterID == targetID {
+		return model.UserReport{}, false, model.ErrSelfReport
+	}
+	if chainID != nil && *chainID <= 0 {
+		return model.UserReport{}, false, &model.ValidationError{Field: "chainId", Message: "must be positive"}
+	}
+	if !validUserReportReason(reason) {
+		return model.UserReport{}, false, &model.ValidationError{Field: "reason", Message: "must be item, noshow, rude, fraud or other"}
+	}
+	normalizedComment, err := normalizeComment(reason, comment)
+	if err != nil {
+		return model.UserReport{}, false, err
+	}
+	return s.repository.CreateUserReport(ctx, reporterID, targetID, chainID, reason, normalizedComment)
 }
 
 // CreateReport validates a report command and creates or returns the idempotent report.
@@ -162,6 +188,15 @@ func normalizeComment(reason, comment string) (*string, error) {
 
 func validReason(reason string) bool {
 	return reason == model.ReasonSpam || reason == model.ReasonAbuse || reason == model.ReasonOther
+}
+
+func validUserReportReason(reason string) bool {
+	switch reason {
+	case model.ReasonItem, model.ReasonNoShow, model.ReasonRude, model.ReasonFraud, model.ReasonOther:
+		return true
+	default:
+		return false
+	}
 }
 
 func validStatus(status string) bool {

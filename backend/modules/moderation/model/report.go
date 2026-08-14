@@ -20,6 +20,12 @@ const (
 	ReasonAbuse = "abuse"
 	ReasonOther = "other"
 
+	// User report reasons.
+	ReasonItem   = "item"
+	ReasonNoShow = "noshow"
+	ReasonRude   = "rude"
+	ReasonFraud  = "fraud"
+
 	// Terminal decisions.
 	DecisionResolved = "resolved"
 	DecisionRejected = "rejected"
@@ -37,6 +43,8 @@ var (
 	ErrSelfReport = errors.New("cannot report your own message")
 	// ErrReportUnavailable indicates the reported message is not accessible to the user.
 	ErrReportUnavailable = errors.New("message is not available to this user")
+	// ErrUserReportUnavailable indicates that the supplied chain does not contain both users.
+	ErrUserReportUnavailable = errors.New("chain is not available for this user report")
 	// ErrStateConflict indicates the report cannot change in its current state.
 	ErrStateConflict = errors.New("report cannot change in its current state")
 	// ErrAlreadyAssigned indicates the report is assigned to another administrator.
@@ -47,6 +55,17 @@ var (
 type ValidationError struct {
 	Field   string
 	Message string
+}
+
+// UserReport is a complaint about another user, optionally linked to a chain.
+type UserReport struct {
+	ID         int64
+	ReporterID int64
+	TargetID   int64
+	ChainID    *int64
+	Reason     string
+	Comment    *string
+	CreatedAt  time.Time
 }
 
 func (e *ValidationError) Error() string {
