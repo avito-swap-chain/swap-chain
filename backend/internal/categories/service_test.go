@@ -2,6 +2,7 @@ package categories
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -27,6 +28,19 @@ func TestMemoryServiceListsOnlyUserCategoriesExcludingUndefined(t *testing.T) {
 	}
 	if cats[0].ID != 1 || cats[1].ID != 2 || cats[2].ID != 46 {
 		t.Fatalf("wrong order: %+v", cats)
+	}
+}
+
+func TestMemoryServiceValidatesUserFacingCategory(t *testing.T) {
+	service := NewMemoryService([]Category{{ID: 2, Name: "Электроника"}, {ID: 47, Name: "Другое"}}, 47)
+	if err := service.ValidateCategory(context.Background(), 2); err != nil {
+		t.Fatalf("ValidateCategory(2) error = %v", err)
+	}
+	if err := service.ValidateCategory(context.Background(), 47); !errors.Is(err, ErrUndefinedCategory) {
+		t.Fatalf("ValidateCategory(47) error = %v", err)
+	}
+	if err := service.ValidateCategory(context.Background(), 999); !errors.Is(err, ErrCategoryNotFound) {
+		t.Fatalf("ValidateCategory(999) error = %v", err)
 	}
 }
 

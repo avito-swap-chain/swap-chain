@@ -49,6 +49,22 @@ func TestValidateCreate(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "duplicate target",
+			input: CreateInput{Edges: []Edge{
+				{SourceItemID: 1, TargetItemID: 3},
+				{SourceItemID: 2, TargetItemID: 3},
+			}},
+			wantErr: true,
+		},
+		{
+			name: "self edge",
+			input: CreateInput{Edges: []Edge{
+				{SourceItemID: 1, TargetItemID: 1},
+				{SourceItemID: 2, TargetItemID: 1},
+			}},
+			wantErr: true,
+		},
+		{
 			name: "too long",
 			input: CreateInput{Edges: []Edge{
 				{SourceItemID: 1, TargetItemID: 2},
