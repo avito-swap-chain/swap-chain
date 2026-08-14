@@ -7,8 +7,9 @@ import { ActionError, Button, IconCheck, IconFlag, TileGroup, TileRow, Textarea 
  * Пожаловаться на человека. Причина выбирается из короткого списка, текст необязателен:
  * причину читает счётчик, текст — человек.
  *
- * Подтверждение говорит только то, что правда: жалоба принята. Обещать разбор нельзя —
- * очереди модерации за этим пока нет, и рисовать её было бы враньём на самом видном месте.
+ * С контракта 0.10.0 жалоба уходит на бэкенд и попадает в очередь модерации — ту же, куда
+ * приходят жалобы на реплики. Поэтому подтверждение теперь может обещать разбор: за ним
+ * действительно кто-то стоит.
  */
 export function ReportUser({ userId, chainId }: { userId: string; chainId?: string }) {
   const [open, setOpen] = useState(false)
@@ -28,7 +29,7 @@ export function ReportUser({ userId, chainId }: { userId: string; chainId?: stri
     return (
       <p className="flex items-center gap-2 rounded-card bg-ok-bg px-4 py-3 text-[13.5px] leading-5">
         <IconCheck size={17} className="shrink-0 text-ok" />
-        Жалоба отправлена — мы её получили.
+        Жалоба отправлена — её разберёт модератор.
       </p>
     )
   }
@@ -66,10 +67,16 @@ export function ReportUser({ userId, chainId }: { userId: string; chainId?: stri
           <Textarea
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="Что произошло — своими словами. Необязательно"
+            placeholder={
+              reason === 'other'
+                ? 'Что произошло — своими словами'
+                : 'Что произошло — своими словами. Необязательно'
+            }
             aria-label="Подробности жалобы"
             rows={3}
-            maxLength={2000}
+            /* Потолок контракта. Был 2000 — форма принимала текст, который бэкенд отвергал. */
+            maxLength={1000}
+            required={reason === 'other'}
           />
 
           <div className="flex gap-2">

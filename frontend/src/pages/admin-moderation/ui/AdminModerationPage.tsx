@@ -51,6 +51,9 @@ export function AdminModerationPage() {
   const { data, isPending, isError } = useQuery({
     queryKey: moderationKeys.reports(view.params),
     queryFn: () => getReports(view.params),
+    // Жалобы приходят от людей, а не от самого модератора: с открытым списком очередь
+    // иначе застывала бы на том, что было в момент захода.
+    refetchInterval: (query) => (query.state.error ? false : 15_000),
   })
 
   return (

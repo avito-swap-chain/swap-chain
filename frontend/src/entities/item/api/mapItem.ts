@@ -1,5 +1,5 @@
-import type { Item as ApiItem } from '@/shared/api/generated/model'
-import type { Item, ItemStatus } from '../model/types'
+import type { ItemCondition as ApiCondition, Item as ApiItem } from '@/shared/api/generated/model'
+import type { Item, ItemCondition, ItemStatus } from '../model/types'
 
 /**
  * Статус вещи. У бэкенда он про стадию обработки, у нас — про участие в обмене, и
@@ -23,12 +23,16 @@ const STATUS: Record<ApiItem['status'], ItemStatus> = {
   WITHDRAWN: 'withdrawn',
 }
 
+/** Состояние вещи. С контракта 0.10.0 его хранит бэкенд и требует при создании. */
+const CONDITION: Record<ApiCondition, ItemCondition> = {
+  NEW: 'new',
+  GOOD: 'good',
+  USED: 'used',
+}
+
 /**
  * Вещь из контракта в нашу модель. Расхождения, которых не закрыть маппингом:
  *
- * - **состояния вещи в контракте нет.** Поле остаётся пустым, интерфейс его не рисует —
- *   выдумывать «хорошее» за пользователя нельзя: состояние вещи это то, ради чего в обмене
- *   вообще пишут друг другу.
  * - **категория у вещи теперь двух видов:** выбранная человеком и назначенная анализом.
  *   Показываем выбор человека, а пока его нет — то, что определила модель.
  */
@@ -39,7 +43,7 @@ export const mapItem = (item: ApiItem): Item => ({
   // подпись на карточке собирается из справочника, а не из ответа про вещь.
   categoryId: item.categoryId ?? item.offerCategoryId ?? undefined,
   category: '',
-  condition: undefined,
+  condition: CONDITION[item.condition],
   // Пустую строку сводим к `undefined`: у бэкенда описание обязательно, но у засеянных
   // и старых вещей оно пустое, а «описание есть, но пустое» интерфейсу нечего показывать.
   description: item.offerDescription || undefined,

@@ -10,6 +10,7 @@ const item = (id: number, title: string) => ({
   wishes: [],
   imageUrls: [`/mock/${id}.jpg`],
   status: 'MATCHING' as const,
+  condition: 'GOOD' as const,
   createdAt: '2026-08-09T10:00:00Z',
   updatedAt: '2026-08-09T10:00:00Z',
 })

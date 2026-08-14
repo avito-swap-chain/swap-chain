@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation } from 'react-router-dom'
 import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
 import { getThreads, messageKeys } from '@/entities/message'
+import { getReports, moderationKeys } from '@/entities/moderation'
 import { getNotifications, notificationKeys } from '@/entities/notification'
 import { cx } from '@/shared/lib'
 import { Counter } from '@/shared/ui'
@@ -16,6 +17,7 @@ const NOTIFICATIONS_URL = '/notifications'
 const ADMIN_URL = '/admin/deliveries'
 const MODERATION_URL = '/admin/moderation'
 const AUDIT_URL = '/admin/audit'
+const METRICS_URL = '/admin/metrics'
 
 // Одна разметка на оба вида: на узких окнах — чипы в горизонтальной ленте,
 // от `lg` — строки вертикального меню слева, как в кабинете Авито: кегль 15 на строке 24,
@@ -57,6 +59,16 @@ export function CabinetNav({ section, className }: { section: Section; className
     select: (list) => list.totalUnread,
   })
 
+  // Сколько жалоб ждёт разбора. Спрашиваем только у модератора: остальным ручка ответит 403,
+  // а счётчик в меню — единственное место, где видно, что в очереди появилось новое.
+  const { data: openReports = [] } = useQuery({
+    queryKey: moderationKeys.reports({ status: 'open' }),
+    queryFn: () => getReports({ status: 'open' }),
+    enabled: Boolean(user?.isAdmin),
+    // Жалоба приходит от другого человека: без опроса очередь у открытой админки молчала бы.
+    refetchInterval: 15_000,
+  })
+
   const isExchange = section === 'exchange'
 
   // Подсветка держится на разделе целиком (новое объявление и включение обмена — часть
@@ -69,7 +81,8 @@ export function CabinetNav({ section, className }: { section: Section; className
   const isDeliveries = pathname === ADMIN_URL
   const isModeration = pathname.startsWith(MODERATION_URL)
   const isAudit = pathname === AUDIT_URL
-  const isAdmin = isDeliveries || isModeration || isAudit
+  const isMetrics = pathname === METRICS_URL
+  const isAdmin = isDeliveries || isModeration || isAudit || isMetrics
 
   return (
     <nav
@@ -149,9 +162,12 @@ export function CabinetNav({ section, className }: { section: Section; className
           <Link
             to={MODERATION_URL}
             aria-current={isModeration ? 'page' : undefined}
-            className={cx(itemClass, isModeration ? currentClass : restClass)}
+            className={cx(itemClass, 'gap-2', isModeration ? currentClass : restClass)}
           >
             Жалобы
+            {openReports.length > 0 && (
+              <Counter title="Жалобы ждут разбора">{openReports.length}</Counter>
+            )}
           </Link>
 
           <Link
@@ -160,6 +176,14 @@ export function CabinetNav({ section, className }: { section: Section; className
             className={cx(itemClass, isAudit ? currentClass : restClass)}
           >
             Журнал
+          </Link>
+
+          <Link
+            to={METRICS_URL}
+            aria-current={isMetrics ? 'page' : undefined}
+            className={cx(itemClass, isMetrics ? currentClass : restClass)}
+          >
+            Воронка
           </Link>
         </div>
       )}

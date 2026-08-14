@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { chainKeys, getMyChains, needsMyAction } from '@/entities/chain'
+import { getUserItems, ItemCard, itemKeys } from '@/entities/item'
 import { getMyProfile, getProfile, getReviews, userKeys, type Profile } from '@/entities/user'
 import { BlockUser } from '@/features/block-user'
 import { EditProfile } from '@/features/edit-profile'
@@ -134,6 +135,10 @@ function ProfileBody({ profile, mine }: { profile: Profile; mine: boolean }) {
 
       {mine && editing && <EditProfile profile={profile} />}
 
+      {/* Вещи человека — довод не слабее рейтинга: прежде чем отдать своё, смотрят,
+          с чем он вообще пришёл в обмен. У себя список не дублируем — он и есть кабинет. */}
+      {!mine && <UserItems userId={profile.id} />}
+
       <Reviews userId={profile.id} count={profile.reviews} />
 
       {/* Защита — в чужом профиле и внизу, как «Пожаловаться» у Авито: сначала человек
@@ -197,6 +202,31 @@ function Cabinet({ onEdit, editing }: { onEdit: () => void; editing: boolean }) 
           {editing ? 'Свернуть правку профиля' : 'Изменить имя и фотографию'}
         </TileRow>
       </TileGroup>
+    </section>
+  )
+}
+
+/** Вещи человека на обмене. Показываем первый десяток: чужой каталог здесь не листают. */
+function UserItems({ userId }: { userId: string }) {
+  const { data, isPending, isError } = useQuery({
+    queryKey: itemKeys.ofUser(userId),
+    queryFn: () => getUserItems(userId),
+  })
+
+  // Профиль уже показан: молчим о неудаче списка так же, как об отзывах — отдельной строкой.
+  if (isPending || isError || data.length === 0) return null
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-[19px] leading-6 font-bold">
+        Вещи на обмене<span className="text-ink-2"> · {data.length}</span>
+      </h2>
+
+      <div className="flex flex-col">
+        {data.map((item) => (
+          <ItemCard key={item.id} item={item} />
+        ))}
+      </div>
     </section>
   )
 }

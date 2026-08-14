@@ -192,7 +192,7 @@ export function ItemReview({
       <ReviewBlock
         label="Состояние"
         value={values.condition && capitalize(CONDITION_LABEL[values.condition])}
-        missing="Не указано"
+        missing="Выберите состояние"
         open={open === 'Состояние'}
         onToggle={() => toggle('Состояние')}
       >
@@ -204,8 +204,11 @@ export function ItemReview({
           aria-label="Состояние"
         >
           {/* Состояние не проставляется само: в обмене оно и есть предмет разговора,
-              и «хорошее» по умолчанию было бы обещанием, которого никто не давал. */}
-          <option value="">Не указано</option>
+              и «хорошее» по умолчанию было бы обещанием, которого никто не давал.
+              Но и пропустить его нельзя — вещь без состояния бэкенд не принимает. */}
+          <option value="" disabled>
+            Выберите состояние
+          </option>
           {CONDITIONS.map((condition) => (
             <option key={condition} value={condition}>
               {CONDITION_LABEL[condition]}
@@ -230,7 +233,13 @@ export function ItemReview({
       </ReviewBlock>
 
       <div className="mt-auto pt-2">
-        <Button type="submit" fullWidth disabled={!values.title.trim() || !values.categoryId}>
+        {/* Состояние обязательно с контракта 0.10.0: без него бэкенд отвечает 400,
+            и раньше человек узнавал об этом уже отказом после заполнения желания. */}
+        <Button
+          type="submit"
+          fullWidth
+          disabled={!values.title.trim() || !values.categoryId || !values.condition}
+        >
           Далее: что хотите взамен
         </Button>
       </div>

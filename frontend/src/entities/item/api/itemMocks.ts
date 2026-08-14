@@ -151,6 +151,12 @@ export async function listMyItems(): Promise<Item[]> {
   return myItems()
 }
 
+/** Вещи конкретного человека — тем же списком, каким их отдаёт бэкенд в чужом профиле. */
+export async function listUserItems(userId: string): Promise<Item[]> {
+  await delay(300)
+  return itemsByOwner[userId] ?? []
+}
+
 /**
  * Объявления остальных пользователей — то, из чего вообще может собраться цепочка.
  * Наружу из сущности не отдаём: это внутренность мока, на бэке такой отбор делает поиск.

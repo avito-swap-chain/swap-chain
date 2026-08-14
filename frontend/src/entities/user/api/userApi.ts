@@ -2,6 +2,7 @@ import { unwrap } from '@/shared/api/fetcher'
 import {
   blockUser as blockUserRequest,
   createChainReview,
+  createUserReport,
   getUser,
   listBlocks,
   listUserReviews,
@@ -167,8 +168,24 @@ export async function unblockUser(userId: string): Promise<void> {
 }
 
 /**
- * Жалобы. Ручка в контракте есть, но она про сообщение чата, а не про человека —
- * см. `entities/chat`. Здесь остаётся мок ровно для того же, для чего он был:
- * пожаловаться на пользователя из его профиля, где никакого сообщения нет.
+ * Жалоба на человека — не на реплику: в профиле сообщения нет, а повод для жалобы есть
+ * (не пришёл в ПВЗ, вещь не та, грубость). С контракта 0.10.0 у неё своя ручка, жалоба
+ * ложится в ту же очередь модерации, что и жалобы на сообщения, и получает решение.
+ *
+ * Повтор той же жалобы по той же цепочке бэкенд считает той же самой и отвечает 200
+ * вместо 201 — нажать второй раз безопасно.
  */
-export const reportUser = (complaint: Report): Promise<void> => mock.report(complaint)
+export async function reportUser(complaint: Report): Promise<void> {
+  const comment = complaint.text?.trim()
+  // Для «другого» причина не сказана ничем, кроме текста: без него бэкенд отвечает 400,
+  // и лучше сказать об этом до отправки.
+  if (complaint.reason === 'other' && !comment) throw new Error('Расскажите, что случилось')
+
+  if (!isBackendConnected) return mock.report(complaint)
+
+  await createUserReport(Number(complaint.targetUserId), {
+    reason: complaint.reason,
+    ...(complaint.chainId ? { chainId: Number(complaint.chainId) } : {}),
+    ...(comment ? { comment } : {}),
+  })
+}

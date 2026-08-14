@@ -6,6 +6,7 @@ export { WishCard } from './ui/WishCard'
 export {
   itemKeys,
   getMyItems,
+  getUserItems,
   createItem,
   editItem,
   setItemWish,
