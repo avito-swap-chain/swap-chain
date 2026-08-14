@@ -35,9 +35,12 @@ LSP в редакторе иногда ложно не резолвит зави
   Между слоями импорт через алиас `@/` (`@/entities/chain`), внутри слайса — относительный (`../model/types`).
 - **`shared/ui` готов:** `BrandMark` (лого-точки), `Button` (primary/dark/secondary/ghost/danger, fullWidth),
   `Status` (neutral/attention/stop/muted — статус текстом, как в заказах Авито), `Steps` (вертикальный
-  степпер этапов: done/current/todo), `Card` (padded), `Field`+`Input`, `Banner` (info/ok/stop),
-  иконки (`IconCheck`/`IconClock`/`IconClose`/`IconPlus`/`IconArrowRight`/`IconChevronLeft`/`IconBox`).
-  Хелпер склейки классов — `shared/lib/cx`. Провайдеры — `app/providers.tsx` (QueryClientProvider).
+  степпер этапов: done/current/todo), `Counter` (красный счётчик непрочитанного — один на весь
+  интерфейс), `Card` (padded), `Field`+`Input`, `Banner` (info/ok/stop), иконки. Иконки шапки —
+  контуры из набора Авито `design-system-icons`, а не нарисованные: `IconAdd`, `IconItems`,
+  `IconFavorites`, `IconNotifications`, `IconMessages`, `IconCart`, `IconExpandMore`, `IconCamera`.
+  Хелперы — `shared/lib/cx` (склейка классов) и `shared/lib/date` (`formatWhen`/`formatDate`/
+  `formatDateTime` — правило дат одно на весь кабинет). Провайдеры — `app/providers.tsx`.
 - `verbatimModuleSyntax` включён — импорт типов только через `import type`.
 - **Данные — только через TanStack Query.** Запросы в `entities/*/api`, компоненты берут их через
   `useQuery`/`useMutation`; `fetch` в компонентах не вызывать.
@@ -45,10 +48,17 @@ LSP в редакторе иногда ложно не резолвит зави
   `api/openapi.yaml`). Сгенерированные функции вызываются изнутри наших api-функций, схемы контракта
   переводит слой маппинга (`mapItem`, `mapChain`). Реальные вызовы включаются переменной `VITE_API_URL`;
   без неё работают мок-функции — демо обязано открываться без бэкенда. Чего контракт не покрывает —
-  перечислено в `shared/config/backend.ts`.
+  перечислено в `shared/config/backend.ts`. **Контракт живой:** к 14 августа он дошёл до 0.11.0 —
+  чат адресуется парой «вещь + собеседник», у вещи обязательный `condition` и терминальный
+  `EXCHANGED`, у поддержки свой тред с модератором, у реплики — метка `riskGroup`. После
+  `api:sync` всегда смотреть `git diff` на сгенерированном клиенте: ломающие правки приезжают
+  молча.
 - **Коммиты — Conventional Commits** (`feat:`/`fix:`/`chore:`/`refactor:`), под своим GitHub-аккаунтом
   с настоящим именем (атрибуция вклада — требование хакатона).
 - **Тесты — Vitest**, юнит на важной логике (машина состояний цепочки, подбор, статус-маппинги).
+- **Проверять против стенда, а не только на моках.** Моки лгут молча: `condition` стал
+  обязательным, и публикация вещи отваливалась 400 только с бэкендом. Стенд поднимается так:
+  `API_PROXY=https://panel.vqnode.ru:18090 VITE_API_URL=/ pnpm dev`.
 
 ## Ключевое архитектурное решение
 
