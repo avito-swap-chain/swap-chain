@@ -2170,7 +2170,7 @@ func adminChainModel(chain adminmodel.Chain) api.AdminChain {
 }
 
 func chatMessageModel(message chatmodel.Message) api.ChatMessage {
-	return api.ChatMessage{
+	result := api.ChatMessage{
 		Id:     message.ID,
 		ItemId: message.ItemID,
 		Sender: api.UserSummary{
@@ -2185,6 +2185,11 @@ func chatMessageModel(message chatmodel.Message) api.ChatMessage {
 		Text:            message.Text,
 		CreatedAt:       message.CreatedAt,
 	}
+	if risk := chatservice.ClassifyMessageRisk(message.Text); risk != "" {
+		group := api.MessageRiskGroup(risk)
+		result.RiskGroup = &group
+	}
+	return result
 }
 
 func chatThreadModel(thread chatmodel.Thread) api.ChatThread {
