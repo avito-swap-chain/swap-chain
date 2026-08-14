@@ -1231,6 +1231,55 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/InternalError"}
 
+  /api/v1/admin/chains:
+    get:
+      operationId: listAdminChains
+      tags: [admin]
+      summary: List exchange chains for pickup-point staff
+      description: Returns chain summaries; participant and item details are available only inside a selected chain.
+      parameters:
+        - {name: status, in: query, schema: {$ref: "#/components/schemas/AdminChainStatus"}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Chain queue, content: {application/json: {schema: {$ref: "#/components/schemas/AdminChainList"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/admin/chains/{chainId}:
+    parameters:
+      - {name: chainId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+    get:
+      operationId: getAdminChain
+      tags: [admin]
+      summary: Get a chain with all item hand-offs
+      responses:
+        "200": {description: Chain details, content: {application/json: {schema: {$ref: "#/components/schemas/AdminChain"}}}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
+  /api/v1/admin/chains/{chainId}/participants/{participantId}/receipt:
+    parameters:
+      - {name: chainId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+      - {name: participantId, in: path, required: true, description: User receiving the incoming item., schema: {type: integer, format: int64, minimum: 1}}
+    post:
+      operationId: confirmAdminParticipantReceipt
+      tags: [admin]
+      summary: Confirm that a participant received their incoming item
+      description: Requires ADMIN. Idempotent when already received; the final receipt completes the chain atomically.
+      responses:
+        "200": {description: Confirmed receipt, content: {application/json: {schema: {$ref: "#/components/schemas/ChainReceipt"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/InternalError"}
+
   /api/v1/admin/deliveries:
     get:
       operationId: listAdminDeliveries
@@ -2659,6 +2708,40 @@ components:
         nextCursor:
           type: string
           nullable: true
+
+    AdminChainStatus:
+      type: string
+      enum: [ACCEPTED, COMPLETED]
+
+    AdminChainSummary:
+      type: object
+      required: [id, status, participantCount, receivedCount, createdAt, updatedAt]
+      properties:
+        id: {type: integer, format: int64}
+        status: {$ref: "#/components/schemas/AdminChainStatus"}
+        participantCount: {type: integer, format: int64, minimum: 2}
+        receivedCount: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+
+    AdminChain:
+      allOf:
+        - {$ref: "#/components/schemas/AdminChainSummary"}
+        - type: object
+          required: [deliveries]
+          properties:
+            deliveries:
+              type: array
+              items: {$ref: "#/components/schemas/AdminDelivery"}
+
+    AdminChainList:
+      type: object
+      required: [chains]
+      properties:
+        chains:
+          type: array
+          items: {$ref: "#/components/schemas/AdminChainSummary"}
+        nextCursor: {type: string, nullable: true}
 
     FunnelMetrics:
       type: object

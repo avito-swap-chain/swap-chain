@@ -41,6 +41,91 @@ func NewPostgreSQLWithOutbox(database *sql.DB, eventOutbox outboxEnqueuer) (*Pos
 	}, nil
 }
 
+func (r *PostgreSQL) ListChains(ctx context.Context, actorID int64, status string, afterID int64, limit int) ([]model.Chain, *int64, error) {
+	if err := requireAdmin(ctx, r.queries, actorID); err != nil {
+		return nil, nil, err
+	}
+	rows, err := r.database.QueryContext(ctx, `
+		SELECT c.id, c.status::text, count(ci.id),
+		       count(ci.id) FILTER (WHERE ci.delivery_status='RECEIVED'),
+		       c.created_at, c.updated_at
+		FROM chains c
+		JOIN chain_items ci ON ci.chain_id=c.id
+		WHERE c.status IN ('ACCEPTED','COMPLETED')
+		  AND ($1='' OR c.status::text=$1) AND c.id>$2
+		GROUP BY c.id
+		ORDER BY c.id ASC LIMIT $3`, status, afterID, limit+1)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list admin chains: %w", err)
+	}
+	defer rows.Close()
+	chains := make([]model.Chain, 0, limit+1)
+	for rows.Next() {
+		var chain model.Chain
+		if err := rows.Scan(&chain.ID, &chain.Status, &chain.ParticipantCount, &chain.ReceivedCount, &chain.CreatedAt, &chain.UpdatedAt); err != nil {
+			return nil, nil, fmt.Errorf("scan admin chain: %w", err)
+		}
+		chains = append(chains, chain)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterate admin chains: %w", err)
+	}
+	var next *int64
+	if len(chains) > limit {
+		cursor := chains[limit-1].ID
+		next = &cursor
+		chains = chains[:limit]
+	}
+	return chains, next, nil
+}
+
+func (r *PostgreSQL) GetChain(ctx context.Context, actorID, chainID int64) (model.Chain, error) {
+	if err := requireAdmin(ctx, r.queries, actorID); err != nil {
+		return model.Chain{}, err
+	}
+	var chain model.Chain
+	err := r.database.QueryRowContext(ctx, `
+		SELECT c.id,c.status::text,count(ci.id),
+		       count(ci.id) FILTER (WHERE ci.delivery_status='RECEIVED'),c.created_at,c.updated_at
+		FROM chains c JOIN chain_items ci ON ci.chain_id=c.id
+		WHERE c.id=$1 AND c.status IN ('ACCEPTED','COMPLETED') GROUP BY c.id`, chainID).
+		Scan(&chain.ID, &chain.Status, &chain.ParticipantCount, &chain.ReceivedCount, &chain.CreatedAt, &chain.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Chain{}, model.ErrChainNotFound
+	}
+	if err != nil {
+		return model.Chain{}, fmt.Errorf("load admin chain: %w", err)
+	}
+	rows, err := r.database.QueryContext(ctx, `
+		SELECT ci.id,ci.chain_id,ci.item_id,i.offer_title,
+		       sender.id,sender.username,recipient.id,recipient.username,
+		       ci.delivery_status::text,ci.delivery_updated_at
+		FROM chain_items ci
+		JOIN items i ON i.id=ci.item_id
+		JOIN users sender ON sender.id=ci.user_id
+		JOIN chain_items incoming ON incoming.chain_id=ci.chain_id AND incoming.next_item_id=ci.item_id
+		JOIN users recipient ON recipient.id=incoming.user_id
+		WHERE ci.chain_id=$1 ORDER BY ci.id`, chainID)
+	if err != nil {
+		return model.Chain{}, fmt.Errorf("load admin chain deliveries: %w", err)
+	}
+	defer rows.Close()
+	chain.Deliveries = make([]model.Delivery, 0, chain.ParticipantCount)
+	for rows.Next() {
+		var delivery model.Delivery
+		if err := rows.Scan(&delivery.ID, &delivery.ChainID, &delivery.ItemID, &delivery.ItemTitle,
+			&delivery.SenderID, &delivery.SenderUsername, &delivery.RecipientID, &delivery.RecipientUsername,
+			&delivery.Status, &delivery.UpdatedAt); err != nil {
+			return model.Chain{}, fmt.Errorf("scan admin chain delivery: %w", err)
+		}
+		chain.Deliveries = append(chain.Deliveries, delivery)
+	}
+	if err := rows.Err(); err != nil {
+		return model.Chain{}, fmt.Errorf("iterate admin chain deliveries: %w", err)
+	}
+	return chain, nil
+}
+
 func (r *PostgreSQL) ListDeliveries(
 	ctx context.Context,
 	actorID int64,
@@ -143,6 +228,14 @@ func (r *PostgreSQL) TransitionDelivery(
 
 // ConfirmReceipt определяет входящую вещь по участнику и атомарно завершает цепочку после последнего получения.
 func (r *PostgreSQL) ConfirmReceipt(ctx context.Context, actorID, chainID int64) (model.Receipt, error) {
+	return r.confirmReceipt(ctx, actorID, actorID, chainID, false)
+}
+
+func (r *PostgreSQL) ConfirmParticipantReceipt(ctx context.Context, actorID, chainID, participantID int64) (model.Receipt, error) {
+	return r.confirmReceipt(ctx, actorID, participantID, chainID, true)
+}
+
+func (r *PostgreSQL) confirmReceipt(ctx context.Context, actorID, recipientID, chainID int64, admin bool) (model.Receipt, error) {
 	tx, err := r.database.BeginTx(ctx, nil)
 	if err != nil {
 		return model.Receipt{}, fmt.Errorf("begin delivery receipt: %w", err)
@@ -150,6 +243,11 @@ func (r *PostgreSQL) ConfirmReceipt(ctx context.Context, actorID, chainID int64)
 	defer func() { _ = tx.Rollback() }()
 
 	queries := db.New(tx)
+	if admin {
+		if err := requireAdmin(ctx, queries, actorID); err != nil {
+			return model.Receipt{}, err
+		}
+	}
 	chainStatus, err := lockChain(ctx, queries, chainID)
 	if err != nil {
 		return model.Receipt{}, err
@@ -157,10 +255,13 @@ func (r *PostgreSQL) ConfirmReceipt(ctx context.Context, actorID, chainID int64)
 
 	recipientDelivery, err := queries.LockRecipientDelivery(ctx, db.LockRecipientDeliveryParams{
 		ChainID:     chainID,
-		RecipientID: actorID,
+		RecipientID: recipientID,
 	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
+		if admin {
+			return model.Receipt{}, model.ErrDeliveryNotFound
+		}
 		return model.Receipt{}, model.ErrReceiptForbidden
 	case err != nil:
 		return model.Receipt{}, fmt.Errorf("lock recipient delivery: %w", err)
@@ -180,6 +281,11 @@ func (r *PostgreSQL) ConfirmReceipt(ctx context.Context, actorID, chainID int64)
 			model.DeliveryReceived,
 		); err != nil {
 			return model.Receipt{}, err
+		}
+		if admin {
+			if err := recordDeliveryAudit(ctx, queries, actorID, recipientDelivery.ID, recipientDelivery.DeliveryStatus, model.DeliveryReceived); err != nil {
+				return model.Receipt{}, err
+			}
 		}
 	}
 	chainStatus, err = completeChainIfReceived(ctx, queries, chainID, chainStatus)

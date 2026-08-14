@@ -453,7 +453,7 @@ func TestChainReceiptContractUsesSessionRecipient(t *testing.T) {
 	if err := json.NewDecoder(received.Body).Decode(&receipt); err != nil {
 		t.Fatalf("decode receipt: %v", err)
 	}
-	if receipt.Delivery.Status != api.AdminDeliveryStatusRECEIVED || receipt.ChainStatus != api.COMPLETED {
+	if receipt.Delivery.Status != api.AdminDeliveryStatusRECEIVED || receipt.ChainStatus != api.ChainStatusCOMPLETED {
 		t.Fatalf("receipt = %+v", receipt)
 	}
 
@@ -493,7 +493,7 @@ func TestLoginCookieIdentifiesCurrentUser(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&current); err != nil {
 		t.Fatalf("decode session: %v", err)
 	}
-	if current.User.Id != 7 || current.User.Phone != phoneForUserID(7) || current.User.Role != api.ADMIN {
+	if current.User.Id != 7 || current.User.Phone != phoneForUserID(7) || current.User.Role != api.UserRoleADMIN {
 		t.Fatalf("current user = %#v, want user 7", current.User)
 	}
 }
@@ -522,7 +522,7 @@ func TestRegistrationUnknownLoginAndLogout(t *testing.T) {
 		t.Fatalf("decode registration: %v", err)
 	}
 	closeBody(t, registered.Body)
-	if current.User.Username != "Danya" || current.User.Phone != "+79995550000" || current.User.Role != api.USER {
+	if current.User.Username != "Danya" || current.User.Phone != "+79995550000" || current.User.Role != api.UserRoleUSER {
 		t.Fatalf("registered user = %#v", current.User)
 	}
 
@@ -1717,6 +1717,23 @@ func (*testAdminService) ListDeliveries(_ context.Context, actorID int64, _ stri
 	return []adminmodel.Delivery{testAdminDelivery()}, nil, nil
 }
 
+func (*testAdminService) ListChains(_ context.Context, actorID int64, _ string, _ int64, _ int) ([]adminmodel.Chain, *int64, error) {
+	if actorID != 7 {
+		return nil, nil, adminmodel.ErrForbidden
+	}
+	return []adminmodel.Chain{{ID: 12, Status: adminmodel.ChainAccepted, ParticipantCount: 2}}, nil, nil
+}
+
+func (*testAdminService) GetChain(_ context.Context, actorID, chainID int64) (adminmodel.Chain, error) {
+	if actorID != 7 {
+		return adminmodel.Chain{}, adminmodel.ErrForbidden
+	}
+	if chainID == 404 {
+		return adminmodel.Chain{}, adminmodel.ErrChainNotFound
+	}
+	return adminmodel.Chain{ID: chainID, Status: adminmodel.ChainAccepted, ParticipantCount: 2, Deliveries: []adminmodel.Delivery{testAdminDelivery()}}, nil
+}
+
 func (*testAdminService) TransitionDelivery(_ context.Context, actorID, deliveryID int64, targetStatus string) (adminmodel.Delivery, error) {
 	if actorID != 7 {
 		return adminmodel.Delivery{}, adminmodel.ErrForbidden
@@ -1744,6 +1761,18 @@ func (*testAdminService) ConfirmReceipt(_ context.Context, actorID, chainID int6
 	delivery := testAdminDelivery()
 	delivery.Status = adminmodel.DeliveryReceived
 	return adminmodel.Receipt{Delivery: delivery, ChainStatus: adminmodel.ChainCompleted}, nil
+}
+
+func (*testAdminService) ConfirmParticipantReceipt(_ context.Context, actorID, chainID, participantID int64) (adminmodel.Receipt, error) {
+	if actorID != 7 {
+		return adminmodel.Receipt{}, adminmodel.ErrForbidden
+	}
+	if chainID == 404 || participantID == 404 {
+		return adminmodel.Receipt{}, adminmodel.ErrDeliveryNotFound
+	}
+	delivery := testAdminDelivery()
+	delivery.Status = adminmodel.DeliveryReceived
+	return adminmodel.Receipt{Delivery: delivery, ChainStatus: adminmodel.ChainAccepted}, nil
 }
 
 func testAdminDelivery() adminmodel.Delivery {

@@ -56,6 +56,16 @@ type Receipt struct {
 	ChainStatus string
 }
 
+type Chain struct {
+	ID               int64
+	Status           string
+	ParticipantCount int64
+	ReceivedCount    int64
+	Deliveries       []Delivery
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
 func ValidateTargetStatus(status string) error {
 	switch status {
 	case DeliveryAtPVZ, DeliveryInTransit, DeliveryReceived:

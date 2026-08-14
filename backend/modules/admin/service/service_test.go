@@ -9,6 +9,8 @@ import (
 )
 
 type repositoryStub struct {
+	chains           []model.Chain
+	chainResult      model.Chain
 	deliveries       []model.Delivery
 	next             *int64
 	listError        error
@@ -24,6 +26,16 @@ type repositoryStub struct {
 	deliveryID      int64
 	chainID         int64
 	targetStatus    string
+}
+
+func (r *repositoryStub) ListChains(_ context.Context, actorID int64, _ string, _ int64, _ int) ([]model.Chain, *int64, error) {
+	r.actorID = actorID
+	return r.chains, r.next, r.listError
+}
+
+func (r *repositoryStub) GetChain(_ context.Context, actorID, chainID int64) (model.Chain, error) {
+	r.actorID, r.chainID = actorID, chainID
+	return r.chainResult, r.listError
 }
 
 func (r *repositoryStub) ListDeliveries(
@@ -55,6 +67,12 @@ func (r *repositoryStub) ConfirmReceipt(_ context.Context, actorID, chainID int6
 	r.receiptCalls++
 	r.actorID = actorID
 	r.chainID = chainID
+	return r.receiptResult, r.receiptError
+}
+
+func (r *repositoryStub) ConfirmParticipantReceipt(_ context.Context, actorID, chainID, participantID int64) (model.Receipt, error) {
+	r.receiptCalls++
+	r.actorID, r.chainID, r.deliveryID = actorID, chainID, participantID
 	return r.receiptResult, r.receiptError
 }
 
@@ -184,6 +202,30 @@ func TestConfirmReceiptReturnsRepositoryOutcome(t *testing.T) {
 	}
 	if repository.receiptCalls != 2 || repository.actorID != 8 || repository.chainID != 12 {
 		t.Fatalf("repository calls = %d, actor %d, chain %d", repository.receiptCalls, repository.actorID, repository.chainID)
+	}
+}
+
+func TestConfirmParticipantReceiptValidatesAndPublishes(t *testing.T) {
+	want := model.Receipt{Delivery: model.Delivery{ID: 15, Status: model.DeliveryReceived}, ChainStatus: model.ChainAccepted}
+	repository := &repositoryStub{receiptResult: want}
+	callbackCalls := 0
+	admin, err := NewWithCallback(repository, func(_ context.Context, delivery model.Delivery) {
+		callbackCalls++
+		if delivery != want.Delivery {
+			t.Fatalf("callback delivery = %+v", delivery)
+		}
+	}, AdminConfig{MaxListLimit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.ConfirmParticipantReceipt(context.Background(), 7, 12, 9); err != nil {
+		t.Fatalf("ConfirmParticipantReceipt() error = %v", err)
+	}
+	if repository.actorID != 7 || repository.chainID != 12 || repository.deliveryID != 9 || callbackCalls != 1 {
+		t.Fatalf("forwarded values = actor %d chain %d participant %d callbacks %d", repository.actorID, repository.chainID, repository.deliveryID, callbackCalls)
+	}
+	if _, err := admin.ConfirmParticipantReceipt(context.Background(), 7, 12, 0); err == nil {
+		t.Fatal("zero participant accepted")
 	}
 }
 

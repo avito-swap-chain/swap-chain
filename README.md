@@ -153,9 +153,21 @@ curl -X POST http://localhost:8080/api/v1/session \
 curl -b admin-cookies.txt \
   'http://localhost:8080/api/v1/admin/deliveries?status=AWAITING_PVZ'
 
+# Рабочий экран ПВЗ строится от цепочек, а передачи раскрываются внутри выбранной цепочки:
+curl -b admin-cookies.txt \
+  'http://localhost:8080/api/v1/admin/chains?status=ACCEPTED'
+
+curl -b admin-cookies.txt \
+  'http://localhost:8080/api/v1/admin/chains/12'
+
 curl -X POST http://localhost:8080/api/v1/admin/deliveries/41/transition \
   -H "Content-Type: application/json" \
   -d '{"status":"AT_PVZ"}' \
+  -b admin-cookies.txt
+
+# После IN_DELIVERY сотрудник подтверждает выдачу входящей вещи конкретному участнику:
+curl -X POST \
+  http://localhost:8080/api/v1/admin/chains/12/participants/9/receipt \
   -b admin-cookies.txt
 
 curl -X POST http://localhost:8080/api/v1/admin/deliveries/41/transition \

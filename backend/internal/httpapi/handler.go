@@ -1248,6 +1248,98 @@ func (h *Handler) MarkChatThreadRead(ctx context.Context, request api.MarkChatTh
 }
 
 // ListAdminDeliveries returns assembled-chain item hand-offs to an authenticated pickup-point administrator.
+func (h *Handler) ListAdminChains(ctx context.Context, request api.ListAdminChainsRequestObject) (api.ListAdminChainsResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ListAdminChains401JSONResponse{UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx))}, nil
+	}
+	limit := 20
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	status := ""
+	if request.Params.Status != nil {
+		status = string(*request.Params.Status)
+	}
+	afterID := int64(0)
+	if request.Params.Cursor != nil {
+		parsed, err := strconv.ParseInt(*request.Params.Cursor, 10, 64)
+		if err != nil || parsed < 0 {
+			return api.ListAdminChains400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(errorModel(ctx, "INVALID_CURSOR", "cursor must be a non-negative integer", nil))}, nil
+		}
+		afterID = parsed
+	}
+	chains, next, err := h.admin.ListChains(ctx, current.UserID, status, afterID, limit)
+	if err != nil {
+		mapped := adminErrorModel(ctx, err)
+		switch {
+		case isAdminValidationError(err):
+			return api.ListAdminChains400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrForbidden):
+			return api.ListAdminChains403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("list admin chains", zap.Int64("actor_id", current.UserID), zap.Error(err))
+			return api.ListAdminChains500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	response := api.AdminChainList{Chains: make([]api.AdminChainSummary, 0, len(chains))}
+	for _, chain := range chains {
+		response.Chains = append(response.Chains, adminChainSummaryModel(chain))
+	}
+	if next != nil {
+		cursor := strconv.FormatInt(*next, 10)
+		response.NextCursor = &cursor
+	}
+	return api.ListAdminChains200JSONResponse(response), nil
+}
+
+func (h *Handler) GetAdminChain(ctx context.Context, request api.GetAdminChainRequestObject) (api.GetAdminChainResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.GetAdminChain401JSONResponse{UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx))}, nil
+	}
+	chain, err := h.admin.GetChain(ctx, current.UserID, request.ChainId)
+	if err != nil {
+		mapped := adminErrorModel(ctx, err)
+		switch {
+		case errors.Is(err, adminmodel.ErrForbidden):
+			return api.GetAdminChain403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrChainNotFound):
+			return api.GetAdminChain404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("get admin chain", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Error(err))
+			return api.GetAdminChain500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	return api.GetAdminChain200JSONResponse(adminChainModel(chain)), nil
+}
+
+func (h *Handler) ConfirmAdminParticipantReceipt(ctx context.Context, request api.ConfirmAdminParticipantReceiptRequestObject) (api.ConfirmAdminParticipantReceiptResponseObject, error) {
+	current, ok := session.Current(ctx)
+	if !ok {
+		return api.ConfirmAdminParticipantReceipt401JSONResponse{UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(sessionRequired(ctx))}, nil
+	}
+	receipt, err := h.admin.ConfirmParticipantReceipt(ctx, current.UserID, request.ChainId, request.ParticipantId)
+	if err != nil {
+		mapped := adminErrorModel(ctx, err)
+		switch {
+		case isAdminValidationError(err):
+			return api.ConfirmAdminParticipantReceipt400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrForbidden):
+			return api.ConfirmAdminParticipantReceipt403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrChainNotFound), errors.Is(err, adminmodel.ErrDeliveryNotFound):
+			return api.ConfirmAdminParticipantReceipt404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
+		case errors.Is(err, adminmodel.ErrTransitionConflict):
+			return api.ConfirmAdminParticipantReceipt409JSONResponse{ConflictJSONResponse: api.ConflictJSONResponse(mapped)}, nil
+		default:
+			h.logger.Error("confirm participant receipt", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Int64("participant_id", request.ParticipantId), zap.Error(err))
+			return api.ConfirmAdminParticipantReceipt500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
+		}
+	}
+	return api.ConfirmAdminParticipantReceipt200JSONResponse(api.ChainReceipt{Delivery: adminDeliveryModel(receipt.Delivery), ChainStatus: api.ChainStatus(receipt.ChainStatus)}), nil
+}
+
+// ListAdminDeliveries returns assembled-chain item hand-offs to an authenticated pickup-point administrator.
 func (h *Handler) ListAdminDeliveries(ctx context.Context, request api.ListAdminDeliveriesRequestObject) (api.ListAdminDeliveriesResponseObject, error) {
 	current, ok := session.Current(ctx)
 	if !ok {
@@ -2063,6 +2155,18 @@ func adminDeliveryModel(delivery adminmodel.Delivery) api.AdminDelivery {
 		Status:    api.AdminDeliveryStatus(delivery.Status),
 		UpdatedAt: delivery.UpdatedAt,
 	}
+}
+
+func adminChainSummaryModel(chain adminmodel.Chain) api.AdminChainSummary {
+	return api.AdminChainSummary{Id: chain.ID, Status: api.AdminChainStatus(chain.Status), ParticipantCount: chain.ParticipantCount, ReceivedCount: chain.ReceivedCount, CreatedAt: chain.CreatedAt, UpdatedAt: chain.UpdatedAt}
+}
+
+func adminChainModel(chain adminmodel.Chain) api.AdminChain {
+	deliveries := make([]api.AdminDelivery, 0, len(chain.Deliveries))
+	for _, delivery := range chain.Deliveries {
+		deliveries = append(deliveries, adminDeliveryModel(delivery))
+	}
+	return api.AdminChain{Id: chain.ID, Status: api.AdminChainStatus(chain.Status), ParticipantCount: chain.ParticipantCount, ReceivedCount: chain.ReceivedCount, CreatedAt: chain.CreatedAt, UpdatedAt: chain.UpdatedAt, Deliveries: deliveries}
 }
 
 func chatMessageModel(message chatmodel.Message) api.ChatMessage {
