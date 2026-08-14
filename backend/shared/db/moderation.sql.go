@@ -297,7 +297,8 @@ func (q *Queries) ListMessageReports(ctx context.Context, arg ListMessageReports
 
 const listThreadMessages = `-- name: ListThreadMessages :many
 SELECT message.id,
-       message.chain_id,
+       message.item_id,
+       message.chain_id AS origin_chain_id,
        sender.id AS sender_user_id,
        sender.username AS sender_username,
        recipient.id AS recipient_user_id,
@@ -308,7 +309,7 @@ SELECT message.id,
 FROM chat_messages AS message
 JOIN users AS sender ON sender.id = message.sender_user_id
 JOIN users AS recipient ON recipient.id = message.recipient_user_id
-WHERE message.chain_id = $1
+WHERE message.item_id = $1
   AND (
       (message.sender_user_id = $2 AND message.recipient_user_id = $3)
       OR
@@ -318,14 +319,15 @@ ORDER BY message.id ASC
 `
 
 type ListThreadMessagesParams struct {
-	ChainID      int64 `json:"chain_id"`
+	ItemID       int64 `json:"item_id"`
 	FirstUserID  int64 `json:"first_user_id"`
 	SecondUserID int64 `json:"second_user_id"`
 }
 
 type ListThreadMessagesRow struct {
 	ID                int64     `json:"id"`
-	ChainID           int64     `json:"chain_id"`
+	ItemID            int64     `json:"item_id"`
+	OriginChainID     int64     `json:"origin_chain_id"`
 	SenderUserID      int64     `json:"sender_user_id"`
 	SenderUsername    string    `json:"sender_username"`
 	RecipientUserID   int64     `json:"recipient_user_id"`
@@ -336,7 +338,7 @@ type ListThreadMessagesRow struct {
 }
 
 func (q *Queries) ListThreadMessages(ctx context.Context, arg ListThreadMessagesParams) ([]ListThreadMessagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listThreadMessages, arg.ChainID, arg.FirstUserID, arg.SecondUserID)
+	rows, err := q.db.QueryContext(ctx, listThreadMessages, arg.ItemID, arg.FirstUserID, arg.SecondUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +348,8 @@ func (q *Queries) ListThreadMessages(ctx context.Context, arg ListThreadMessages
 		var i ListThreadMessagesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.ChainID,
+			&i.ItemID,
+			&i.OriginChainID,
 			&i.SenderUserID,
 			&i.SenderUsername,
 			&i.RecipientUserID,

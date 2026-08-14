@@ -140,7 +140,7 @@ func (r *PostgreSQL) GetReport(ctx context.Context, adminID, reportID int64) (mo
 	}
 
 	contextRows, err := queries.ListThreadMessages(ctx, db.ListThreadMessagesParams{
-		ChainID:      message.ChainID,
+		ItemID:       message.ItemID,
 		FirstUserID:  message.SenderUserID,
 		SecondUserID: message.RecipientUserID,
 	})
@@ -149,12 +149,12 @@ func (r *PostgreSQL) GetReport(ctx context.Context, adminID, reportID int64) (mo
 	}
 	contextMessages := make([]chatmodel.Message, 0, len(contextRows))
 	for _, contextRow := range contextRows {
-		contextMessages = append(contextMessages, mapChatMessage(contextRow.ID, contextRow.ChainID, contextRow.SenderUserID, contextRow.SenderUsername, contextRow.RecipientUserID, contextRow.RecipientUsername, contextRow.ClientMessageID, contextRow.MessageText, contextRow.CreatedAt))
+		contextMessages = append(contextMessages, mapChatMessage(contextRow.ID, contextRow.ItemID, contextRow.OriginChainID, contextRow.SenderUserID, contextRow.SenderUsername, contextRow.RecipientUserID, contextRow.RecipientUsername, contextRow.ClientMessageID, contextRow.MessageText, contextRow.CreatedAt))
 	}
 
 	return model.ReportDetail{
 		Report:          report,
-		ReportedMessage: mapChatMessage(message.ID, message.ChainID, message.SenderUserID, message.SenderUsername, message.RecipientUserID, message.RecipientUsername, message.ClientMessageID, message.MessageText, message.CreatedAt),
+		ReportedMessage: mapChatMessage(message.ID, message.ItemID, message.OriginChainID, message.SenderUserID, message.SenderUsername, message.RecipientUserID, message.RecipientUsername, message.ClientMessageID, message.MessageText, message.CreatedAt),
 		Context:         contextMessages,
 	}, nil
 }
@@ -393,11 +393,12 @@ func mapReport(id, reporterUserID int64, reporterUsername string, messageID int6
 	return report
 }
 
-func mapChatMessage(id, chainID, senderUserID int64, senderUsername string, recipientUserID int64, recipientUsername, clientMessageID, text string, createdAt time.Time) chatmodel.Message {
+func mapChatMessage(id, itemID, originChainID, senderUserID int64, senderUsername string, recipientUserID int64, recipientUsername, clientMessageID, text string, createdAt time.Time) chatmodel.Message {
 	return chatmodel.Message{
-		ID:      id,
-		ChainID: chainID,
-		Sender:  chatmodel.Sender{ID: senderUserID, Username: senderUsername},
+		ID:            id,
+		ItemID:        itemID,
+		OriginChainID: originChainID,
+		Sender:        chatmodel.Sender{ID: senderUserID, Username: senderUsername},
 		Recipient: chatmodel.Sender{
 			ID:       recipientUserID,
 			Username: recipientUsername,

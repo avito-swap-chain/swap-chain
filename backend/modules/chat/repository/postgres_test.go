@@ -18,25 +18,25 @@ func TestNewPostgreSQLRequiresDatabase(t *testing.T) {
 func TestChatMessageMappings(t *testing.T) {
 	createdAt := time.Unix(100, 0).UTC()
 	row := db.GetChatMessageRow{
-		ID: 7, ChainID: 8,
+		ID: 7, ItemID: 9, OriginChainID: 8,
 		SenderUserID: 1, SenderUsername: "Аня",
 		RecipientUserID: 2, RecipientUsername: "Борис",
 		ClientMessageID: "client-1", MessageText: "Привет", CreatedAt: createdAt,
 	}
 	got := mapChatMessage(row)
-	if got.ID != 7 || got.ChainID != 8 || got.Sender.ID != 1 || got.Recipient.ID != 2 ||
+	if got.ID != 7 || got.ItemID != 9 || got.OriginChainID != 8 || got.Sender.ID != 1 || got.Recipient.ID != 2 ||
 		got.ClientMessageID != "client-1" || got.Text != "Привет" || !got.CreatedAt.Equal(createdAt) {
 		t.Fatalf("mapChatMessage() = %+v", got)
 	}
 
 	idempotent := mapIdempotentMessage(db.GetChatMessageByClientIDRow{
-		ID: row.ID, ChainID: row.ChainID,
+		ID: row.ID, ItemID: row.ItemID, OriginChainID: row.OriginChainID,
 		SenderUserID: row.SenderUserID, SenderUsername: row.SenderUsername,
 		RecipientUserID: row.RecipientUserID, RecipientUsername: row.RecipientUsername,
 		ClientMessageID: row.ClientMessageID, MessageText: row.MessageText, CreatedAt: row.CreatedAt,
 	})
 	listed := mapListedMessage(db.ListChatMessagesRow{
-		ID: row.ID, ChainID: row.ChainID,
+		ID: row.ID, ItemID: row.ItemID, OriginChainID: row.OriginChainID,
 		SenderUserID: row.SenderUserID, SenderUsername: row.SenderUsername,
 		RecipientUserID: row.RecipientUserID, RecipientUsername: row.RecipientUsername,
 		ClientMessageID: row.ClientMessageID, MessageText: row.MessageText, CreatedAt: row.CreatedAt,

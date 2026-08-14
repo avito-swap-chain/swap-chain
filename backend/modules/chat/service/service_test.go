@@ -49,11 +49,11 @@ func TestSendCallsCallbackOnlyForNewMessage(t *testing.T) {
 	}
 }
 
-func (r *repositoryStub) CreateMessage(_ context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (model.Message, bool, error) {
+func (r *repositoryStub) CreateMessage(_ context.Context, itemID, actorID, counterpartID int64, clientMessageID, text string) (model.Message, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, message := range r.messages {
-		if message.ChainID == chainID && message.Sender.ID == actorID && message.Recipient.ID == counterpartID && message.ClientMessageID == clientMessageID {
+		if message.ItemID == itemID && message.Sender.ID == actorID && message.Recipient.ID == counterpartID && message.ClientMessageID == clientMessageID {
 			if message.Text != text {
 				return model.Message{}, false, model.ErrIdempotencyConflict
 			}
@@ -63,7 +63,7 @@ func (r *repositoryStub) CreateMessage(_ context.Context, chainID, actorID, coun
 	r.nextID++
 	message := model.Message{
 		ID:              r.nextID,
-		ChainID:         chainID,
+		ItemID:          itemID,
 		Sender:          model.Sender{ID: actorID, Username: "participant"},
 		Recipient:       model.Sender{ID: counterpartID, Username: "counterpart"},
 		ClientMessageID: clientMessageID,
@@ -74,7 +74,7 @@ func (r *repositoryStub) CreateMessage(_ context.Context, chainID, actorID, coun
 	return message, true, nil
 }
 
-func (r *repositoryStub) ListMessages(_ context.Context, chainID, actorID, counterpartID, afterID int64, limit int) ([]model.Message, error) {
+func (r *repositoryStub) ListMessages(_ context.Context, itemID, actorID, counterpartID, afterID int64, limit int) ([]model.Message, error) {
 	if r.firstList != nil {
 		r.firstListOnce.Do(func() { close(r.firstList) })
 	}
@@ -83,7 +83,7 @@ func (r *repositoryStub) ListMessages(_ context.Context, chainID, actorID, count
 	for _, message := range r.messages {
 		isThreadMessage := (message.Sender.ID == actorID && message.Recipient.ID == counterpartID) ||
 			(message.Sender.ID == counterpartID && message.Recipient.ID == actorID)
-		if message.ChainID == chainID && isThreadMessage && message.ID > afterID && len(result) < limit {
+		if message.ItemID == itemID && isThreadMessage && message.ID > afterID && len(result) < limit {
 			result = append(result, message)
 		}
 	}
@@ -100,24 +100,21 @@ func (r *repositoryStub) ListThreads(_ context.Context, _ int64) ([]model.Thread
 	return append([]model.Thread(nil), r.threads...), nil
 }
 
-func (r *repositoryStub) MarkRead(_ context.Context, chainID, _ int64, counterpartID, lastReadMessageID int64) (model.ReadState, error) {
-	return model.ReadState{ChainID: chainID, CounterpartID: counterpartID, LastReadMessageID: lastReadMessageID}, nil
+func (r *repositoryStub) MarkRead(_ context.Context, itemID, _ int64, counterpartID, lastReadMessageID int64) (model.ReadState, error) {
+	return model.ReadState{ItemID: itemID, CounterpartID: counterpartID, LastReadMessageID: lastReadMessageID}, nil
 }
 
 func TestThreadsAndReadState(t *testing.T) {
 	repository := &repositoryStub{threads: []model.Thread{{
-		ChainID:     8,
+		Item:        model.ItemSummary{ID: 44, Title: "Телефон", ImageURL: "/media/phone.jpg"},
 		Counterpart: model.Sender{ID: 5, Username: "Вера"},
-		GiveItem:    &model.ItemSummary{ID: 31, Title: "Велосипед"},
-		ReceiveItem: &model.ItemSummary{ID: 44, Title: "Телефон", ImageURL: "/media/phone.jpg"},
 		UnreadCount: 2,
 	}}}
 	chat, _ := New(repository, ChatConfig{MaxListLimit: 100, MaxWait: 25 * time.Second})
 
 	threads, err := chat.ListThreads(context.Background(), 3)
 	if err != nil || len(threads) != 1 || threads[0].Counterpart.ID != 5 || threads[0].UnreadCount != 2 ||
-		threads[0].GiveItem == nil || threads[0].GiveItem.ID != 31 ||
-		threads[0].ReceiveItem == nil || threads[0].ReceiveItem.ImageURL != "/media/phone.jpg" {
+		threads[0].Item.ID != 44 || threads[0].Item.ImageURL != "/media/phone.jpg" {
 		t.Fatalf("threads = %+v, err=%v", threads, err)
 	}
 	readState, err := chat.MarkRead(context.Background(), 8, 3, 5, 14)

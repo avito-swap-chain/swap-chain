@@ -71,8 +71,19 @@ func insertChatMessage(t *testing.T, database *sql.DB, chainID, senderID, recipi
 	t.Helper()
 	var messageID int64
 	if err := database.QueryRow(`
-		INSERT INTO chat_messages (chain_id, sender_user_id, recipient_user_id, client_message_id, message_text)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO chat_messages (chain_id, item_id, sender_user_id, recipient_user_id, client_message_id, message_text)
+		SELECT $1, owner.item_id, $2, $3, $4, $5
+		FROM chain_items AS owner
+		JOIN chain_items AS recipient
+		  ON recipient.chain_id = owner.chain_id
+		 AND recipient.next_item_id = owner.item_id
+		WHERE owner.chain_id = $1
+		  AND (
+		      (owner.user_id = $2 AND recipient.user_id = $3)
+		      OR (owner.user_id = $3 AND recipient.user_id = $2)
+		  )
+		ORDER BY owner.item_id
+		LIMIT 1
 		RETURNING id`,
 		chainID, senderID, recipientID, fmt.Sprintf("client-%d-%d", senderID, time.Now().UnixNano()), text,
 	).Scan(&messageID); err != nil {

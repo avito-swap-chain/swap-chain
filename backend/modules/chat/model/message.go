@@ -9,7 +9,7 @@ import (
 const MaxMessageLength = 2000
 
 var (
-	ErrChainNotFound       = errors.New("chat chain not found")
+	ErrItemNotFound        = errors.New("chat item not found")
 	ErrThreadNotFound      = errors.New("chat thread not found")
 	ErrMessageNotFound     = errors.New("chat message not found")
 	ErrForbidden           = errors.New("chat is not available to this user")
@@ -32,7 +32,8 @@ type Sender struct {
 
 type Message struct {
 	ID              int64
-	ChainID         int64
+	ItemID          int64
+	OriginChainID   int64
 	Sender          Sender
 	Recipient       Sender
 	ClientMessageID string
@@ -47,16 +48,14 @@ type ItemSummary struct {
 }
 
 type Thread struct {
-	ChainID     int64
+	Item        ItemSummary
 	Counterpart Sender
-	GiveItem    *ItemSummary
-	ReceiveItem *ItemSummary
 	LastMessage *Message
 	UnreadCount int64
 }
 
 type ReadState struct {
-	ChainID           int64
+	ItemID            int64
 	CounterpartID     int64
 	LastReadMessageID int64
 	UnreadCount       int64

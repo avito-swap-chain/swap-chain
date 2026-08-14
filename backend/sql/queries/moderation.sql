@@ -95,7 +95,8 @@ WHERE id = sqlc.arg(report_id)
 
 -- name: ListThreadMessages :many
 SELECT message.id,
-       message.chain_id,
+       message.item_id,
+       message.chain_id AS origin_chain_id,
        sender.id AS sender_user_id,
        sender.username AS sender_username,
        recipient.id AS recipient_user_id,
@@ -106,7 +107,7 @@ SELECT message.id,
 FROM chat_messages AS message
 JOIN users AS sender ON sender.id = message.sender_user_id
 JOIN users AS recipient ON recipient.id = message.recipient_user_id
-WHERE message.chain_id = sqlc.arg(chain_id)
+WHERE message.item_id = sqlc.arg(item_id)
   AND (
       (message.sender_user_id = sqlc.arg(first_user_id) AND message.recipient_user_id = sqlc.arg(second_user_id))
       OR

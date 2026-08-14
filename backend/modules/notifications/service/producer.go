@@ -102,12 +102,12 @@ func (p *Producer) NotifyCategoryActionRequired(ctx context.Context, userID int6
 		nil, &iID)
 }
 
-func (p *Producer) NotifyChatMessage(ctx context.Context, recipientID int64, senderUsername string, chainID int64) {
-	cID := chainID
+func (p *Producer) NotifyChatMessage(ctx context.Context, recipientID int64, senderUsername string, itemID int64) {
+	iID := itemID
 	p.notifyUser(ctx, recipientID, model.KindMessage,
 		fmt.Sprintf("Новое сообщение от %s", senderUsername),
 		fmt.Sprintf("Новое сообщение от %s", senderUsername),
-		&cID, nil)
+		nil, &iID)
 }
 
 func (p *Producer) NotifyDeliveryAtPVZ(ctx context.Context, userID int64, itemTitle string, itemID int64) {

@@ -566,10 +566,10 @@ type ChatItemSummary struct {
 
 // ChatMessage defines model for ChatMessage.
 type ChatMessage struct {
-	ChainId         int64       `json:"chainId"`
 	ClientMessageId string      `json:"clientMessageId"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	Id              int64       `json:"id"`
+	ItemId          int64       `json:"itemId"`
 	Recipient       UserSummary `json:"recipient"`
 	Sender          UserSummary `json:"sender"`
 	Text            string      `json:"text"`
@@ -583,25 +583,19 @@ type ChatMessageList struct {
 
 // ChatReadState defines model for ChatReadState.
 type ChatReadState struct {
-	ChainId           int64 `json:"chainId"`
 	CounterpartId     int64 `json:"counterpartId"`
+	ItemId            int64 `json:"itemId"`
 	LastReadMessageId int64 `json:"lastReadMessageId"`
 	UnreadCount       int64 `json:"unreadCount"`
 }
 
 // ChatThread defines model for ChatThread.
 type ChatThread struct {
-	ChainId     int64       `json:"chainId"`
-	Counterpart UserSummary `json:"counterpart"`
-
-	// GiveItem Item transferred from the authenticated user to this counterpart, when this thread covers that edge.
-	GiveItem    *ChatItemSummary `json:"giveItem"`
-	HasUnread   bool             `json:"hasUnread"`
-	LastMessage *ChatMessage     `json:"lastMessage,omitempty"`
-
-	// ReceiveItem Item transferred from this counterpart to the authenticated user, when this thread covers that edge.
-	ReceiveItem *ChatItemSummary `json:"receiveItem"`
-	UnreadCount int64            `json:"unreadCount"`
+	Counterpart UserSummary     `json:"counterpart"`
+	HasUnread   bool            `json:"hasUnread"`
+	Item        ChatItemSummary `json:"item"`
+	LastMessage *ChatMessage    `json:"lastMessage,omitempty"`
+	UnreadCount int64           `json:"unreadCount"`
 }
 
 // ChatThreadList defines model for ChatThreadList.
@@ -876,7 +870,7 @@ type ResolveItemCategoriesRequest struct {
 
 // SendChatMessageRequest defines model for SendChatMessageRequest.
 type SendChatMessageRequest struct {
-	// ClientMessageId Client-generated idempotency key scoped to chain, sender and counterpart.
+	// ClientMessageId Client-generated idempotency key scoped to item, sender and counterpart.
 	ClientMessageId string `json:"clientMessageId"`
 	Text            string `json:"text"`
 }
@@ -1044,6 +1038,12 @@ type ListChainsParams struct {
 	Cursor *string      `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// ListItemsParams defines parameters for ListItems.
+type ListItemsParams struct {
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListChatMessagesParams defines parameters for ListChatMessages.
 type ListChatMessagesParams struct {
 	// AfterId Return messages whose ID is greater than this cursor.
@@ -1052,12 +1052,6 @@ type ListChatMessagesParams struct {
 
 	// WaitSeconds Bounded long-poll wait; zero performs an immediate read.
 	WaitSeconds *int `form:"waitSeconds,omitempty" json:"waitSeconds,omitempty"`
-}
-
-// ListItemsParams defines parameters for ListItems.
-type ListItemsParams struct {
-	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
-	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // UploadMediaMultipartBody defines parameters for UploadMedia.
@@ -1103,12 +1097,6 @@ type BlockUserJSONRequestBody = BlockRequest
 // CreateChainJSONRequestBody defines body for CreateChain for application/json ContentType.
 type CreateChainJSONRequestBody = CreateChainRequest
 
-// SendChatMessageJSONRequestBody defines body for SendChatMessage for application/json ContentType.
-type SendChatMessageJSONRequestBody = SendChatMessageRequest
-
-// MarkChatThreadReadJSONRequestBody defines body for MarkChatThreadRead for application/json ContentType.
-type MarkChatThreadReadJSONRequestBody = MarkChatThreadReadRequest
-
 // SubmitChainDecisionJSONRequestBody defines body for SubmitChainDecision for application/json ContentType.
 type SubmitChainDecisionJSONRequestBody = SubmitChainDecisionRequest
 
@@ -1123,6 +1111,12 @@ type UpdateItemJSONRequestBody = UpdateItemRequest
 
 // ResolveItemCategoriesJSONRequestBody defines body for ResolveItemCategories for application/json ContentType.
 type ResolveItemCategoriesJSONRequestBody = ResolveItemCategoriesRequest
+
+// SendChatMessageJSONRequestBody defines body for SendChatMessage for application/json ContentType.
+type SendChatMessageJSONRequestBody = SendChatMessageRequest
+
+// MarkChatThreadReadJSONRequestBody defines body for MarkChatThreadRead for application/json ContentType.
+type MarkChatThreadReadJSONRequestBody = MarkChatThreadReadRequest
 
 // UploadMediaMultipartRequestBody defines body for UploadMedia for multipart/form-data ContentType.
 type UploadMediaMultipartRequestBody UploadMediaMultipartBody
@@ -1192,15 +1186,6 @@ type ServerInterface interface {
 	// GetChain Get a chain involving the current user
 	// (GET /api/v1/chains/{chainId})
 	GetChain(w http.ResponseWriter, r *http.Request, chainId int64)
-	// ListChatMessages Read or wait for direct-thread messages
-	// (GET /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
-	ListChatMessages(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64, params ListChatMessagesParams)
-	// SendChatMessage Send a direct message to a neighboring participant
-	// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
-	SendChatMessage(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64)
-	// MarkChatThreadRead Mark direct-thread messages as read
-	// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/read)
-	MarkChatThreadRead(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64)
 	// SubmitChainDecision Approve or decline participation in a chain
 	// (POST /api/v1/chains/{chainId}/decision)
 	SubmitChainDecision(w http.ResponseWriter, r *http.Request, chainId int64)
@@ -1234,6 +1219,15 @@ type ServerInterface interface {
 	// ResolveItemCategories Resolve categories that require the item owner's input
 	// (POST /api/v1/items/{itemId}/category-decision)
 	ResolveItemCategories(w http.ResponseWriter, r *http.Request, itemId int64)
+	// ListChatMessages Read or wait for direct-thread messages
+	// (GET /api/v1/items/{itemId}/chat/{counterpartId}/messages)
+	ListChatMessages(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64, params ListChatMessagesParams)
+	// SendChatMessage Send a direct message to a neighboring participant
+	// (POST /api/v1/items/{itemId}/chat/{counterpartId}/messages)
+	SendChatMessage(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64)
+	// MarkChatThreadRead Mark direct-thread messages as read
+	// (POST /api/v1/items/{itemId}/chat/{counterpartId}/read)
+	MarkChatThreadRead(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64)
 	// FindMatchingCycles Find exchange cycles that contain the requested item
 	// (GET /api/v1/items/{itemId}/matching)
 	FindMatchingCycles(w http.ResponseWriter, r *http.Request, itemId int64)
@@ -1380,24 +1374,6 @@ func (_ Unimplemented) GetChain(w http.ResponseWriter, r *http.Request, chainId 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ListChatMessages Read or wait for direct-thread messages
-// (GET /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
-func (_ Unimplemented) ListChatMessages(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64, params ListChatMessagesParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// SendChatMessage Send a direct message to a neighboring participant
-// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
-func (_ Unimplemented) SendChatMessage(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// MarkChatThreadRead Mark direct-thread messages as read
-// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/read)
-func (_ Unimplemented) MarkChatThreadRead(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // SubmitChainDecision Approve or decline participation in a chain
 // (POST /api/v1/chains/{chainId}/decision)
 func (_ Unimplemented) SubmitChainDecision(w http.ResponseWriter, r *http.Request, chainId int64) {
@@ -1461,6 +1437,24 @@ func (_ Unimplemented) UpdateItem(w http.ResponseWriter, r *http.Request, itemId
 // ResolveItemCategories Resolve categories that require the item owner's input
 // (POST /api/v1/items/{itemId}/category-decision)
 func (_ Unimplemented) ResolveItemCategories(w http.ResponseWriter, r *http.Request, itemId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListChatMessages Read or wait for direct-thread messages
+// (GET /api/v1/items/{itemId}/chat/{counterpartId}/messages)
+func (_ Unimplemented) ListChatMessages(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64, params ListChatMessagesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SendChatMessage Send a direct message to a neighboring participant
+// (POST /api/v1/items/{itemId}/chat/{counterpartId}/messages)
+func (_ Unimplemented) SendChatMessage(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// MarkChatThreadRead Mark direct-thread messages as read
+// (POST /api/v1/items/{itemId}/chat/{counterpartId}/read)
+func (_ Unimplemented) MarkChatThreadRead(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2130,153 +2124,6 @@ func (siw *ServerInterfaceWrapper) GetChain(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
-// ListChatMessages operation middleware
-func (siw *ServerInterfaceWrapper) ListChatMessages(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "chainId" -------------
-	var chainId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chainId", chi.URLParam(r, "chainId"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chainId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "counterpartId" -------------
-	var counterpartId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListChatMessagesParams
-
-	// ------------- Optional query parameter "afterId" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "afterId", r.URL.Query(), &params.AfterId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "afterId"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "afterId", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "waitSeconds" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "waitSeconds", r.URL.Query(), &params.WaitSeconds, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "waitSeconds"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "waitSeconds", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListChatMessages(w, r, chainId, counterpartId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SendChatMessage operation middleware
-func (siw *ServerInterfaceWrapper) SendChatMessage(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "chainId" -------------
-	var chainId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chainId", chi.URLParam(r, "chainId"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chainId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "counterpartId" -------------
-	var counterpartId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SendChatMessage(w, r, chainId, counterpartId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// MarkChatThreadRead operation middleware
-func (siw *ServerInterfaceWrapper) MarkChatThreadRead(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "chainId" -------------
-	var chainId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "chainId", chi.URLParam(r, "chainId"), &chainId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chainId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "counterpartId" -------------
-	var counterpartId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.MarkChatThreadRead(w, r, chainId, counterpartId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // SubmitChainDecision operation middleware
 func (siw *ServerInterfaceWrapper) SubmitChainDecision(w http.ResponseWriter, r *http.Request) {
 
@@ -2526,6 +2373,153 @@ func (siw *ServerInterfaceWrapper) ResolveItemCategories(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ResolveItemCategories(w, r, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListChatMessages operation middleware
+func (siw *ServerInterfaceWrapper) ListChatMessages(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", chi.URLParam(r, "itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "counterpartId" -------------
+	var counterpartId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListChatMessagesParams
+
+	// ------------- Optional query parameter "afterId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "afterId", r.URL.Query(), &params.AfterId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "afterId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "afterId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "waitSeconds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "waitSeconds", r.URL.Query(), &params.WaitSeconds, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "waitSeconds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "waitSeconds", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChatMessages(w, r, itemId, counterpartId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendChatMessage operation middleware
+func (siw *ServerInterfaceWrapper) SendChatMessage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", chi.URLParam(r, "itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "counterpartId" -------------
+	var counterpartId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendChatMessage(w, r, itemId, counterpartId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MarkChatThreadRead operation middleware
+func (siw *ServerInterfaceWrapper) MarkChatThreadRead(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", chi.URLParam(r, "itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "counterpartId" -------------
+	var counterpartId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "counterpartId", chi.URLParam(r, "counterpartId"), &counterpartId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "counterpartId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MarkChatThreadRead(w, r, itemId, counterpartId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3116,13 +3110,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/chat/threads", wrapper.ListChatThreads)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/chains/{chainId}/chat/{counterpartId}/messages", wrapper.ListChatMessages)
+		r.Get(options.BaseURL+"/api/v1/items/{itemId}/chat/{counterpartId}/messages", wrapper.ListChatMessages)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/chains/{chainId}/chat/{counterpartId}/messages", wrapper.SendChatMessage)
+		r.Post(options.BaseURL+"/api/v1/items/{itemId}/chat/{counterpartId}/messages", wrapper.SendChatMessage)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/chains/{chainId}/chat/{counterpartId}/read", wrapper.MarkChatThreadRead)
+		r.Post(options.BaseURL+"/api/v1/items/{itemId}/chat/{counterpartId}/read", wrapper.MarkChatThreadRead)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/admin/deliveries", wrapper.ListAdminDeliveries)
@@ -4425,316 +4419,6 @@ func (response GetChain500JSONResponse) VisitGetChainResponse(w http.ResponseWri
 	return err
 }
 
-type ListChatMessagesRequestObject struct {
-	ChainId       int64 `json:"chainId"`
-	CounterpartId int64 `json:"counterpartId"`
-	Params        ListChatMessagesParams
-}
-
-type ListChatMessagesResponseObject interface {
-	VisitListChatMessagesResponse(w http.ResponseWriter) error
-}
-
-type ListChatMessages200JSONResponse ChatMessageList
-
-func (response ListChatMessages200JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatMessages400JSONResponse struct{ BadRequestJSONResponse }
-
-func (response ListChatMessages400JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatMessages401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response ListChatMessages401JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatMessages403JSONResponse struct{ ForbiddenJSONResponse }
-
-func (response ListChatMessages403JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatMessages404JSONResponse struct{ NotFoundJSONResponse }
-
-func (response ListChatMessages404JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListChatMessages500JSONResponse struct{ InternalErrorJSONResponse }
-
-func (response ListChatMessages500JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendChatMessageRequestObject struct {
-	ChainId       int64 `json:"chainId"`
-	CounterpartId int64 `json:"counterpartId"`
-	Body          *SendChatMessageJSONRequestBody
-}
-
-type SendChatMessageResponseObject interface {
-	VisitSendChatMessageResponse(w http.ResponseWriter) error
-}
-
-type SendChatMessage200JSONResponse ChatMessage
-
-func (response SendChatMessage200JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendChatMessage201JSONResponse ChatMessage
-
-func (response SendChatMessage201JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendChatMessage400JSONResponse struct{ ValidationErrorJSONResponse }
-
-func (response SendChatMessage400JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendChatMessage401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response SendChatMessage401JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendChatMessage403JSONResponse struct{ ForbiddenJSONResponse }
-
-func (response SendChatMessage403JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendChatMessage404JSONResponse struct{ NotFoundJSONResponse }
-
-func (response SendChatMessage404JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendChatMessage409JSONResponse struct{ ConflictJSONResponse }
-
-func (response SendChatMessage409JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SendChatMessage500JSONResponse struct{ InternalErrorJSONResponse }
-
-func (response SendChatMessage500JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type MarkChatThreadReadRequestObject struct {
-	ChainId       int64 `json:"chainId"`
-	CounterpartId int64 `json:"counterpartId"`
-	Body          *MarkChatThreadReadJSONRequestBody
-}
-
-type MarkChatThreadReadResponseObject interface {
-	VisitMarkChatThreadReadResponse(w http.ResponseWriter) error
-}
-
-type MarkChatThreadRead200JSONResponse ChatReadState
-
-func (response MarkChatThreadRead200JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type MarkChatThreadRead400JSONResponse struct{ ValidationErrorJSONResponse }
-
-func (response MarkChatThreadRead400JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type MarkChatThreadRead401JSONResponse struct{ UnauthorizedJSONResponse }
-
-func (response MarkChatThreadRead401JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type MarkChatThreadRead403JSONResponse struct{ ForbiddenJSONResponse }
-
-func (response MarkChatThreadRead403JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type MarkChatThreadRead404JSONResponse struct{ NotFoundJSONResponse }
-
-func (response MarkChatThreadRead404JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type MarkChatThreadRead500JSONResponse struct{ InternalErrorJSONResponse }
-
-func (response MarkChatThreadRead500JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type SubmitChainDecisionRequestObject struct {
 	ChainId int64 `json:"chainId"`
 	Body    *SubmitChainDecisionJSONRequestBody
@@ -5652,6 +5336,316 @@ func (response ResolveItemCategories422JSONResponse) VisitResolveItemCategoriesR
 type ResolveItemCategories500JSONResponse struct{ InternalErrorJSONResponse }
 
 func (response ResolveItemCategories500JSONResponse) VisitResolveItemCategoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessagesRequestObject struct {
+	ItemId        int64 `json:"itemId"`
+	CounterpartId int64 `json:"counterpartId"`
+	Params        ListChatMessagesParams
+}
+
+type ListChatMessagesResponseObject interface {
+	VisitListChatMessagesResponse(w http.ResponseWriter) error
+}
+
+type ListChatMessages200JSONResponse ChatMessageList
+
+func (response ListChatMessages200JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListChatMessages400JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListChatMessages401JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListChatMessages403JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListChatMessages404JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChatMessages500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response ListChatMessages500JSONResponse) VisitListChatMessagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessageRequestObject struct {
+	ItemId        int64 `json:"itemId"`
+	CounterpartId int64 `json:"counterpartId"`
+	Body          *SendChatMessageJSONRequestBody
+}
+
+type SendChatMessageResponseObject interface {
+	VisitSendChatMessageResponse(w http.ResponseWriter) error
+}
+
+type SendChatMessage200JSONResponse ChatMessage
+
+func (response SendChatMessage200JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage201JSONResponse ChatMessage
+
+func (response SendChatMessage201JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage400JSONResponse struct{ ValidationErrorJSONResponse }
+
+func (response SendChatMessage400JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SendChatMessage401JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SendChatMessage403JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SendChatMessage404JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SendChatMessage409JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendChatMessage500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response SendChatMessage500JSONResponse) VisitSendChatMessageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadReadRequestObject struct {
+	ItemId        int64 `json:"itemId"`
+	CounterpartId int64 `json:"counterpartId"`
+	Body          *MarkChatThreadReadJSONRequestBody
+}
+
+type MarkChatThreadReadResponseObject interface {
+	VisitMarkChatThreadReadResponse(w http.ResponseWriter) error
+}
+
+type MarkChatThreadRead200JSONResponse ChatReadState
+
+func (response MarkChatThreadRead200JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead400JSONResponse struct{ ValidationErrorJSONResponse }
+
+func (response MarkChatThreadRead400JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response MarkChatThreadRead401JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response MarkChatThreadRead403JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response MarkChatThreadRead404JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MarkChatThreadRead500JSONResponse struct{ InternalErrorJSONResponse }
+
+func (response MarkChatThreadRead500JSONResponse) VisitMarkChatThreadReadResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6914,15 +6908,6 @@ type StrictServerInterface interface {
 	// GetChain Get a chain involving the current user
 	// (GET /api/v1/chains/{chainId})
 	GetChain(ctx context.Context, request GetChainRequestObject) (GetChainResponseObject, error)
-	// ListChatMessages Read or wait for direct-thread messages
-	// (GET /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
-	ListChatMessages(ctx context.Context, request ListChatMessagesRequestObject) (ListChatMessagesResponseObject, error)
-	// SendChatMessage Send a direct message to a neighboring participant
-	// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/messages)
-	SendChatMessage(ctx context.Context, request SendChatMessageRequestObject) (SendChatMessageResponseObject, error)
-	// MarkChatThreadRead Mark direct-thread messages as read
-	// (POST /api/v1/chains/{chainId}/chat/{counterpartId}/read)
-	MarkChatThreadRead(ctx context.Context, request MarkChatThreadReadRequestObject) (MarkChatThreadReadResponseObject, error)
 	// SubmitChainDecision Approve or decline participation in a chain
 	// (POST /api/v1/chains/{chainId}/decision)
 	SubmitChainDecision(ctx context.Context, request SubmitChainDecisionRequestObject) (SubmitChainDecisionResponseObject, error)
@@ -6956,6 +6941,15 @@ type StrictServerInterface interface {
 	// ResolveItemCategories Resolve categories that require the item owner's input
 	// (POST /api/v1/items/{itemId}/category-decision)
 	ResolveItemCategories(ctx context.Context, request ResolveItemCategoriesRequestObject) (ResolveItemCategoriesResponseObject, error)
+	// ListChatMessages Read or wait for direct-thread messages
+	// (GET /api/v1/items/{itemId}/chat/{counterpartId}/messages)
+	ListChatMessages(ctx context.Context, request ListChatMessagesRequestObject) (ListChatMessagesResponseObject, error)
+	// SendChatMessage Send a direct message to a neighboring participant
+	// (POST /api/v1/items/{itemId}/chat/{counterpartId}/messages)
+	SendChatMessage(ctx context.Context, request SendChatMessageRequestObject) (SendChatMessageResponseObject, error)
+	// MarkChatThreadRead Mark direct-thread messages as read
+	// (POST /api/v1/items/{itemId}/chat/{counterpartId}/read)
+	MarkChatThreadRead(ctx context.Context, request MarkChatThreadReadRequestObject) (MarkChatThreadReadResponseObject, error)
 	// FindMatchingCycles Find exchange cycles that contain the requested item
 	// (GET /api/v1/items/{itemId}/matching)
 	FindMatchingCycles(ctx context.Context, request FindMatchingCyclesRequestObject) (FindMatchingCyclesResponseObject, error)
@@ -7457,102 +7451,6 @@ func (sh *strictHandler) GetChain(w http.ResponseWriter, r *http.Request, chainI
 	}
 }
 
-// ListChatMessages operation middleware
-func (sh *strictHandler) ListChatMessages(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64, params ListChatMessagesParams) {
-	var request ListChatMessagesRequestObject
-
-	request.ChainId = chainId
-	request.CounterpartId = counterpartId
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListChatMessages(ctx, request.(ListChatMessagesRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListChatMessages")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListChatMessagesResponseObject); ok {
-		if err := validResponse.VisitListChatMessagesResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SendChatMessage operation middleware
-func (sh *strictHandler) SendChatMessage(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64) {
-	var request SendChatMessageRequestObject
-
-	request.ChainId = chainId
-	request.CounterpartId = counterpartId
-
-	var body SendChatMessageJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SendChatMessage(ctx, request.(SendChatMessageRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SendChatMessage")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SendChatMessageResponseObject); ok {
-		if err := validResponse.VisitSendChatMessageResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// MarkChatThreadRead operation middleware
-func (sh *strictHandler) MarkChatThreadRead(w http.ResponseWriter, r *http.Request, chainId int64, counterpartId int64) {
-	var request MarkChatThreadReadRequestObject
-
-	request.ChainId = chainId
-	request.CounterpartId = counterpartId
-
-	var body MarkChatThreadReadJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.MarkChatThreadRead(ctx, request.(MarkChatThreadReadRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "MarkChatThreadRead")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(MarkChatThreadReadResponseObject); ok {
-		if err := validResponse.VisitMarkChatThreadReadResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // SubmitChainDecision operation middleware
 func (sh *strictHandler) SubmitChainDecision(w http.ResponseWriter, r *http.Request, chainId int64) {
 	var request SubmitChainDecisionRequestObject
@@ -7859,6 +7757,102 @@ func (sh *strictHandler) ResolveItemCategories(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ResolveItemCategoriesResponseObject); ok {
 		if err := validResponse.VisitResolveItemCategoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListChatMessages operation middleware
+func (sh *strictHandler) ListChatMessages(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64, params ListChatMessagesParams) {
+	var request ListChatMessagesRequestObject
+
+	request.ItemId = itemId
+	request.CounterpartId = counterpartId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChatMessages(ctx, request.(ListChatMessagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChatMessages")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListChatMessagesResponseObject); ok {
+		if err := validResponse.VisitListChatMessagesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendChatMessage operation middleware
+func (sh *strictHandler) SendChatMessage(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64) {
+	var request SendChatMessageRequestObject
+
+	request.ItemId = itemId
+	request.CounterpartId = counterpartId
+
+	var body SendChatMessageJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendChatMessage(ctx, request.(SendChatMessageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendChatMessage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendChatMessageResponseObject); ok {
+		if err := validResponse.VisitSendChatMessageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// MarkChatThreadRead operation middleware
+func (sh *strictHandler) MarkChatThreadRead(w http.ResponseWriter, r *http.Request, itemId int64, counterpartId int64) {
+	var request MarkChatThreadReadRequestObject
+
+	request.ItemId = itemId
+	request.CounterpartId = counterpartId
+
+	var body MarkChatThreadReadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.MarkChatThreadRead(ctx, request.(MarkChatThreadReadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MarkChatThreadRead")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(MarkChatThreadReadResponseObject); ok {
+		if err := validResponse.VisitMarkChatThreadReadResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8323,178 +8317,179 @@ func (sh *strictHandler) GetLegacyHealth(w http.ResponseWriter, r *http.Request)
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"hhtesJXuwZVq6kHwgyXI69fX/y8AAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

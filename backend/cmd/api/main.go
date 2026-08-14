@@ -386,8 +386,8 @@ func run(logger *zap.Logger) error {
 		return fmt.Errorf("create chat repository: %w", err)
 	}
 	chatModule, err := chatservice.NewWithCallback(chatRepo, func(ctx context.Context, message chatmodel.Message) {
-		eventHub.PublishToUser(message.Recipient.ID, "chat.message.created", strconv.FormatInt(message.ChainID, 10), nil)
-		notificationProducer.NotifyChatMessage(ctx, message.Recipient.ID, message.Sender.Username, message.ChainID)
+		eventHub.PublishToUser(message.Recipient.ID, "chat.message.created", strconv.FormatInt(message.ItemID, 10), nil)
+		notificationProducer.NotifyChatMessage(ctx, message.Recipient.ID, message.Sender.Username, message.ItemID)
 	}, chatservice.ChatConfig{
 		MaxListLimit: cfg.ChatMaxListLimit,
 		MaxWait:      cfg.ChatMaxWait,

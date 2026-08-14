@@ -181,24 +181,26 @@ curl -X POST http://localhost:8080/api/v1/chains/12/receipt \
 
 ## Chat API
 
-Для каждой подобранной цепочки пользователь видит отдельные диалоги только с
-соседями по обменному кольцу: с тем, чью вещь он получает, и с тем, кто получает
-его вещь. Диалоги доступны уже в статусе `PENDING`. Отправитель берётся из opaque
-session cookie, а собеседник явно задаётся в URL:
+Пользователь видит отдельный диалог для каждой вещи, которую получает от соседа.
+Собственные отдаваемые вещи без сообщений в список не попадают; после начала
+разговора тред видят обе стороны, чтобы владелец мог ответить. Если одна и та же
+вещь с тем же соседом встречается в нескольких цепочках, backend возвращает один
+тред и одну общую историю. Диалоги доступны уже в статусе `PENDING`. Отправитель
+берётся из opaque session cookie, а вещь и собеседник явно задаются в URL:
 
 ```bash
 curl http://localhost:8080/api/v1/chat/threads \
   -b cookies.txt
 
-curl -X POST http://localhost:8080/api/v1/chains/12/chat/9/messages \
+curl -X POST http://localhost:8080/api/v1/items/44/chat/9/messages \
   -H "Content-Type: application/json" \
   -d '{"clientMessageId":"web-550e8400-e29b-41d4-a716-446655440000","text":"Встречаемся в ПВЗ?"}' \
   -b cookies.txt
 
 curl -b cookies.txt \
-  'http://localhost:8080/api/v1/chains/12/chat/9/messages?afterId=0&limit=50&waitSeconds=25'
+  'http://localhost:8080/api/v1/items/44/chat/9/messages?afterId=0&limit=50&waitSeconds=25'
 
-curl -X POST http://localhost:8080/api/v1/chains/12/chat/9/read \
+curl -X POST http://localhost:8080/api/v1/items/44/chat/9/read \
   -H "Content-Type: application/json" \
   -d '{"lastReadMessageId":81}' \
   -b cookies.txt
@@ -207,13 +209,12 @@ curl -X POST http://localhost:8080/api/v1/chains/12/chat/9/read \
 `clientMessageId` обязателен: повтор того же ID и текста возвращает исходное
 сообщение с `200`, а новый ID создаёт сообщение с `201`. GET возвращает сообщения
 по `id ASC`; если новых сообщений нет, он ждёт не более 25 секунд и отвечает
-`200` с пустым `messages`. Список тредов содержит `counterpart`, `giveItem`,
-`receiveItem`, последнее сообщение, `hasUnread`, `unreadCount` и общий
-`totalUnreadCount`. У краткой вещи есть `id`, `title` и первое `imageUrl`; для
-трёхсторонней цепочки одно из направлений конкретного диалога может быть `null`.
+`200` с пустым `messages`. Список тредов содержит `item`, `counterpart`, последнее
+сообщение, `hasUnread`, `unreadCount` и общий `totalUnreadCount`. У краткой вещи
+есть `id`, `title` и первое `imageUrl`.
 Отметка прочтения идемпотентна и не может сдвинуться назад. Для пользователя вне
-цепочки ответ — `403`, для участника, который не является соседом в этой
-цепочке, — `404`.
+цепочек с этой вещью ответ — `403`, для участника, который не является соседом
+по её передаче, — `404`.
 
 ## Локальный запуск Go backend
 
@@ -269,8 +270,8 @@ make test-integration запустить миграционные и сквоз�
 | `POST /api/v1/chains/{id}/reviews` | Оставить оценку непосредственному соседу после завершения обмена |
 | `GET /api/v1/users/{id}/reviews` | Получить отзывы пользователя с cursor-пагинацией |
 | `GET /api/v1/chat/threads` | Все личные диалоги и счётчик непрочитанных сообщений |
-| `GET`, `POST /api/v1/chains/{id}/chat/{counterpartId}/messages` | История/long-poll и отправка личных сообщений |
-| `POST /api/v1/chains/{id}/chat/{counterpartId}/read` | Идемпотентная отметка сообщений прочитанными |
+| `GET`, `POST /api/v1/items/{id}/chat/{counterpartId}/messages` | История/long-poll и отправка сообщений по передаваемой вещи |
+| `POST /api/v1/items/{id}/chat/{counterpartId}/read` | Идемпотентная отметка сообщений прочитанными |
 | `GET /api/v1/admin/deliveries` | Очередь товаров принятых цепочек для сотрудника ПВЗ |
 | `POST /api/v1/admin/deliveries/{id}/transition` | Приём на ПВЗ, отправка или выдача получателю |
 | `GET /api/v1/admin/metrics/funnel` | Снимок продуктовой воронки и причин распада цепочек (только ADMIN) |
@@ -340,8 +341,10 @@ Embedding — `vector(1024)`, HNSW-индекс для cosine distance.
 идемпотентен; приём и отправка проверяются и записываются в одной транзакции.
 
 Миграция `000007` добавляет личные сообщения, read-watermark и индексы тредов.
-Уникальный ключ `(chain, sender, counterpart, clientMessageId)` обеспечивает
-идемпотентную отправку внутри конкретного диалога.
+Миграция `000026` переводит идентичность треда на
+`(item, user, counterpart)`, объединяет одну вещь из нескольких цепочек и задаёт
+уникальный ключ `(item, sender, counterpart, clientMessageId)` для идемпотентной
+отправки.
 
 Миграция `000008` добавляет конечные статусы доставки `RECEIVED` и цепочки
 `COMPLETED`. Подтверждение получателя, аудит и возможное завершение всей цепочки

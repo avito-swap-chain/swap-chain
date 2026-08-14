@@ -213,9 +213,9 @@ func TestSessionIsRequiredForPersonalRoutes(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/chains", body: validChainPayload},
 		{method: http.MethodPost, path: "/api/v1/chains/12/receipt"},
 		{method: http.MethodGet, path: "/api/v1/chat/threads"},
-		{method: http.MethodGet, path: "/api/v1/chains/42/chat/2/messages"},
-		{method: http.MethodPost, path: "/api/v1/chains/42/chat/2/messages", body: validChatPayload},
-		{method: http.MethodPost, path: "/api/v1/chains/42/chat/2/read", body: `{"lastReadMessageId":1}`},
+		{method: http.MethodGet, path: "/api/v1/items/202/chat/2/messages"},
+		{method: http.MethodPost, path: "/api/v1/items/202/chat/2/messages", body: validChatPayload},
+		{method: http.MethodPost, path: "/api/v1/items/202/chat/2/read", body: `{"lastReadMessageId":1}`},
 		{method: http.MethodPost, path: "/api/v1/items", body: validItemPayload},
 		{method: http.MethodGet, path: "/api/v1/admin/deliveries"},
 		{method: http.MethodGet, path: "/api/v1/admin/metrics/funnel"},
@@ -247,7 +247,7 @@ func TestChatContractUsesSessionActorAndMapsLifecycle(t *testing.T) {
 	defer server.Close()
 
 	participant := newSessionClient(t, server.URL, 1)
-	created := postJSON(t, participant, server.URL+"/api/v1/chains/42/chat/2/messages", validChatPayload)
+	created := postJSON(t, participant, server.URL+"/api/v1/items/202/chat/2/messages", validChatPayload)
 	defer closeBody(t, created.Body)
 	if created.StatusCode != http.StatusCreated {
 		body := readBody(t, created.Body)
@@ -261,13 +261,13 @@ func TestChatContractUsesSessionActorAndMapsLifecycle(t *testing.T) {
 		t.Fatalf("sent message = %+v", sent)
 	}
 
-	repeated := postJSON(t, participant, server.URL+"/api/v1/chains/42/chat/2/messages", validChatPayload)
+	repeated := postJSON(t, participant, server.URL+"/api/v1/items/202/chat/2/messages", validChatPayload)
 	defer closeBody(t, repeated.Body)
 	if repeated.StatusCode != http.StatusOK {
 		t.Fatalf("idempotent retry status = %d, want %d", repeated.StatusCode, http.StatusOK)
 	}
 
-	listed, err := participant.Get(server.URL + "/api/v1/chains/42/chat/2/messages?afterId=0&limit=10&waitSeconds=0")
+	listed, err := participant.Get(server.URL + "/api/v1/items/202/chat/2/messages?afterId=0&limit=10&waitSeconds=0")
 	if err != nil {
 		t.Fatalf("list messages: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestChatContractUsesSessionActorAndMapsLifecycle(t *testing.T) {
 	}
 
 	counterpart := newSessionClient(t, server.URL, 2)
-	received := postJSON(t, counterpart, server.URL+"/api/v1/chains/42/chat/1/messages", validChatPayload)
+	received := postJSON(t, counterpart, server.URL+"/api/v1/items/202/chat/1/messages", validChatPayload)
 	defer closeBody(t, received.Body)
 	if received.StatusCode != http.StatusCreated {
 		body := readBody(t, received.Body)
@@ -306,11 +306,11 @@ func TestChatContractUsesSessionActorAndMapsLifecycle(t *testing.T) {
 		t.Fatalf("decode chat threads: %v", err)
 	}
 	if threadsResponse.StatusCode != http.StatusOK || len(threads.Threads) != 1 || threads.Threads[0].Counterpart.Id != 2 ||
-		threads.Threads[0].ReceiveItem == nil || threads.Threads[0].ReceiveItem.Id != 202 || threads.TotalUnreadCount != 1 {
+		threads.Threads[0].Item.Id != 202 || threads.TotalUnreadCount != 1 {
 		t.Fatalf("threads status=%d body=%+v", threadsResponse.StatusCode, threads)
 	}
 
-	marked := postJSON(t, participant, server.URL+"/api/v1/chains/42/chat/2/read", fmt.Sprintf(`{"lastReadMessageId":%d}`, incoming.Id))
+	marked := postJSON(t, participant, server.URL+"/api/v1/items/202/chat/2/read", fmt.Sprintf(`{"lastReadMessageId":%d}`, incoming.Id))
 	defer closeBody(t, marked.Body)
 	var readState api.ChatReadState
 	if err := json.NewDecoder(marked.Body).Decode(&readState); err != nil {
@@ -326,10 +326,10 @@ func TestChatContractUsesSessionActorAndMapsLifecycle(t *testing.T) {
 		path   string
 		want   int
 	}{
-		{name: "pending chain", client: participant, path: "/api/v1/chains/43/chat/2/messages", want: http.StatusOK},
-		{name: "missing chain", client: participant, path: "/api/v1/chains/404/chat/2/messages", want: http.StatusNotFound},
-		{name: "unknown counterpart", client: participant, path: "/api/v1/chains/42/chat/7/messages", want: http.StatusNotFound},
-		{name: "outsider", client: newSessionClient(t, server.URL, 7), path: "/api/v1/chains/42/chat/2/messages", want: http.StatusForbidden},
+		{name: "another shared item", client: participant, path: "/api/v1/items/203/chat/2/messages", want: http.StatusOK},
+		{name: "missing item", client: participant, path: "/api/v1/items/404/chat/2/messages", want: http.StatusNotFound},
+		{name: "unknown counterpart", client: participant, path: "/api/v1/items/202/chat/7/messages", want: http.StatusNotFound},
+		{name: "outsider", client: newSessionClient(t, server.URL, 7), path: "/api/v1/items/202/chat/2/messages", want: http.StatusForbidden},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			response, err := test.client.Get(server.URL + test.path)
@@ -1567,13 +1567,13 @@ func newTestChatService() *testChatService {
 	return &testChatService{messages: make(map[string]chatmodel.Message), reads: make(map[string]int64)}
 }
 
-func (s *testChatService) Send(_ context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (chatmodel.Message, bool, error) {
-	if err := testChatAccess(chainID, actorID, counterpartID); err != nil {
+func (s *testChatService) Send(_ context.Context, itemID, actorID, counterpartID int64, clientMessageID, text string) (chatmodel.Message, bool, error) {
+	if err := testChatAccess(itemID, actorID, counterpartID); err != nil {
 		return chatmodel.Message{}, false, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := fmt.Sprintf("%d:%d:%d:%s", chainID, actorID, counterpartID, clientMessageID)
+	key := fmt.Sprintf("%d:%d:%d:%s", itemID, actorID, counterpartID, clientMessageID)
 	if existing, ok := s.messages[key]; ok {
 		if existing.Text != text {
 			return chatmodel.Message{}, false, chatmodel.ErrIdempotencyConflict
@@ -1583,7 +1583,8 @@ func (s *testChatService) Send(_ context.Context, chainID, actorID, counterpartI
 	s.nextID++
 	message := chatmodel.Message{
 		ID:              s.nextID,
-		ChainID:         chainID,
+		ItemID:          itemID,
+		OriginChainID:   42,
 		Sender:          chatmodel.Sender{ID: actorID, Username: fmt.Sprintf("user-%d", actorID)},
 		Recipient:       chatmodel.Sender{ID: counterpartID, Username: fmt.Sprintf("user-%d", counterpartID)},
 		ClientMessageID: clientMessageID,
@@ -1594,8 +1595,8 @@ func (s *testChatService) Send(_ context.Context, chainID, actorID, counterpartI
 	return message, true, nil
 }
 
-func (s *testChatService) List(_ context.Context, chainID, actorID, counterpartID, afterID int64, limit int, _ time.Duration) ([]chatmodel.Message, error) {
-	if err := testChatAccess(chainID, actorID, counterpartID); err != nil {
+func (s *testChatService) List(_ context.Context, itemID, actorID, counterpartID, afterID int64, limit int, _ time.Duration) ([]chatmodel.Message, error) {
+	if err := testChatAccess(itemID, actorID, counterpartID); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
@@ -1604,7 +1605,7 @@ func (s *testChatService) List(_ context.Context, chainID, actorID, counterpartI
 	for _, message := range s.messages {
 		isThreadMessage := (message.Sender.ID == actorID && message.Recipient.ID == counterpartID) ||
 			(message.Sender.ID == counterpartID && message.Recipient.ID == actorID)
-		if message.ChainID == chainID && isThreadMessage && message.ID > afterID {
+		if message.ItemID == itemID && isThreadMessage && message.ID > afterID {
 			messages = append(messages, message)
 		}
 	}
@@ -1627,14 +1628,12 @@ func (s *testChatService) ListThreads(_ context.Context, actorID int64) ([]chatm
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	thread := chatmodel.Thread{
-		ChainID:     42,
+		Item:        chatmodel.ItemSummary{ID: 202, Title: "Получаемая вещь", ImageURL: "/api/v1/media/receive.jpg"},
 		Counterpart: chatmodel.Sender{ID: counterpartID, Username: fmt.Sprintf("user-%d", counterpartID)},
-		GiveItem:    &chatmodel.ItemSummary{ID: 101, Title: "Отдаваемая вещь", ImageURL: "/api/v1/media/give.jpg"},
-		ReceiveItem: &chatmodel.ItemSummary{ID: 202, Title: "Получаемая вещь", ImageURL: "/api/v1/media/receive.jpg"},
 	}
-	watermark := s.reads[fmt.Sprintf("%d:%d:%d", 42, actorID, counterpartID)]
+	watermark := s.reads[fmt.Sprintf("%d:%d:%d", 202, actorID, counterpartID)]
 	for _, message := range s.messages {
-		isThreadMessage := message.ChainID == 42 && ((message.Sender.ID == actorID && message.Recipient.ID == counterpartID) ||
+		isThreadMessage := message.ItemID == 202 && ((message.Sender.ID == actorID && message.Recipient.ID == counterpartID) ||
 			(message.Sender.ID == counterpartID && message.Recipient.ID == actorID))
 		if !isThreadMessage {
 			continue
@@ -1650,15 +1649,15 @@ func (s *testChatService) ListThreads(_ context.Context, actorID int64) ([]chatm
 	return []chatmodel.Thread{thread}, nil
 }
 
-func (s *testChatService) MarkRead(_ context.Context, chainID, actorID, counterpartID, lastReadMessageID int64) (chatmodel.ReadState, error) {
-	if err := testChatAccess(chainID, actorID, counterpartID); err != nil {
+func (s *testChatService) MarkRead(_ context.Context, itemID, actorID, counterpartID, lastReadMessageID int64) (chatmodel.ReadState, error) {
+	if err := testChatAccess(itemID, actorID, counterpartID); err != nil {
 		return chatmodel.ReadState{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	belongs := false
 	for _, message := range s.messages {
-		if message.ID == lastReadMessageID && message.ChainID == chainID &&
+		if message.ID == lastReadMessageID && message.ItemID == itemID &&
 			((message.Sender.ID == actorID && message.Recipient.ID == counterpartID) ||
 				(message.Sender.ID == counterpartID && message.Recipient.ID == actorID)) {
 			belongs = true
@@ -1668,23 +1667,23 @@ func (s *testChatService) MarkRead(_ context.Context, chainID, actorID, counterp
 	if !belongs {
 		return chatmodel.ReadState{}, chatmodel.ErrMessageNotFound
 	}
-	key := fmt.Sprintf("%d:%d:%d", chainID, actorID, counterpartID)
+	key := fmt.Sprintf("%d:%d:%d", itemID, actorID, counterpartID)
 	if lastReadMessageID > s.reads[key] {
 		s.reads[key] = lastReadMessageID
 	}
 	unread := int64(0)
 	for _, message := range s.messages {
-		if message.ChainID == chainID && message.Sender.ID == counterpartID && message.Recipient.ID == actorID && message.ID > s.reads[key] {
+		if message.ItemID == itemID && message.Sender.ID == counterpartID && message.Recipient.ID == actorID && message.ID > s.reads[key] {
 			unread++
 		}
 	}
-	return chatmodel.ReadState{ChainID: chainID, CounterpartID: counterpartID, LastReadMessageID: s.reads[key], UnreadCount: unread}, nil
+	return chatmodel.ReadState{ItemID: itemID, CounterpartID: counterpartID, LastReadMessageID: s.reads[key], UnreadCount: unread}, nil
 }
 
-func testChatAccess(chainID, actorID, counterpartID int64) error {
+func testChatAccess(itemID, actorID, counterpartID int64) error {
 	switch {
-	case chainID == 404:
-		return chatmodel.ErrChainNotFound
+	case itemID == 404:
+		return chatmodel.ErrItemNotFound
 	case actorID != 1 && actorID != 2:
 		return chatmodel.ErrForbidden
 	case counterpartID != 1 && counterpartID != 2, actorID == counterpartID:

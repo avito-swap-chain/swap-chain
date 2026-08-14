@@ -24,7 +24,7 @@ func NewPostgreSQL(database *sql.DB) (*PostgreSQL, error) {
 
 func (r *PostgreSQL) CreateMessage(
 	ctx context.Context,
-	chainID int64,
+	itemID int64,
 	actorID int64,
 	counterpartID int64,
 	clientMessageID string,
@@ -37,12 +37,14 @@ func (r *PostgreSQL) CreateMessage(
 	defer func() { _ = tx.Rollback() }()
 
 	queries := db.New(tx)
-	if err := authorize(ctx, queries, chainID, actorID, counterpartID); err != nil {
+	accessChainID, err := authorize(ctx, queries, itemID, actorID, counterpartID)
+	if err != nil {
 		return model.Message{}, false, err
 	}
 
 	messageID, err := queries.InsertChatMessage(ctx, db.InsertChatMessageParams{
-		ChainID:         chainID,
+		ChainID:         accessChainID,
+		ItemID:          itemID,
 		SenderUserID:    actorID,
 		RecipientUserID: counterpartID,
 		ClientMessageID: clientMessageID,
@@ -53,7 +55,7 @@ func (r *PostgreSQL) CreateMessage(
 		return model.Message{}, false, fmt.Errorf("insert chat message: %w", err)
 	}
 
-	message, err := loadMessage(ctx, queries, messageID, chainID, actorID, counterpartID, clientMessageID, created)
+	message, err := loadMessage(ctx, queries, messageID, itemID, actorID, counterpartID, clientMessageID, created)
 	if err != nil {
 		return model.Message{}, false, err
 	}
@@ -70,7 +72,7 @@ func (r *PostgreSQL) CreateMessage(
 
 func (r *PostgreSQL) ListMessages(
 	ctx context.Context,
-	chainID int64,
+	itemID int64,
 	actorID int64,
 	counterpartID int64,
 	afterID int64,
@@ -83,12 +85,12 @@ func (r *PostgreSQL) ListMessages(
 	defer func() { _ = tx.Rollback() }()
 
 	queries := db.New(tx)
-	if err := authorize(ctx, queries, chainID, actorID, counterpartID); err != nil {
+	if _, err := authorize(ctx, queries, itemID, actorID, counterpartID); err != nil {
 		return nil, err
 	}
 
 	rows, err := queries.ListChatMessages(ctx, db.ListChatMessagesParams{
-		ChainID:       chainID,
+		ItemID:        itemID,
 		ActorID:       actorID,
 		CounterpartID: counterpartID,
 		AfterID:       afterID,
@@ -119,31 +121,22 @@ func (r *PostgreSQL) ListThreads(ctx context.Context, actorID int64) ([]model.Th
 	threads := make([]model.Thread, 0, len(rows))
 	for _, row := range rows {
 		thread := model.Thread{
-			ChainID: row.ChainID,
+			Item: model.ItemSummary{
+				ID:       row.ItemID,
+				Title:    row.ItemTitle,
+				ImageURL: row.ItemImageUrl,
+			},
 			Counterpart: model.Sender{
 				ID:       row.CounterpartUserID,
 				Username: row.CounterpartUsername,
 			},
 			UnreadCount: row.UnreadCount,
 		}
-		if row.GiveItemID > 0 {
-			thread.GiveItem = &model.ItemSummary{
-				ID:       row.GiveItemID,
-				Title:    row.GiveItemTitle,
-				ImageURL: row.GiveItemImageUrl,
-			}
-		}
-		if row.ReceiveItemID > 0 {
-			thread.ReceiveItem = &model.ItemSummary{
-				ID:       row.ReceiveItemID,
-				Title:    row.ReceiveItemTitle,
-				ImageURL: row.ReceiveItemImageUrl,
-			}
-		}
 		if row.LastMessageID > 0 {
 			thread.LastMessage = &model.Message{
-				ID:      row.LastMessageID,
-				ChainID: row.ChainID,
+				ID:            row.LastMessageID,
+				ItemID:        row.ItemID,
+				OriginChainID: row.LastOriginChainID,
 				Sender: model.Sender{
 					ID:       row.LastSenderUserID,
 					Username: row.LastSenderUsername,
@@ -164,7 +157,7 @@ func (r *PostgreSQL) ListThreads(ctx context.Context, actorID int64) ([]model.Th
 
 func (r *PostgreSQL) MarkRead(
 	ctx context.Context,
-	chainID int64,
+	itemID int64,
 	actorID int64,
 	counterpartID int64,
 	lastReadMessageID int64,
@@ -176,13 +169,13 @@ func (r *PostgreSQL) MarkRead(
 	defer func() { _ = tx.Rollback() }()
 
 	queries := db.New(tx)
-	if err := authorize(ctx, queries, chainID, actorID, counterpartID); err != nil {
+	if _, err := authorize(ctx, queries, itemID, actorID, counterpartID); err != nil {
 		return model.ReadState{}, err
 	}
 
 	belongs, err := queries.ChatMessageBelongsToThread(ctx, db.ChatMessageBelongsToThreadParams{
 		MessageID:     lastReadMessageID,
-		ChainID:       chainID,
+		ItemID:        itemID,
 		ActorID:       actorID,
 		CounterpartID: counterpartID,
 	})
@@ -194,7 +187,7 @@ func (r *PostgreSQL) MarkRead(
 	}
 
 	watermark, err := queries.UpsertChatReadState(ctx, db.UpsertChatReadStateParams{
-		ChainID:           chainID,
+		ItemID:            itemID,
 		ActorID:           actorID,
 		CounterpartID:     counterpartID,
 		LastReadMessageID: lastReadMessageID,
@@ -203,7 +196,7 @@ func (r *PostgreSQL) MarkRead(
 		return model.ReadState{}, fmt.Errorf("mark chat thread read: %w", err)
 	}
 	unreadCount, err := queries.CountUnreadChatMessages(ctx, db.CountUnreadChatMessagesParams{
-		ChainID:           chainID,
+		ItemID:            itemID,
 		CounterpartID:     counterpartID,
 		ActorID:           actorID,
 		LastReadMessageID: watermark,
@@ -216,27 +209,30 @@ func (r *PostgreSQL) MarkRead(
 	}
 
 	return model.ReadState{
-		ChainID:           chainID,
+		ItemID:            itemID,
 		CounterpartID:     counterpartID,
 		LastReadMessageID: watermark,
 		UnreadCount:       unreadCount,
 	}, nil
 }
 
-func authorize(ctx context.Context, queries *db.Queries, chainID, actorID, counterpartID int64) error {
+func authorize(ctx context.Context, queries *db.Queries, itemID, actorID, counterpartID int64) (int64, error) {
 	access, err := queries.GetChatAccessForShare(ctx, db.GetChatAccessForShareParams{
-		ChainID:       chainID,
+		ItemID:        itemID,
 		ActorID:       actorID,
 		CounterpartID: counterpartID,
 	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return model.ErrChainNotFound
+		return 0, model.ErrItemNotFound
 	case err != nil:
-		return fmt.Errorf("authorize chat access: %w", err)
+		return 0, fmt.Errorf("authorize chat access: %w", err)
 	}
 
-	return validateAccess(access.IsActorParticipant, access.IsCounterpartParticipant, access.IsNeighbor)
+	if err := validateAccess(access.IsActorParticipant, access.IsCounterpartParticipant, access.AccessChainID > 0); err != nil {
+		return 0, err
+	}
+	return access.AccessChainID, nil
 }
 
 func validateAccess(actorParticipant, counterpartParticipant, neighbor bool) error {
@@ -254,7 +250,7 @@ func loadMessage(
 	ctx context.Context,
 	queries *db.Queries,
 	messageID int64,
-	chainID int64,
+	itemID int64,
 	actorID int64,
 	counterpartID int64,
 	clientMessageID string,
@@ -270,7 +266,7 @@ func loadMessage(
 	}
 
 	row, err := queries.GetChatMessageByClientID(ctx, db.GetChatMessageByClientIDParams{
-		ChainID:         chainID,
+		ItemID:          itemID,
 		SenderUserID:    actorID,
 		RecipientUserID: counterpartID,
 		ClientMessageID: clientMessageID,
@@ -284,8 +280,9 @@ func loadMessage(
 
 func mapChatMessage(row db.GetChatMessageRow) model.Message {
 	return model.Message{
-		ID:      row.ID,
-		ChainID: row.ChainID,
+		ID:            row.ID,
+		ItemID:        row.ItemID,
+		OriginChainID: row.OriginChainID,
 		Sender: model.Sender{
 			ID:       row.SenderUserID,
 			Username: row.SenderUsername,
@@ -302,8 +299,9 @@ func mapChatMessage(row db.GetChatMessageRow) model.Message {
 
 func mapIdempotentMessage(row db.GetChatMessageByClientIDRow) model.Message {
 	return model.Message{
-		ID:      row.ID,
-		ChainID: row.ChainID,
+		ID:            row.ID,
+		ItemID:        row.ItemID,
+		OriginChainID: row.OriginChainID,
 		Sender: model.Sender{
 			ID:       row.SenderUserID,
 			Username: row.SenderUsername,
@@ -320,8 +318,9 @@ func mapIdempotentMessage(row db.GetChatMessageByClientIDRow) model.Message {
 
 func mapListedMessage(row db.ListChatMessagesRow) model.Message {
 	return model.Message{
-		ID:      row.ID,
-		ChainID: row.ChainID,
+		ID:            row.ID,
+		ItemID:        row.ItemID,
+		OriginChainID: row.OriginChainID,
 		Sender: model.Sender{
 			ID:       row.SenderUserID,
 			Username: row.SenderUsername,

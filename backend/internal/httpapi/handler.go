@@ -1109,7 +1109,7 @@ func (h *Handler) ListChatMessages(ctx context.Context, request api.ListChatMess
 		waitSeconds = *request.Params.WaitSeconds
 	}
 
-	messages, err := h.chat.List(ctx, request.ChainId, current.UserID, request.CounterpartId, afterID, limit, time.Duration(waitSeconds)*time.Second)
+	messages, err := h.chat.List(ctx, request.ItemId, current.UserID, request.CounterpartId, afterID, limit, time.Duration(waitSeconds)*time.Second)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
@@ -1120,10 +1120,10 @@ func (h *Handler) ListChatMessages(ctx context.Context, request api.ListChatMess
 			return api.ListChatMessages400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse(mapped)}, nil
 		case errors.Is(err, chatmodel.ErrForbidden):
 			return api.ListChatMessages403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
-		case errors.Is(err, chatmodel.ErrChainNotFound), errors.Is(err, chatmodel.ErrThreadNotFound):
+		case errors.Is(err, chatmodel.ErrItemNotFound), errors.Is(err, chatmodel.ErrThreadNotFound):
 			return api.ListChatMessages404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
 		default:
-			h.logger.Error("list chat messages", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
+			h.logger.Error("list chat messages", zap.Int64("actor_id", current.UserID), zap.Int64("item_id", request.ItemId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
 			return api.ListChatMessages500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
 		}
 	}
@@ -1153,7 +1153,7 @@ func (h *Handler) SendChatMessage(ctx context.Context, request api.SendChatMessa
 		}, nil
 	}
 
-	message, created, err := h.chat.Send(ctx, request.ChainId, current.UserID, request.CounterpartId, request.Body.ClientMessageId, request.Body.Text)
+	message, created, err := h.chat.Send(ctx, request.ItemId, current.UserID, request.CounterpartId, request.Body.ClientMessageId, request.Body.Text)
 	if err != nil {
 		mapped := chatErrorModel(ctx, err)
 		switch {
@@ -1161,12 +1161,12 @@ func (h *Handler) SendChatMessage(ctx context.Context, request api.SendChatMessa
 			return api.SendChatMessage400JSONResponse{ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(mapped)}, nil
 		case errors.Is(err, chatmodel.ErrForbidden):
 			return api.SendChatMessage403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
-		case errors.Is(err, chatmodel.ErrChainNotFound), errors.Is(err, chatmodel.ErrThreadNotFound):
+		case errors.Is(err, chatmodel.ErrItemNotFound), errors.Is(err, chatmodel.ErrThreadNotFound):
 			return api.SendChatMessage404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
 		case errors.Is(err, chatmodel.ErrIdempotencyConflict):
 			return api.SendChatMessage409JSONResponse{ConflictJSONResponse: api.ConflictJSONResponse(mapped)}, nil
 		default:
-			h.logger.Error("send chat message", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
+			h.logger.Error("send chat message", zap.Int64("actor_id", current.UserID), zap.Int64("item_id", request.ItemId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
 			return api.SendChatMessage500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
 		}
 	}
@@ -1217,7 +1217,7 @@ func (h *Handler) MarkChatThreadRead(ctx context.Context, request api.MarkChatTh
 		}, nil
 	}
 
-	readState, err := h.chat.MarkRead(ctx, request.ChainId, current.UserID, request.CounterpartId, request.Body.LastReadMessageId)
+	readState, err := h.chat.MarkRead(ctx, request.ItemId, current.UserID, request.CounterpartId, request.Body.LastReadMessageId)
 	if err != nil {
 		mapped := chatErrorModel(ctx, err)
 		switch {
@@ -1225,10 +1225,10 @@ func (h *Handler) MarkChatThreadRead(ctx context.Context, request api.MarkChatTh
 			return api.MarkChatThreadRead400JSONResponse{ValidationErrorJSONResponse: api.ValidationErrorJSONResponse(mapped)}, nil
 		case errors.Is(err, chatmodel.ErrForbidden):
 			return api.MarkChatThreadRead403JSONResponse{ForbiddenJSONResponse: api.ForbiddenJSONResponse(mapped)}, nil
-		case errors.Is(err, chatmodel.ErrChainNotFound), errors.Is(err, chatmodel.ErrThreadNotFound), errors.Is(err, chatmodel.ErrMessageNotFound):
+		case errors.Is(err, chatmodel.ErrItemNotFound), errors.Is(err, chatmodel.ErrThreadNotFound), errors.Is(err, chatmodel.ErrMessageNotFound):
 			return api.MarkChatThreadRead404JSONResponse{NotFoundJSONResponse: api.NotFoundJSONResponse(mapped)}, nil
 		default:
-			h.logger.Error("mark chat thread read", zap.Int64("actor_id", current.UserID), zap.Int64("chain_id", request.ChainId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
+			h.logger.Error("mark chat thread read", zap.Int64("actor_id", current.UserID), zap.Int64("item_id", request.ItemId), zap.Int64("counterpart_id", request.CounterpartId), zap.Error(err))
 			return api.MarkChatThreadRead500JSONResponse{InternalErrorJSONResponse: api.InternalErrorJSONResponse(mapped)}, nil
 		}
 	}
@@ -2002,8 +2002,8 @@ func adminDeliveryModel(delivery adminmodel.Delivery) api.AdminDelivery {
 
 func chatMessageModel(message chatmodel.Message) api.ChatMessage {
 	return api.ChatMessage{
-		Id:      message.ID,
-		ChainId: message.ChainID,
+		Id:     message.ID,
+		ItemId: message.ItemID,
 		Sender: api.UserSummary{
 			Id:       message.Sender.ID,
 			Username: message.Sender.Username,
@@ -2020,21 +2020,13 @@ func chatMessageModel(message chatmodel.Message) api.ChatMessage {
 
 func chatThreadModel(thread chatmodel.Thread) api.ChatThread {
 	result := api.ChatThread{
-		ChainId: thread.ChainID,
+		Item: chatItemSummaryModel(thread.Item),
 		Counterpart: api.UserSummary{
 			Id:       thread.Counterpart.ID,
 			Username: thread.Counterpart.Username,
 		},
 		HasUnread:   thread.UnreadCount > 0,
 		UnreadCount: thread.UnreadCount,
-	}
-	if thread.GiveItem != nil {
-		item := chatItemSummaryModel(*thread.GiveItem)
-		result.GiveItem = &item
-	}
-	if thread.ReceiveItem != nil {
-		item := chatItemSummaryModel(*thread.ReceiveItem)
-		result.ReceiveItem = &item
 	}
 	if thread.LastMessage != nil {
 		message := chatMessageModel(*thread.LastMessage)
@@ -2053,7 +2045,7 @@ func chatItemSummaryModel(item chatmodel.ItemSummary) api.ChatItemSummary {
 
 func chatReadStateModel(readState chatmodel.ReadState) api.ChatReadState {
 	return api.ChatReadState{
-		ChainId:           readState.ChainID,
+		ItemId:            readState.ItemID,
 		CounterpartId:     readState.CounterpartID,
 		LastReadMessageId: readState.LastReadMessageID,
 		UnreadCount:       readState.UnreadCount,
@@ -2207,8 +2199,8 @@ func chatErrorModel(ctx context.Context, err error) api.Error {
 		return errorModel(ctx, "VALIDATION_ERROR", err.Error(), nil)
 	case errors.Is(err, chatmodel.ErrForbidden):
 		return errorModel(ctx, "CHAT_FORBIDDEN", "chat is not available to the current user", nil)
-	case errors.Is(err, chatmodel.ErrChainNotFound):
-		return errorModel(ctx, "CHAIN_NOT_FOUND", "chain not found", nil)
+	case errors.Is(err, chatmodel.ErrItemNotFound):
+		return errorModel(ctx, "ITEM_NOT_FOUND", "chat item not found", nil)
 	case errors.Is(err, chatmodel.ErrThreadNotFound):
 		return errorModel(ctx, "CHAT_THREAD_NOT_FOUND", "chat thread not found", nil)
 	case errors.Is(err, chatmodel.ErrMessageNotFound):

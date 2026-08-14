@@ -428,10 +428,11 @@ type ChatMessage struct {
 	ClientMessageID string    `json:"client_message_id"`
 	MessageText     string    `json:"message_text"`
 	CreatedAt       time.Time `json:"created_at"`
+	ItemID          int64     `json:"item_id"`
 }
 
 type ChatReadState struct {
-	ChainID           int64     `json:"chain_id"`
+	ItemID            int64     `json:"item_id"`
 	UserID            int64     `json:"user_id"`
 	CounterpartUserID int64     `json:"counterpart_user_id"`
 	LastReadMessageID int64     `json:"last_read_message_id"`

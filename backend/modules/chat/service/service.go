@@ -20,19 +20,19 @@ type ChatConfig struct {
 var clientMessageIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`)
 
 type Repository interface {
-	CreateMessage(ctx context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (message model.Message, created bool, err error)
-	ListMessages(ctx context.Context, chainID, actorID, counterpartID, afterID int64, limit int) ([]model.Message, error)
+	CreateMessage(ctx context.Context, itemID, actorID, counterpartID int64, clientMessageID, text string) (message model.Message, created bool, err error)
+	ListMessages(ctx context.Context, itemID, actorID, counterpartID, afterID int64, limit int) ([]model.Message, error)
 	ListThreads(ctx context.Context, actorID int64) ([]model.Thread, error)
-	MarkRead(ctx context.Context, chainID, actorID, counterpartID, lastReadMessageID int64) (model.ReadState, error)
+	MarkRead(ctx context.Context, itemID, actorID, counterpartID, lastReadMessageID int64) (model.ReadState, error)
 }
 
 type OnMessageSent func(ctx context.Context, message model.Message)
 
 type Service interface {
-	Send(ctx context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (message model.Message, created bool, err error)
-	List(ctx context.Context, chainID, actorID, counterpartID, afterID int64, limit int, wait time.Duration) ([]model.Message, error)
+	Send(ctx context.Context, itemID, actorID, counterpartID int64, clientMessageID, text string) (message model.Message, created bool, err error)
+	List(ctx context.Context, itemID, actorID, counterpartID, afterID int64, limit int, wait time.Duration) ([]model.Message, error)
 	ListThreads(ctx context.Context, actorID int64) ([]model.Thread, error)
-	MarkRead(ctx context.Context, chainID, actorID, counterpartID, lastReadMessageID int64) (model.ReadState, error)
+	MarkRead(ctx context.Context, itemID, actorID, counterpartID, lastReadMessageID int64) (model.ReadState, error)
 }
 
 type Chat struct {
@@ -56,18 +56,18 @@ func NewWithCallback(repository Repository, onSent OnMessageSent, cfg ChatConfig
 	return &Chat{repository: repository, notifier: newNotifier(), onSent: onSent, cfg: cfg}, nil
 }
 
-func (s *Chat) Send(ctx context.Context, chainID, actorID, counterpartID int64, clientMessageID, text string) (model.Message, bool, error) {
-	clientMessageID, text, err := validateSend(chainID, actorID, counterpartID, clientMessageID, text)
+func (s *Chat) Send(ctx context.Context, itemID, actorID, counterpartID int64, clientMessageID, text string) (model.Message, bool, error) {
+	clientMessageID, text, err := validateSend(itemID, actorID, counterpartID, clientMessageID, text)
 	if err != nil {
 		return model.Message{}, false, err
 	}
 
-	message, created, err := s.repository.CreateMessage(ctx, chainID, actorID, counterpartID, clientMessageID, text)
+	message, created, err := s.repository.CreateMessage(ctx, itemID, actorID, counterpartID, clientMessageID, text)
 	if err != nil {
 		return model.Message{}, false, err
 	}
 	if created {
-		s.notifier.Notify(newThreadKey(chainID, actorID, counterpartID))
+		s.notifier.Notify(newThreadKey(itemID, actorID, counterpartID))
 		if s.onSent != nil {
 			s.onSent(ctx, message)
 		}
@@ -76,16 +76,16 @@ func (s *Chat) Send(ctx context.Context, chainID, actorID, counterpartID int64, 
 }
 
 // List подписывается до первого чтения, чтобы не потерять сообщение между чтением БД и ожиданием.
-func (s *Chat) List(ctx context.Context, chainID, actorID, counterpartID, afterID int64, limit int, wait time.Duration) ([]model.Message, error) {
-	if err := validateList(chainID, actorID, counterpartID, afterID, limit, wait, s.cfg); err != nil {
+func (s *Chat) List(ctx context.Context, itemID, actorID, counterpartID, afterID int64, limit int, wait time.Duration) ([]model.Message, error) {
+	if err := validateList(itemID, actorID, counterpartID, afterID, limit, wait, s.cfg); err != nil {
 		return nil, err
 	}
 
-	thread := newThreadKey(chainID, actorID, counterpartID)
+	thread := newThreadKey(itemID, actorID, counterpartID)
 	wakeUp, unsubscribe := s.notifier.Subscribe(thread)
 	defer unsubscribe()
 
-	messages, err := s.repository.ListMessages(ctx, chainID, actorID, counterpartID, afterID, limit)
+	messages, err := s.repository.ListMessages(ctx, itemID, actorID, counterpartID, afterID, limit)
 	if err != nil || len(messages) > 0 || wait == 0 {
 		return messages, err
 	}
@@ -98,7 +98,7 @@ func (s *Chat) List(ctx context.Context, chainID, actorID, counterpartID, afterI
 	case <-timer.C:
 		return []model.Message{}, nil
 	case <-wakeUp:
-		return s.repository.ListMessages(ctx, chainID, actorID, counterpartID, afterID, limit)
+		return s.repository.ListMessages(ctx, itemID, actorID, counterpartID, afterID, limit)
 	}
 }
 
@@ -109,18 +109,18 @@ func (s *Chat) ListThreads(ctx context.Context, actorID int64) ([]model.Thread, 
 	return s.repository.ListThreads(ctx, actorID)
 }
 
-func (s *Chat) MarkRead(ctx context.Context, chainID, actorID, counterpartID, lastReadMessageID int64) (model.ReadState, error) {
-	if err := validateThread(chainID, actorID, counterpartID); err != nil {
+func (s *Chat) MarkRead(ctx context.Context, itemID, actorID, counterpartID, lastReadMessageID int64) (model.ReadState, error) {
+	if err := validateThread(itemID, actorID, counterpartID); err != nil {
 		return model.ReadState{}, err
 	}
 	if lastReadMessageID <= 0 {
 		return model.ReadState{}, &model.ValidationError{Field: "lastReadMessageId", Message: "must be positive"}
 	}
-	return s.repository.MarkRead(ctx, chainID, actorID, counterpartID, lastReadMessageID)
+	return s.repository.MarkRead(ctx, itemID, actorID, counterpartID, lastReadMessageID)
 }
 
-func validateSend(chainID, actorID, counterpartID int64, clientMessageID, text string) (string, string, error) {
-	if err := validateThread(chainID, actorID, counterpartID); err != nil {
+func validateSend(itemID, actorID, counterpartID int64, clientMessageID, text string) (string, string, error) {
+	if err := validateThread(itemID, actorID, counterpartID); err != nil {
 		return "", "", err
 	}
 
@@ -138,9 +138,9 @@ func validateSend(chainID, actorID, counterpartID int64, clientMessageID, text s
 	return clientMessageID, text, nil
 }
 
-func validateThread(chainID, actorID, counterpartID int64) error {
-	if chainID <= 0 {
-		return &model.ValidationError{Field: "chainId", Message: "must be positive"}
+func validateThread(itemID, actorID, counterpartID int64) error {
+	if itemID <= 0 {
+		return &model.ValidationError{Field: "itemId", Message: "must be positive"}
 	}
 	if actorID <= 0 {
 		return model.ErrForbidden
@@ -154,8 +154,8 @@ func validateThread(chainID, actorID, counterpartID int64) error {
 	return nil
 }
 
-func validateList(chainID, actorID, counterpartID, afterID int64, limit int, wait time.Duration, cfg ChatConfig) error {
-	if err := validateThread(chainID, actorID, counterpartID); err != nil {
+func validateList(itemID, actorID, counterpartID, afterID int64, limit int, wait time.Duration, cfg ChatConfig) error {
+	if err := validateThread(itemID, actorID, counterpartID); err != nil {
 		return err
 	}
 	switch {
@@ -171,16 +171,16 @@ func validateList(chainID, actorID, counterpartID, afterID int64, limit int, wai
 }
 
 type threadKey struct {
-	chainID  int64
+	itemID   int64
 	firstID  int64
 	secondID int64
 }
 
-func newThreadKey(chainID, firstID, secondID int64) threadKey {
+func newThreadKey(itemID, firstID, secondID int64) threadKey {
 	if firstID > secondID {
 		firstID, secondID = secondID, firstID
 	}
-	return threadKey{chainID: chainID, firstID: firstID, secondID: secondID}
+	return threadKey{itemID: itemID, firstID: firstID, secondID: secondID}
 }
 
 type notifier struct {

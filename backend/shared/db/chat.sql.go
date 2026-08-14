@@ -15,7 +15,7 @@ SELECT EXISTS (
     SELECT 1
     FROM chat_messages AS message
     WHERE message.id = $1
-      AND message.chain_id = $2
+      AND message.item_id = $2
       AND (
           (message.sender_user_id = $3 AND message.recipient_user_id = $4)
           OR
@@ -26,7 +26,7 @@ SELECT EXISTS (
 
 type ChatMessageBelongsToThreadParams struct {
 	MessageID     int64 `json:"message_id"`
-	ChainID       int64 `json:"chain_id"`
+	ItemID        int64 `json:"item_id"`
 	ActorID       int64 `json:"actor_id"`
 	CounterpartID int64 `json:"counterpart_id"`
 }
@@ -34,7 +34,7 @@ type ChatMessageBelongsToThreadParams struct {
 func (q *Queries) ChatMessageBelongsToThread(ctx context.Context, arg ChatMessageBelongsToThreadParams) (bool, error) {
 	row := q.db.QueryRowContext(ctx, chatMessageBelongsToThread,
 		arg.MessageID,
-		arg.ChainID,
+		arg.ItemID,
 		arg.ActorID,
 		arg.CounterpartID,
 	)
@@ -46,14 +46,14 @@ func (q *Queries) ChatMessageBelongsToThread(ctx context.Context, arg ChatMessag
 const countUnreadChatMessages = `-- name: CountUnreadChatMessages :one
 SELECT count(*)::bigint
 FROM chat_messages AS message
-WHERE message.chain_id = $1
+WHERE message.item_id = $1
   AND message.sender_user_id = $2
   AND message.recipient_user_id = $3
   AND message.id > $4
 `
 
 type CountUnreadChatMessagesParams struct {
-	ChainID           int64 `json:"chain_id"`
+	ItemID            int64 `json:"item_id"`
 	CounterpartID     int64 `json:"counterpart_id"`
 	ActorID           int64 `json:"actor_id"`
 	LastReadMessageID int64 `json:"last_read_message_id"`
@@ -61,7 +61,7 @@ type CountUnreadChatMessagesParams struct {
 
 func (q *Queries) CountUnreadChatMessages(ctx context.Context, arg CountUnreadChatMessagesParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countUnreadChatMessages,
-		arg.ChainID,
+		arg.ItemID,
 		arg.CounterpartID,
 		arg.ActorID,
 		arg.LastReadMessageID,
@@ -72,58 +72,50 @@ func (q *Queries) CountUnreadChatMessages(ctx context.Context, arg CountUnreadCh
 }
 
 const getChatAccessForShare = `-- name: GetChatAccessForShare :one
-SELECT EXISTS (
-           SELECT 1
-           FROM chain_items AS actor
-           WHERE actor.chain_id = exchange_chain.id
-             AND actor.user_id = $1
-       ) AS is_actor_participant,
-       EXISTS (
-           SELECT 1
-           FROM chain_items AS counterpart
-           WHERE counterpart.chain_id = exchange_chain.id
-             AND counterpart.user_id = $2
-       ) AS is_counterpart_participant,
-       EXISTS (
-           SELECT 1
-           FROM chain_items AS actor
-           JOIN chain_items AS counterpart
-             ON counterpart.chain_id = actor.chain_id
-            AND counterpart.user_id = $2
-           WHERE actor.chain_id = exchange_chain.id
-             AND actor.user_id = $1
-             AND (
-                 actor.next_item_id = counterpart.item_id
-                 OR counterpart.next_item_id = actor.item_id
-             )
-       ) AS is_neighbor
-FROM chains AS exchange_chain
-WHERE exchange_chain.id = $3
-FOR SHARE OF exchange_chain
+SELECT COALESCE(BOOL_OR(
+           owner.user_id = $1
+           OR recipient.user_id = $1
+       ), false)::boolean AS is_actor_participant,
+       COALESCE(BOOL_OR(
+           owner.user_id = $2
+           OR recipient.user_id = $2
+       ), false)::boolean AS is_counterpart_participant,
+       COALESCE(MIN(owner.chain_id) FILTER (WHERE
+           (owner.user_id = $1 AND recipient.user_id = $2)
+           OR (owner.user_id = $2 AND recipient.user_id = $1)
+       ), 0)::bigint AS access_chain_id
+FROM items AS topic_item
+LEFT JOIN chain_items AS owner ON owner.item_id = topic_item.id
+LEFT JOIN chain_items AS recipient
+  ON recipient.chain_id = owner.chain_id
+ AND recipient.next_item_id = owner.item_id
+WHERE topic_item.id = $3
+GROUP BY topic_item.id
 `
 
 type GetChatAccessForShareParams struct {
 	ActorID       int64 `json:"actor_id"`
 	CounterpartID int64 `json:"counterpart_id"`
-	ChainID       int64 `json:"chain_id"`
+	ItemID        int64 `json:"item_id"`
 }
 
 type GetChatAccessForShareRow struct {
-	IsActorParticipant       bool `json:"is_actor_participant"`
-	IsCounterpartParticipant bool `json:"is_counterpart_participant"`
-	IsNeighbor               bool `json:"is_neighbor"`
+	IsActorParticipant       bool  `json:"is_actor_participant"`
+	IsCounterpartParticipant bool  `json:"is_counterpart_participant"`
+	AccessChainID            int64 `json:"access_chain_id"`
 }
 
 func (q *Queries) GetChatAccessForShare(ctx context.Context, arg GetChatAccessForShareParams) (GetChatAccessForShareRow, error) {
-	row := q.db.QueryRowContext(ctx, getChatAccessForShare, arg.ActorID, arg.CounterpartID, arg.ChainID)
+	row := q.db.QueryRowContext(ctx, getChatAccessForShare, arg.ActorID, arg.CounterpartID, arg.ItemID)
 	var i GetChatAccessForShareRow
-	err := row.Scan(&i.IsActorParticipant, &i.IsCounterpartParticipant, &i.IsNeighbor)
+	err := row.Scan(&i.IsActorParticipant, &i.IsCounterpartParticipant, &i.AccessChainID)
 	return i, err
 }
 
 const getChatMessage = `-- name: GetChatMessage :one
 SELECT message.id,
-       message.chain_id,
+       message.item_id,
+       message.chain_id AS origin_chain_id,
        sender.id AS sender_user_id,
        sender.username AS sender_username,
        recipient.id AS recipient_user_id,
@@ -139,7 +131,8 @@ WHERE message.id = $1
 
 type GetChatMessageRow struct {
 	ID                int64     `json:"id"`
-	ChainID           int64     `json:"chain_id"`
+	ItemID            int64     `json:"item_id"`
+	OriginChainID     int64     `json:"origin_chain_id"`
 	SenderUserID      int64     `json:"sender_user_id"`
 	SenderUsername    string    `json:"sender_username"`
 	RecipientUserID   int64     `json:"recipient_user_id"`
@@ -154,7 +147,8 @@ func (q *Queries) GetChatMessage(ctx context.Context, messageID int64) (GetChatM
 	var i GetChatMessageRow
 	err := row.Scan(
 		&i.ID,
-		&i.ChainID,
+		&i.ItemID,
+		&i.OriginChainID,
 		&i.SenderUserID,
 		&i.SenderUsername,
 		&i.RecipientUserID,
@@ -168,7 +162,8 @@ func (q *Queries) GetChatMessage(ctx context.Context, messageID int64) (GetChatM
 
 const getChatMessageByClientID = `-- name: GetChatMessageByClientID :one
 SELECT message.id,
-       message.chain_id,
+       message.item_id,
+       message.chain_id AS origin_chain_id,
        sender.id AS sender_user_id,
        sender.username AS sender_username,
        recipient.id AS recipient_user_id,
@@ -179,14 +174,14 @@ SELECT message.id,
 FROM chat_messages AS message
 JOIN users AS sender ON sender.id = message.sender_user_id
 JOIN users AS recipient ON recipient.id = message.recipient_user_id
-WHERE message.chain_id = $1
+WHERE message.item_id = $1
   AND message.sender_user_id = $2
   AND message.recipient_user_id = $3
   AND message.client_message_id = $4
 `
 
 type GetChatMessageByClientIDParams struct {
-	ChainID         int64  `json:"chain_id"`
+	ItemID          int64  `json:"item_id"`
 	SenderUserID    int64  `json:"sender_user_id"`
 	RecipientUserID int64  `json:"recipient_user_id"`
 	ClientMessageID string `json:"client_message_id"`
@@ -194,7 +189,8 @@ type GetChatMessageByClientIDParams struct {
 
 type GetChatMessageByClientIDRow struct {
 	ID                int64     `json:"id"`
-	ChainID           int64     `json:"chain_id"`
+	ItemID            int64     `json:"item_id"`
+	OriginChainID     int64     `json:"origin_chain_id"`
 	SenderUserID      int64     `json:"sender_user_id"`
 	SenderUsername    string    `json:"sender_username"`
 	RecipientUserID   int64     `json:"recipient_user_id"`
@@ -206,7 +202,7 @@ type GetChatMessageByClientIDRow struct {
 
 func (q *Queries) GetChatMessageByClientID(ctx context.Context, arg GetChatMessageByClientIDParams) (GetChatMessageByClientIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getChatMessageByClientID,
-		arg.ChainID,
+		arg.ItemID,
 		arg.SenderUserID,
 		arg.RecipientUserID,
 		arg.ClientMessageID,
@@ -214,7 +210,8 @@ func (q *Queries) GetChatMessageByClientID(ctx context.Context, arg GetChatMessa
 	var i GetChatMessageByClientIDRow
 	err := row.Scan(
 		&i.ID,
-		&i.ChainID,
+		&i.ItemID,
+		&i.OriginChainID,
 		&i.SenderUserID,
 		&i.SenderUsername,
 		&i.RecipientUserID,
@@ -229,6 +226,7 @@ func (q *Queries) GetChatMessageByClientID(ctx context.Context, arg GetChatMessa
 const insertChatMessage = `-- name: InsertChatMessage :one
 INSERT INTO chat_messages (
     chain_id,
+    item_id,
     sender_user_id,
     recipient_user_id,
     client_message_id,
@@ -239,14 +237,16 @@ VALUES (
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6
 )
-ON CONFLICT (chain_id, sender_user_id, recipient_user_id, client_message_id) DO NOTHING
+ON CONFLICT (item_id, sender_user_id, recipient_user_id, client_message_id) DO NOTHING
 RETURNING id
 `
 
 type InsertChatMessageParams struct {
 	ChainID         int64  `json:"chain_id"`
+	ItemID          int64  `json:"item_id"`
 	SenderUserID    int64  `json:"sender_user_id"`
 	RecipientUserID int64  `json:"recipient_user_id"`
 	ClientMessageID string `json:"client_message_id"`
@@ -256,6 +256,7 @@ type InsertChatMessageParams struct {
 func (q *Queries) InsertChatMessage(ctx context.Context, arg InsertChatMessageParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, insertChatMessage,
 		arg.ChainID,
+		arg.ItemID,
 		arg.SenderUserID,
 		arg.RecipientUserID,
 		arg.ClientMessageID,
@@ -268,7 +269,8 @@ func (q *Queries) InsertChatMessage(ctx context.Context, arg InsertChatMessagePa
 
 const listChatMessages = `-- name: ListChatMessages :many
 SELECT message.id,
-       message.chain_id,
+       message.item_id,
+       message.chain_id AS origin_chain_id,
        sender.id AS sender_user_id,
        sender.username AS sender_username,
        recipient.id AS recipient_user_id,
@@ -279,7 +281,7 @@ SELECT message.id,
 FROM chat_messages AS message
 JOIN users AS sender ON sender.id = message.sender_user_id
 JOIN users AS recipient ON recipient.id = message.recipient_user_id
-WHERE message.chain_id = $1
+WHERE message.item_id = $1
   AND (
       (message.sender_user_id = $2 AND message.recipient_user_id = $3)
       OR
@@ -291,7 +293,7 @@ LIMIT $5
 `
 
 type ListChatMessagesParams struct {
-	ChainID       int64 `json:"chain_id"`
+	ItemID        int64 `json:"item_id"`
 	ActorID       int64 `json:"actor_id"`
 	CounterpartID int64 `json:"counterpart_id"`
 	AfterID       int64 `json:"after_id"`
@@ -300,7 +302,8 @@ type ListChatMessagesParams struct {
 
 type ListChatMessagesRow struct {
 	ID                int64     `json:"id"`
-	ChainID           int64     `json:"chain_id"`
+	ItemID            int64     `json:"item_id"`
+	OriginChainID     int64     `json:"origin_chain_id"`
 	SenderUserID      int64     `json:"sender_user_id"`
 	SenderUsername    string    `json:"sender_username"`
 	RecipientUserID   int64     `json:"recipient_user_id"`
@@ -312,7 +315,7 @@ type ListChatMessagesRow struct {
 
 func (q *Queries) ListChatMessages(ctx context.Context, arg ListChatMessagesParams) ([]ListChatMessagesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listChatMessages,
-		arg.ChainID,
+		arg.ItemID,
 		arg.ActorID,
 		arg.CounterpartID,
 		arg.AfterID,
@@ -327,7 +330,8 @@ func (q *Queries) ListChatMessages(ctx context.Context, arg ListChatMessagesPara
 		var i ListChatMessagesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.ChainID,
+			&i.ItemID,
+			&i.OriginChainID,
 			&i.SenderUserID,
 			&i.SenderUsername,
 			&i.RecipientUserID,
@@ -350,41 +354,35 @@ func (q *Queries) ListChatMessages(ctx context.Context, arg ListChatMessagesPara
 }
 
 const listChatThreads = `-- name: ListChatThreads :many
-WITH actor_legs AS (
-    SELECT participant.chain_id,
-           participant.item_id,
-           participant.next_item_id
-    FROM chain_items AS participant
-    WHERE participant.user_id = $1
-),
-thread_pairs AS (
-    SELECT DISTINCT actor_leg.chain_id,
-           counterpart.user_id AS counterpart_user_id,
+WITH incoming_transfers AS (
+    SELECT DISTINCT owner.item_id,
+           owner.user_id AS counterpart_user_id
+    FROM chain_items AS owner
+    JOIN chain_items AS recipient
+      ON recipient.chain_id = owner.chain_id
+     AND recipient.next_item_id = owner.item_id
+    WHERE recipient.user_id = $1
+), messaged_transfers AS (
+    SELECT DISTINCT message.item_id,
            CASE
-               WHEN counterpart.next_item_id = actor_leg.item_id THEN actor_leg.item_id
-           END AS give_item_id,
-           CASE
-               WHEN actor_leg.next_item_id = counterpart.item_id THEN counterpart.item_id
-           END AS receive_item_id
-    FROM actor_legs AS actor_leg
-    JOIN chain_items AS counterpart
-      ON counterpart.chain_id = actor_leg.chain_id
-     AND (
-         actor_leg.next_item_id = counterpart.item_id
-         OR counterpart.next_item_id = actor_leg.item_id
-     )
-    WHERE counterpart.user_id <> $1
+               WHEN message.sender_user_id = $1 THEN message.recipient_user_id
+               ELSE message.sender_user_id
+           END AS counterpart_user_id
+    FROM chat_messages AS message
+    WHERE message.sender_user_id = $1
+       OR message.recipient_user_id = $1
+), transfers AS (
+    SELECT item_id, counterpart_user_id FROM incoming_transfers
+    UNION
+    SELECT item_id, counterpart_user_id FROM messaged_transfers
 )
-SELECT thread.chain_id,
+SELECT topic_item.id AS item_id,
+       topic_item.offer_title AS item_title,
+       COALESCE(topic_item.image_urls[1], '')::text AS item_image_url,
        counterpart.id AS counterpart_user_id,
        counterpart.username AS counterpart_username,
-       COALESCE(give_item.id, 0)::bigint AS give_item_id,
-       COALESCE(give_item.offer_title, '')::text AS give_item_title,
-       COALESCE(give_item.image_urls[1], '')::text AS give_item_image_url,
-       COALESCE(receive_item.id, 0)::bigint AS receive_item_id,
-       COALESCE(receive_item.offer_title, '')::text AS receive_item_title,
-       COALESCE(receive_item.image_urls[1], '')::text AS receive_item_image_url,
        COALESCE(latest.id, 0)::bigint AS last_message_id,
+       COALESCE(latest.origin_chain_id, 0)::bigint AS last_origin_chain_id,
        COALESCE(latest.sender_user_id, 0)::bigint AS last_sender_user_id,
        COALESCE(latest.sender_username, '')::text AS last_sender_username,
        COALESCE(latest.recipient_user_id, 0)::bigint AS last_recipient_user_id,
@@ -393,12 +391,12 @@ SELECT thread.chain_id,
        COALESCE(latest.message_text, '')::text AS last_message_text,
        COALESCE(latest.created_at, TIMESTAMPTZ 'epoch') AS last_message_created_at,
        COALESCE(unread.unread_count, 0)::bigint AS unread_count
-FROM thread_pairs AS thread
+FROM transfers AS thread
+JOIN items AS topic_item ON topic_item.id = thread.item_id
 JOIN users AS counterpart ON counterpart.id = thread.counterpart_user_id
-LEFT JOIN items AS give_item ON give_item.id = thread.give_item_id
-LEFT JOIN items AS receive_item ON receive_item.id = thread.receive_item_id
 LEFT JOIN LATERAL (
     SELECT message.id,
+           message.chain_id AS origin_chain_id,
            message.sender_user_id,
            sender.username AS sender_username,
            message.recipient_user_id,
@@ -409,7 +407,7 @@ LEFT JOIN LATERAL (
     FROM chat_messages AS message
     JOIN users AS sender ON sender.id = message.sender_user_id
     JOIN users AS recipient ON recipient.id = message.recipient_user_id
-    WHERE message.chain_id = thread.chain_id
+    WHERE message.item_id = thread.item_id
       AND (
           (message.sender_user_id = $1 AND message.recipient_user_id = thread.counterpart_user_id)
           OR
@@ -421,33 +419,30 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
     SELECT count(*)::bigint AS unread_count
     FROM chat_messages AS message
-    WHERE message.chain_id = thread.chain_id
+    WHERE message.item_id = thread.item_id
       AND message.sender_user_id = thread.counterpart_user_id
       AND message.recipient_user_id = $1
       AND message.id > COALESCE((
           SELECT read_state.last_read_message_id
           FROM chat_read_states AS read_state
-          WHERE read_state.chain_id = thread.chain_id
+          WHERE read_state.item_id = thread.item_id
             AND read_state.user_id = $1
             AND read_state.counterpart_user_id = thread.counterpart_user_id
       ), 0)
 ) AS unread ON TRUE
 ORDER BY latest.created_at DESC NULLS LAST,
-         thread.chain_id DESC,
+         topic_item.id DESC,
          counterpart.id ASC
 `
 
 type ListChatThreadsRow struct {
-	ChainID               int64     `json:"chain_id"`
+	ItemID                int64     `json:"item_id"`
+	ItemTitle             string    `json:"item_title"`
+	ItemImageUrl          string    `json:"item_image_url"`
 	CounterpartUserID     int64     `json:"counterpart_user_id"`
 	CounterpartUsername   string    `json:"counterpart_username"`
-	GiveItemID            int64     `json:"give_item_id"`
-	GiveItemTitle         string    `json:"give_item_title"`
-	GiveItemImageUrl      string    `json:"give_item_image_url"`
-	ReceiveItemID         int64     `json:"receive_item_id"`
-	ReceiveItemTitle      string    `json:"receive_item_title"`
-	ReceiveItemImageUrl   string    `json:"receive_item_image_url"`
 	LastMessageID         int64     `json:"last_message_id"`
+	LastOriginChainID     int64     `json:"last_origin_chain_id"`
 	LastSenderUserID      int64     `json:"last_sender_user_id"`
 	LastSenderUsername    string    `json:"last_sender_username"`
 	LastRecipientUserID   int64     `json:"last_recipient_user_id"`
@@ -468,16 +463,13 @@ func (q *Queries) ListChatThreads(ctx context.Context, actorID int64) ([]ListCha
 	for rows.Next() {
 		var i ListChatThreadsRow
 		if err := rows.Scan(
-			&i.ChainID,
+			&i.ItemID,
+			&i.ItemTitle,
+			&i.ItemImageUrl,
 			&i.CounterpartUserID,
 			&i.CounterpartUsername,
-			&i.GiveItemID,
-			&i.GiveItemTitle,
-			&i.GiveItemImageUrl,
-			&i.ReceiveItemID,
-			&i.ReceiveItemTitle,
-			&i.ReceiveItemImageUrl,
 			&i.LastMessageID,
+			&i.LastOriginChainID,
 			&i.LastSenderUserID,
 			&i.LastSenderUsername,
 			&i.LastRecipientUserID,
@@ -502,7 +494,7 @@ func (q *Queries) ListChatThreads(ctx context.Context, actorID int64) ([]ListCha
 
 const upsertChatReadState = `-- name: UpsertChatReadState :one
 INSERT INTO chat_read_states (
-    chain_id,
+    item_id,
     user_id,
     counterpart_user_id,
     last_read_message_id
@@ -513,14 +505,14 @@ VALUES (
     $3,
     $4
 )
-ON CONFLICT (chain_id, user_id, counterpart_user_id) DO UPDATE
+ON CONFLICT (item_id, user_id, counterpart_user_id) DO UPDATE
 SET last_read_message_id = GREATEST(chat_read_states.last_read_message_id, EXCLUDED.last_read_message_id),
     updated_at = now()
 RETURNING last_read_message_id
 `
 
 type UpsertChatReadStateParams struct {
-	ChainID           int64 `json:"chain_id"`
+	ItemID            int64 `json:"item_id"`
 	ActorID           int64 `json:"actor_id"`
 	CounterpartID     int64 `json:"counterpart_id"`
 	LastReadMessageID int64 `json:"last_read_message_id"`
@@ -528,7 +520,7 @@ type UpsertChatReadStateParams struct {
 
 func (q *Queries) UpsertChatReadState(ctx context.Context, arg UpsertChatReadStateParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, upsertChatReadState,
-		arg.ChainID,
+		arg.ItemID,
 		arg.ActorID,
 		arg.CounterpartID,
 		arg.LastReadMessageID,
