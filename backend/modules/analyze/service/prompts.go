@@ -25,11 +25,11 @@ func BuildEnrichmentPrompt(input string) string {
 	return fmt.Sprintf(enrichmentPromptTemplate, input)
 }
 
-const VisionAnalysisPrompt = `You are an expert appraiser and e-commerce copywriter.
+const VisionAnalysisPrompt = `You are an expert appraiser and copywriter for an item exchange service.
 Analyze the provided image of an item and return a JSON object with four fields.
 The fields MUST be exactly as follows and output must be in Russian:
 
-1. "marketplace_description": A professional, selling description of the item as it would appear on a marketplace like Avito. Do not write "I see a..." or "This is a picture of...". Write it directly as a product listing. 
+1. "marketplace_description": A concise, appealing description of the item offered for exchange. Do not describe it as being sold, do not mention a price or purchase, and do not write "I see a..." or "This is a picture of...". Write directly about the item.
    IMPORTANT: If you cannot confidently determine the EXACT model, use a completely generic name describing what the object is (e.g., "Смартфон", "Ноутбук", "Кроссовки"). DO NOT guess or hallucinate specific brands or models if visual evidence is insufficient.
 2. "suggested_category": The most appropriate marketplace category for this item. You MUST choose exactly ONE from the following list:
    - "Электроника" (Electronics: phones, computers, cameras, consoles, monitors, etc.)
