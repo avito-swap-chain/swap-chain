@@ -1,16 +1,23 @@
 import { Link } from 'react-router-dom'
+import { IconPencil } from '@/shared/ui'
 
 /**
- * Правка объявления — второстепенное действие рядом со снятием с обмена, поэтому ссылка,
- * а не кнопка: главное действие на карточке одно, и это включение обмена.
+ * Правка объявления — карандаш, как в списке объявлений Авито: на карточке слово занимало
+ * строку наравне со статусом и читалось третьим равноправным действием, хотя главное здесь
+ * одно — включение обмена. Значок узнаётся мгновенно, а подпись остаётся экранным читалкам.
+ *
+ * За карандашом теперь и снятие с обмена: оба действия про одно объявление, и опасное
+ * из них незачем держать на карточке, где его задевают мимоходом.
  */
 export function EditItemLink({ itemId }: { itemId: string }) {
   return (
     <Link
       to={`/items/${itemId}/edit`}
-      className="shrink-0 rounded-sm text-[12.5px] font-semibold text-ink-3 outline-offset-2 hover:text-ink-2 focus-visible:outline-2 focus-visible:outline-brand"
+      aria-label="Редактировать"
+      title="Редактировать"
+      className="grid size-8 shrink-0 place-items-center rounded-full text-ink-3 outline-offset-2 hover:bg-line-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-brand"
     >
-      Редактировать
+      <IconPencil size={18} />
     </Link>
   )
 }

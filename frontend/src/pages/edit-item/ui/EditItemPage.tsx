@@ -11,6 +11,7 @@ import {
   type Item,
 } from '@/entities/item'
 import { DescribeWishForm } from '@/features/describe-wish'
+import { WithdrawItem } from '@/features/withdraw-item'
 import { Field, Input, Notice, Screen, ScreenHeader, Select } from '@/shared/ui'
 
 /**
@@ -98,6 +99,16 @@ function EditItemFields({ item, onDone }: { item: Item; onDone: () => void }) {
         onSubmit={(wish) => editItem(item.id, { wish, description, title, categoryId })}
         onDone={onDone}
       />
+
+      {/* Снятие с обмена переехало сюда с карточки: на списке оно стояло рядом с правкой
+          и задевалось мимоходом, хотя отменяет предложения с этой вещью у других людей.
+          Здесь оно на своём месте — под формой, отдельно от сохранения, и с ценой рядом. */}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-line pt-3.5">
+        <span className="text-[13px] leading-4 text-ink-2">
+          Больше не хотите меняться? Вещь останется объявлением.
+        </span>
+        <WithdrawItem itemId={item.id} onDone={onDone} />
+      </div>
     </div>
   )
 }

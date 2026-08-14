@@ -13,23 +13,16 @@ export const mapMessage = (message: ChatMessage, meId: number): Message => ({
 })
 
 /**
- * Вещь, о которой идёт разговор. Правило от бэкенда: сначала `receiveItem` — это вещь,
- * которая придёт от собеседника ко мне, и спрашивают почти всегда о ней. Если этого ребра
- * в цепочке нет, остаётся моя вещь: тогда о состоянии спрашивает собеседник, а тема разговора
- * та же. У цепочки из двоих заполнены оба направления, и выбор всё равно однозначен.
+ * Тред из контракта в наш. Тема разговора — вещь: бэкенд сам решает, какую показать
+ * (полученную от собеседника, а если писали о моей — то мою), и склеивает по ней историю
+ * из всех цепочек. Дедуплицировать на фронте нечего — так прямо сказано в контракте.
  */
-const topicOf = (thread: ChatThread) => thread.receiveItem ?? thread.giveItem
-
-export const mapThread = (thread: ChatThread, meId: number): Thread => {
-  const topic = topicOf(thread)
-
-  return {
-    chainId: String(thread.chainId),
-    counterpartId: String(thread.counterpart.id),
-    peerName: thread.counterpart.username,
-    itemTitle: topic?.title,
-    itemPhotoUrl: topic?.imageUrl ?? undefined,
-    lastMessage: thread.lastMessage ? mapMessage(thread.lastMessage, meId) : undefined,
-    unreadCount: thread.unreadCount,
-  }
-}
+export const mapThread = (thread: ChatThread, meId: number): Thread => ({
+  itemId: String(thread.item.id),
+  counterpartId: String(thread.counterpart.id),
+  peerName: thread.counterpart.username,
+  itemTitle: thread.item.title,
+  itemPhotoUrl: thread.item.imageUrl ?? undefined,
+  lastMessage: thread.lastMessage ? mapMessage(thread.lastMessage, meId) : undefined,
+  unreadCount: thread.unreadCount,
+})

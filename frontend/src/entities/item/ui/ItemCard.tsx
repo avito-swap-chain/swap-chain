@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { asset, cx } from '@/shared/lib'
-import { Card, IconImage } from '@/shared/ui'
+import { IconImage } from '@/shared/ui'
 import { CONDITION_LABEL } from '../model/dictionaries'
 import type { Item } from '../model/types'
 import { ItemStatusLabel } from './ItemStatusLabel'
@@ -19,9 +19,11 @@ export function ItemCard({ item, action }: ItemCardProps) {
     //
     // Выше 400px строка переносится, если действий несколько: у вещи в подборе их три —
     // статус, правка и снятие, — и они съедали заголовок целиком, до пустого места.
-    <Card
+    /* Строка списка, а не карточка: в кабинете Авито объявления идут одно под другим
+       и разделены линией — рамка вокруг каждого дробила бы список на плитки. */
+    <div
       className={cx(
-        'grid grid-cols-[auto_1fr] items-center gap-x-3 p-3',
+        'grid grid-cols-[auto_1fr] items-center gap-x-3 border-b border-line py-3 last:border-0',
         action ? 'gap-y-2.5 min-[400px]:flex min-[400px]:flex-wrap' : 'grid-cols-[auto_1fr_auto]',
       )}
     >
@@ -63,6 +65,6 @@ export function ItemCard({ item, action }: ItemCardProps) {
       >
         {action ?? <ItemStatusLabel status={item.status} />}
       </div>
-    </Card>
+    </div>
   )
 }

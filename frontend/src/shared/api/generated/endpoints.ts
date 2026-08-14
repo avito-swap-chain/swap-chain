@@ -1289,6 +1289,7 @@ export const getCreateChainUrl = () => {
 }
 
 /**
+ * Creates a proposal with every participant in WAITING state. Selecting or materializing a matching cycle does not approve it for any participant; each participant, including the owner of the source item, must submit an explicit APPROVED decision before the chain becomes ACCEPTED.
  * @summary Create a pending exchange chain from a matching cycle
  */
 export const createChain = async (createChainRequest: CreateChainRequest, options?: Parameters<typeof apiFetch>[1]): Promise<createChainResponse> => {
@@ -1668,7 +1669,7 @@ export const getListChatThreadsUrl = () => {
 }
 
 /**
- * Returns one thread per exchange chain and neighboring participant. A neighbor either gives an item to the authenticated user or receives an item from them. Threads exist as soon as a matched chain is persisted, including while its status is PENDING.
+ * Returns one thread per item that the authenticated user receives from a neighboring participant. The user's own outgoing items are not listed unless a conversation about them already contains messages, so the owner can reply. The same item and user pair form one conversation even when they occur in several exchange chains. An incoming-item thread exists as soon as at least one matching chain is persisted, including PENDING.
  * @summary List all direct exchange-chain conversations
  */
 export const listChatThreads = async ( options?: Parameters<typeof apiFetch>[1]): Promise<listChatThreadsResponse> => {
@@ -1723,7 +1724,7 @@ export type listChatMessagesResponseError = (listChatMessagesResponse400 | listC
 
 export type listChatMessagesResponse = (listChatMessagesResponseSuccess | listChatMessagesResponseError)
 
-export const getListChatMessagesUrl = (chainId: number,
+export const getListChatMessagesUrl = (itemId: number,
     counterpartId: number,
     params?: ListChatMessagesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -1737,18 +1738,18 @@ export const getListChatMessagesUrl = (chainId: number,
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/api/v1/chains/${chainId}/chat/${counterpartId}/messages?${stringifiedParams}` : `/api/v1/chains/${chainId}/chat/${counterpartId}/messages`
+  return stringifiedParams.length > 0 ? `/api/v1/items/${itemId}/chat/${counterpartId}/messages?${stringifiedParams}` : `/api/v1/items/${itemId}/chat/${counterpartId}/messages`
 }
 
 /**
- * Available only when the authenticated user and counterpart are neighbors in the selected chain. The chain may still be PENDING. Returns immediately when messages newer than afterId exist; otherwise waits up to waitSeconds. PostgreSQL remains the source of truth.
+ * Available only when the authenticated user and counterpart are neighbors on a transfer of this item in at least one persisted chain. Returns immediately when messages newer than afterId exist; otherwise waits up to waitSeconds. PostgreSQL remains the source of truth.
  * @summary Read or wait for direct-thread messages
  */
-export const listChatMessages = async (chainId: number,
+export const listChatMessages = async (itemId: number,
     counterpartId: number,
     params?: ListChatMessagesParams, options?: Parameters<typeof apiFetch>[1]): Promise<listChatMessagesResponse> => {
 
-  return apiFetch<listChatMessagesResponse>(getListChatMessagesUrl(chainId,counterpartId,params),
+  return apiFetch<listChatMessagesResponse>(getListChatMessagesUrl(itemId,counterpartId,params),
   {
     ...options,
     method: 'GET'
@@ -1808,24 +1809,24 @@ export type sendChatMessageResponseError = (sendChatMessageResponse400 | sendCha
 
 export type sendChatMessageResponse = (sendChatMessageResponseSuccess | sendChatMessageResponseError)
 
-export const getSendChatMessageUrl = (chainId: number,
+export const getSendChatMessageUrl = (itemId: number,
     counterpartId: number,) => {
 
 
 
 
-  return `/api/v1/chains/${chainId}/chat/${counterpartId}/messages`
+  return `/api/v1/items/${itemId}/chat/${counterpartId}/messages`
 }
 
 /**
- * The authenticated session is always the sender. clientMessageId is an idempotency key scoped to the chain, sender and counterpart. Retrying the same key and text returns the original message; reusing the key with different text returns 409. PENDING chains are supported.
+ * The authenticated session is always the sender. clientMessageId is an idempotency key scoped to the item, sender and counterpart. Retrying the same key and text returns the original message; reusing the key with different text returns 409.
  * @summary Send a direct message to a neighboring participant
  */
-export const sendChatMessage = async (chainId: number,
+export const sendChatMessage = async (itemId: number,
     counterpartId: number,
     sendChatMessageRequest: SendChatMessageRequest, options?: Parameters<typeof apiFetch>[1]): Promise<sendChatMessageResponse> => {
 
-  return apiFetch<sendChatMessageResponse>(getSendChatMessageUrl(chainId,counterpartId),
+  return apiFetch<sendChatMessageResponse>(getSendChatMessageUrl(itemId,counterpartId),
   {
     ...options,
     method: 'POST',
@@ -1875,24 +1876,24 @@ export type markChatThreadReadResponseError = (markChatThreadReadResponse400 | m
 
 export type markChatThreadReadResponse = (markChatThreadReadResponseSuccess | markChatThreadReadResponseError)
 
-export const getMarkChatThreadReadUrl = (chainId: number,
+export const getMarkChatThreadReadUrl = (itemId: number,
     counterpartId: number,) => {
 
 
 
 
-  return `/api/v1/chains/${chainId}/chat/${counterpartId}/read`
+  return `/api/v1/items/${itemId}/chat/${counterpartId}/read`
 }
 
 /**
  * Advances the authenticated user's read watermark. Repeating a request or sending an older message ID is safe and never moves the watermark back.
  * @summary Mark direct-thread messages as read
  */
-export const markChatThreadRead = async (chainId: number,
+export const markChatThreadRead = async (itemId: number,
     counterpartId: number,
     markChatThreadReadRequest: MarkChatThreadReadRequest, options?: Parameters<typeof apiFetch>[1]): Promise<markChatThreadReadResponse> => {
 
-  return apiFetch<markChatThreadReadResponse>(getMarkChatThreadReadUrl(chainId,counterpartId),
+  return apiFetch<markChatThreadReadResponse>(getMarkChatThreadReadUrl(itemId,counterpartId),
   {
     ...options,
     method: 'POST',

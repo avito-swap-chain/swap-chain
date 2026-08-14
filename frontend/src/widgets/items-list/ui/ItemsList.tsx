@@ -4,7 +4,6 @@ import { getMyItems, ItemCard, ItemStatusLabel, itemKeys, type Item } from '@/en
 import { EditItemLink } from '@/features/edit-item'
 import { EnableBarterButton } from '@/features/enable-barter'
 import { ResolveWishCategory } from '@/features/resolve-wish-category'
-import { WithdrawItem } from '@/features/withdraw-item'
 import { Button, EmptyState, Notice } from '@/shared/ui'
 
 /**
@@ -40,15 +39,17 @@ function actionFor(item: Item) {
     )
   }
 
-  if (item.status === 'reserved') return undefined
+  // Вещь в собравшейся цепочке и вещь, уже уехавшая новому владельцу, одинаково
+  // неприкосновенны: править и снимать нечего, а подпись статуса карточка нарисует сама.
+  if (item.status === 'reserved' || item.status === 'exchanged') return undefined
 
   return (
-    <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+    <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
       <ItemStatusLabel status={item.status} />
       {/* Пока вещь в подборе, описание и желание правятся без снятия с обмена: снятие
-          отменило бы предложения с ней у других людей, а это не то же самое, что правка. */}
+          отменило бы предложения с ней у других людей, а это не то же самое, что правка.
+          Само снятие живёт за карандашом — на карточке ему не место. */}
       <EditItemLink itemId={item.id} />
-      <WithdrawItem itemId={item.id} />
     </span>
   )
 }
@@ -77,12 +78,10 @@ export function ItemsList() {
   }
 
   return (
-    // Две колонки только с `xl`: карточка — компактная строка с кнопкой справа,
-    // и уже ниже ~470px на колонку заголовку не остаётся места. Третья колонка
-    // в контейнер страницы не влезает по той же причине.
-    // `grid-cols-1` задаётся явно: неявная колонка грида тянется по max-content,
-    // и длинный заголовок выносил бы карточку за край экрана.
-    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+    // Одна колонка строк, как в их кабинете: объявления идут сверху вниз и разделены
+    // линией. Двух колонок у Авито нет — и правильно, в них заголовок сжимался до
+    // «Монитор L…» на первом же длинном названии.
+    <div className="flex flex-col">
       {data.map((item) => (
         <ItemCard key={item.id} item={item} action={actionFor(item)} />
       ))}

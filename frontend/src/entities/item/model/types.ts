@@ -24,7 +24,7 @@ export interface Category {
  * за пользователем: остальные проходят сами собой.
  */
 export type ItemStatus =
-  'idle' | 'analyzing' | 'needs_category' | 'searching' | 'reserved' | 'withdrawn'
+  'idle' | 'analyzing' | 'needs_category' | 'searching' | 'reserved' | 'exchanged' | 'withdrawn'
 
 /**
  * Что распознавание достаёт из фотографии. Названия у модели нет: она не придумывает

@@ -7,15 +7,15 @@ import { getMessages, getThreads, markThreadRead, reportMessage, sendMessage } f
 
 const [DASHA, MARK] = PERSONAS
 
-/** Даша спрашивает Лену о велосипеде в цепочке c1, Марка о мониторе — в c5. */
+/** Даша спрашивает Лену о велосипеде, Марка — о мониторе. Адрес разговора это вещь. */
 const BIKE: ThreadRef = {
-  chainId: 'c1',
+  itemId: 'i1',
   counterpartId: 'u3',
   peerName: 'Лена',
   itemTitle: 'Горный велосипед',
 }
 const MONITOR: ThreadRef = {
-  chainId: 'c5',
+  itemId: 'i5',
   counterpartId: 'u2',
   peerName: 'Марк',
   itemTitle: 'Монитор LG 27" IPS',
@@ -82,7 +82,7 @@ describe('messagesApi — переписка о состоянии вещи', ()
 
     const [thread] = await dialogues()
     expect(thread).toMatchObject({
-      chainId: BIKE.chainId,
+      itemId: BIKE.itemId,
       counterpartId: BIKE.counterpartId,
       peerName: 'Лена',
       itemTitle: 'Горный велосипед',
@@ -118,10 +118,10 @@ describe('messagesApi — переписка о состоянии вещи', ()
     await ask(BIKE, 'Комплект полный?')
     await ask(MONITOR, 'Есть битые пиксели?')
 
-    expect((await dialogues()).map((t) => t.chainId)).toEqual([MONITOR.chainId, BIKE.chainId])
+    expect((await dialogues()).map((t) => t.itemId)).toEqual([MONITOR.itemId, BIKE.itemId])
   })
 
-  it('разговоры в разных цепочках не смешиваются', async () => {
+  it('разговоры о разных вещах не смешиваются', async () => {
     await ask(BIKE, 'Комплект полный?')
     await ask(MONITOR, 'Есть битые пиксели?')
 
@@ -129,8 +129,10 @@ describe('messagesApi — переписка о состоянии вещи', ()
     expect(await getMessages(MONITOR)).toHaveLength(2)
   })
 
-  it('один и тот же собеседник в другой цепочке — другой разговор', async () => {
-    const other = { ...BIKE, chainId: 'c9', itemTitle: 'Кофеварка' }
+  /** Разговор держится за вещь: тот же человек о другой вещи — отдельная история,
+   *  а та же вещь в другом варианте обмена — та же самая (это уже забота бэкенда). */
+  it('один и тот же собеседник о другой вещи — другой разговор', async () => {
+    const other = { ...BIKE, itemId: 'i9', itemTitle: 'Кофеварка' }
     await ask(BIKE, 'Комплект полный?')
     await ask(other, 'А кофеварка на ходу?')
 

@@ -20,12 +20,12 @@ import { asset } from '@/shared/lib'
  * Экран переписки. Шапка держит контекст разговора — с кем и о какой вещи, — как в
  * мессенджере Авито: без неё через день не вспомнить, к какому из предложений он относится.
  *
- * Адрес диалога — цепочка и собеседник: переписка привязана к ребру круга обмена, и с одним
- * и тем же человеком в двух цепочках это два разных разговора.
+ * Адрес диалога — вещь и собеседник: разговор идёт о конкретной вещи, и если она попала
+ * сразу в несколько вариантов обмена, история остаётся одна — так решил бэкенд.
  */
 export function ThreadPage() {
-  const { chainId = '', counterpartId = '' } = useParams()
-  const key = { chainId, counterpartId }
+  const { itemId = '', counterpartId = '' } = useParams()
+  const key = { itemId, counterpartId }
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -52,10 +52,10 @@ export function ThreadPage() {
     // Открытая переписка считается прочитанной — счётчик в шапке гаснет. Водяной знак
     // ставим по последней показанной реплике, а не «по всему треду»: отметить непоказанное
     // мы не вправе, а список после этого надо перечитать — счётчик живёт в нём.
-    markThreadRead({ chainId, counterpartId }, lastMessageId).then(() => {
+    markThreadRead({ itemId, counterpartId }, lastMessageId).then(() => {
       queryClient.invalidateQueries({ queryKey: messageKeys.list() })
     })
-  }, [chainId, counterpartId, lastMessageId, unread, queryClient])
+  }, [itemId, counterpartId, lastMessageId, unread, queryClient])
 
   return (
     <Screen>

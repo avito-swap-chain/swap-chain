@@ -19,7 +19,7 @@ export function BlockUser({ userId, name }: { userId: string; name: string }) {
   const queryClient = useQueryClient()
 
   const { data: blocked = [] } = useQuery({ queryKey: userKeys.blocked(), queryFn: getBlocked })
-  const isBlocked = blocked.includes(userId)
+  const isBlocked = blocked.some((user) => user.id === userId)
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: () => (isBlocked ? unblockUser(userId) : blockUser(userId)),

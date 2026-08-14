@@ -20,7 +20,7 @@ import type {
 import { isBackendConnected } from '@/shared/config/backend'
 import { currentUserId } from '@/shared/model/session'
 import * as mock from './userMocks'
-import type { Profile, ProfileEdit, Report, Review } from '../model/types'
+import type { BlockedUser, Profile, ProfileEdit, Report, Review } from '../model/types'
 
 export const userKeys = {
   all: ['users'] as const,
@@ -139,12 +139,19 @@ export async function uploadAvatar(file: File): Promise<string> {
  *
  * Список читаем одной страницей: чёрный список — это единицы людей, а не лента, и
  * листать там нечего. Сотня записей — потолок, который разрешает контракт.
+ *
+ * Возвращаем имена, а не только идентификаторы: тем же списком живёт раздел «Чёрный
+ * список» в кабинете, а имён ему взять больше неоткуда — профили заблокированных
+ * он не грузит.
  */
-export async function getBlocked(): Promise<string[]> {
+export async function getBlocked(): Promise<BlockedUser[]> {
   if (!isBackendConnected) return mock.blocked()
 
   const { blocks } = unwrap<BlockList>(await listBlocks({ limit: 100 }))
-  return blocks.map((block) => String(block.blockedUser.id))
+  return blocks.map((block) => ({
+    id: String(block.blockedUser.id),
+    name: block.blockedUser.username,
+  }))
 }
 
 export async function blockUser(userId: string): Promise<void> {

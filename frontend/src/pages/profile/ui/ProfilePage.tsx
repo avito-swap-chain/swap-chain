@@ -9,10 +9,13 @@ import { ReportUser } from '@/features/report-user'
 import { exchangesLabel, reviewsLabel } from '@/shared/lib'
 import {
   Avatar,
-  IconBell,
+  Counter,
+  IconNotifications,
+  IconBan,
   IconBox,
   IconChat,
   IconPencil,
+  IconStar,
   IconSwap,
   Notice,
   Screen,
@@ -167,23 +170,27 @@ function Cabinet({ onEdit, editing }: { onEdit: () => void; editing: boolean }) 
         <TileRow
           icon={<IconSwap size={19} />}
           to="/exchange"
-          trailing={
-            waiting > 0 && (
-              <span className="rounded-chip bg-stop px-1.5 py-0.5 font-sans text-[12px] leading-4 font-bold text-white">
-                {waiting}
-              </span>
-            )
-          }
+          trailing={waiting > 0 && <Counter title="Ждут вашего действия">{waiting}</Counter>}
         >
           Обмены
+        </TileRow>
+
+        {/* На телефоне меню кабинета нет, а в нижнюю панель отзывы не влезают —
+            поэтому вход в раздел здесь, как в мобильном профиле Авито. */}
+        <TileRow icon={<IconStar size={19} />} to="/reviews">
+          Мои отзывы
         </TileRow>
 
         <TileRow icon={<IconChat size={19} />} to="/messages">
           Сообщения
         </TileRow>
 
-        <TileRow icon={<IconBell size={19} />} to="/notifications">
+        <TileRow icon={<IconNotifications size={19} />} to="/notifications">
           Уведомления
+        </TileRow>
+
+        <TileRow icon={<IconBan size={19} />} to="/blocked">
+          Чёрный список
         </TileRow>
 
         <TileRow icon={<IconPencil size={19} />} onClick={onEdit}>

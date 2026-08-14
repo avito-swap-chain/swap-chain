@@ -3,6 +3,7 @@ export { Button } from './Button'
 export { Status, type StatusTone } from './Status'
 export { Steps, type Step } from './Steps'
 export { Card } from './Card'
+export { Counter } from './Counter'
 export { Tile } from './Tile'
 export { TileGroup, TileRow } from './TileGroup'
 export { Stars } from './Stars'
@@ -29,9 +30,17 @@ export {
   IconBan,
   IconSparkle,
   IconBox,
-  IconHeart,
-  IconBell,
   IconChat,
   IconStar,
   IconSwap,
+  IconAdd,
+  IconItems,
+  IconExpandMore,
+  IconBusiness,
+  IconFavorites,
+  IconNotifications,
+  IconMessages,
+  IconCart,
+  IconArrowUp,
+  IconCamera,
 } from './icons'

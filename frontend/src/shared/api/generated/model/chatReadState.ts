@@ -7,7 +7,7 @@
  */
 
 export interface ChatReadState {
-  chainId: number;
+  itemId: number;
   counterpartId: number;
   lastReadMessageId: number;
   /** @minimum 0 */

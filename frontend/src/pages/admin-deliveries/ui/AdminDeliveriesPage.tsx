@@ -9,7 +9,7 @@ import {
   type Delivery,
   type DeliveryTransition,
 } from '@/entities/delivery'
-import { Button, Card, EmptyState, Notice, Screen } from '@/shared/ui'
+import { Button, EmptyState, Notice, Screen } from '@/shared/ui'
 
 /**
  * Кнопка получает следующий шаг готовым, а не вычисляет его сама: строка всё равно должна
@@ -37,7 +37,9 @@ function DeliveryRow({ delivery }: { delivery: Delivery }) {
   const next = nextStatus(delivery.status)
 
   return (
-    <Card padded className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    /* Строка очереди, а не карточка: страница кабинета — белый лист, и десяток рамок
+       на нём читался бы плиткой вместо очереди. */
+    <div className="flex flex-col gap-3 border-b border-line py-3.5 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-[15px] leading-5 font-bold">{delivery.itemTitle}</p>
         {/* Стрелкой, а не «от кого кому»: с бэкенда приходят логины, и в косвенном падеже
@@ -51,7 +53,7 @@ function DeliveryRow({ delivery }: { delivery: Delivery }) {
         <DeliveryStatusLabel status={delivery.status} />
         {next && <AdvanceButton delivery={delivery} to={next} />}
       </div>
-    </Card>
+    </div>
   )
 }
 
@@ -91,7 +93,7 @@ export function AdminDeliveriesPage() {
         )}
 
         {data && data.length > 0 && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             {data.map((delivery) => (
               <DeliveryRow key={delivery.id} delivery={delivery} />
             ))}

@@ -8,7 +8,7 @@
 
 export interface SendChatMessageRequest {
   /**
-     * Client-generated idempotency key scoped to chain, sender and counterpart.
+     * Client-generated idempotency key scoped to item, sender and counterpart.
      * @minLength 1
      * @maxLength 64
      * @pattern ^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$

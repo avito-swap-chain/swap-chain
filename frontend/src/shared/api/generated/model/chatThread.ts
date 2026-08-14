@@ -10,12 +10,8 @@ import type { ChatMessage } from './chatMessage';
 import type { UserSummary } from './userSummary';
 
 export interface ChatThread {
-  chainId: number;
+  item: ChatItemSummary;
   counterpart: UserSummary;
-  /** Item transferred from the authenticated user to this counterpart, when this thread covers that edge. */
-  giveItem: ChatItemSummary | null;
-  /** Item transferred from this counterpart to the authenticated user, when this thread covers that edge. */
-  receiveItem: ChatItemSummary | null;
   lastMessage?: ChatMessage | null;
   hasUnread: boolean;
   /** @minimum 0 */

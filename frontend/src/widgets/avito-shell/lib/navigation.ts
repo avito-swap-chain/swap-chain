@@ -1,5 +1,5 @@
 /** Раздел кабинета — единственный верхний уровень навигации: им подсвечивается меню. */
-export type Section = 'items' | 'exchange' | 'messages' | 'notifications'
+export type Section = 'items' | 'exchange' | 'messages' | 'reviews' | 'notifications' | 'blocked'
 
 export interface Crumb {
   label: string
@@ -15,6 +15,9 @@ export interface Crumb {
 export function getSection(pathname: string): Section {
   if (pathname === '/exchange' || pathname.startsWith('/exchange/')) return 'exchange'
   if (pathname === '/messages' || pathname.startsWith('/messages/')) return 'messages'
+  if (pathname === '/reviews') return 'reviews'
+  // Чёрный список — раздел без пункта в меню: подсвечивать вместо него объявления неправильно.
+  if (pathname === '/blocked') return 'blocked'
   if (pathname === '/notifications') return 'notifications'
   return 'items'
 }
@@ -32,7 +35,7 @@ export function getBreadcrumbs(pathname: string): Crumb[] {
   if (pathname === '/items/new') return [AVITO, ITEMS, { label: 'Новое объявление' }]
   if (/^\/items\/[^/]+\/barter$/.test(pathname)) return [AVITO, ITEMS, { label: 'Готов обменять' }]
   if (/^\/exchange\/[^/]+$/.test(pathname)) return [AVITO, EXCHANGE, { label: 'Цепочка' }]
-  // Диалог адресуется двумя сегментами — цепочкой и собеседником.
+  // Диалог адресуется двумя сегментами — вещью и собеседником.
   if (/^\/messages\/[^/]+\/[^/]+$/.test(pathname)) return [AVITO, MESSAGES, { label: 'Переписка' }]
   return []
 }

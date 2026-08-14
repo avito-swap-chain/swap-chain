@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SwitchPersona } from './SwitchPersona'
 
@@ -29,10 +30,13 @@ vi.mock('@/shared/model/session', () => ({
 const show = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
+  // Меню аккаунта ведёт в разделы кабинета ссылками, поэтому ему нужен роутер.
   return render(
-    <QueryClientProvider client={client}>
-      <SwitchPersona />
-    </QueryClientProvider>,
+    <MemoryRouter>
+      <QueryClientProvider client={client}>
+        <SwitchPersona />
+      </QueryClientProvider>
+    </MemoryRouter>,
   )
 }
 

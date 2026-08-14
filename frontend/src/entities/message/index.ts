@@ -13,6 +13,6 @@ export {
 } from './api/messagesApi'
 export { useThreadMessages } from './api/useThreadMessages'
 export { mergeMessages } from './lib/mergeMessages'
-export { isServiceThread, sameThread, threadPath } from './lib/thread'
+export { isServiceThread, orderThreads, sameThread, threadPath } from './lib/thread'
 export { MessageList } from './ui/MessageList'
 export { ThreadCard } from './ui/ThreadCard'

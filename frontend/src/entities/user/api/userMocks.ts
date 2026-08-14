@@ -1,5 +1,5 @@
 import { currentPersonaId, editPersona, personaById } from '@/shared/model/persona'
-import type { Profile, ProfileEdit, Report, Review } from '../model/types'
+import type { BlockedUser, Profile, ProfileEdit, Report, Review } from '../model/types'
 
 /**
  * Профили на моках — тот же реестр демо-персон, из которого собираются участники цепочек
@@ -118,9 +118,10 @@ export async function addReview(
 const BLOCKED = new Set<string>()
 const REPORTS: Report[] = []
 
-export async function blocked(): Promise<string[]> {
+export async function blocked(): Promise<BlockedUser[]> {
   await delay(150)
-  return [...BLOCKED]
+  // Имя берём из реестра персон: на моках заблокировать можно только участника обмена.
+  return [...BLOCKED].map((id) => ({ id, name: personaById(id)?.name ?? 'Участник' }))
 }
 
 export async function block(userId: string): Promise<void> {

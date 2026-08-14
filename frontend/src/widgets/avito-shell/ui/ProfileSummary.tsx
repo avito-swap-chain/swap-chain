@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { getCurrentUser, sessionKeys } from '@/shared/model/session'
 import { asset, cx, reviewsLabel } from '@/shared/lib'
-import { Stars } from '@/shared/ui'
+import { IconCamera, Stars } from '@/shared/ui'
 
 /**
  * Шапка кабинета Авито: крупный аватар, имя, рейтинг со звёздами и отзывы — и только
@@ -18,40 +18,56 @@ export function ProfileSummary({ className }: { className?: string }) {
   if (!user) return null
 
   return (
-    <div className={cx('border-b border-line pb-4', className)}>
-      {user.avatarUrl ? (
-        <img
-          src={asset(user.avatarUrl)}
-          alt=""
-          className="size-[140px] rounded-full object-cover"
-          width={140}
-          height={140}
-        />
-      ) : (
-        <span
-          aria-hidden
-          className="grid size-[140px] place-items-center rounded-full bg-line text-[48px] font-bold text-ink-3"
+    /* Размеры с их кабинета: аватар 100, имя 21/26, рейтинг 18 полужирным и звёзды 20 —
+       у нас всё это было крупнее, и колонка перевешивала содержимое страницы. */
+    <div className={cx('border-b border-line pb-3.5', className)}>
+      <div className="relative w-[100px]">
+        {user.avatarUrl ? (
+          <img
+            src={asset(user.avatarUrl)}
+            alt=""
+            className="size-[100px] rounded-full object-cover"
+            width={100}
+            height={100}
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="grid size-[100px] place-items-center rounded-full bg-line text-[34px] font-bold text-ink-3"
+          >
+            {user.name.slice(0, 1).toUpperCase()}
+          </span>
+        )}
+
+        {/* Кнопка смены фотографии на углу аватара — как у Авито. Правка живёт в профиле. */}
+        <Link
+          to="/profile"
+          aria-label="Изменить фотографию"
+          title="Изменить фотографию"
+          className="absolute right-0 bottom-0 grid size-7 place-items-center rounded-full bg-line text-ink outline-offset-2 hover:bg-line-2 focus-visible:outline-2 focus-visible:outline-brand"
         >
-          {user.name.slice(0, 1).toUpperCase()}
-        </span>
-      )}
+          <IconCamera size={16} />
+        </Link>
+      </div>
 
       {/* Имя ведёт в профиль: там его правят и загружают фотографию. */}
       <Link
         to="/profile"
-        className="mt-4 block rounded-sm text-[24px] leading-7 font-bold outline-offset-4 hover:text-brand focus-visible:outline-2 focus-visible:outline-brand"
+        className="mt-3 block rounded-sm text-[21px] leading-[26px] font-bold outline-offset-4 hover:text-brand focus-visible:outline-2 focus-visible:outline-brand"
       >
         {user.name}
       </Link>
 
       {user.rating !== undefined && (
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <span className="text-[15px] leading-5 font-bold">
+        <div className="mt-1 flex items-center gap-2">
+          <span className="text-[18px] leading-6 font-bold">
             {user.rating.toLocaleString('ru-RU')}
           </span>
-          <Stars rating={user.rating} />
+          <Stars rating={user.rating} size={20} />
           {user.reviews !== undefined && (
-            <span className="text-[15px] leading-5 text-brand">{reviewsLabel(user.reviews)}</span>
+            <span className="text-[15px] leading-[22px] text-brand-hover">
+              {reviewsLabel(user.reviews)}
+            </span>
           )}
         </div>
       )}

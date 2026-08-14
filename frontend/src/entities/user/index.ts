@@ -12,4 +12,4 @@ export {
   reportUser,
 } from './api/userApi'
 export { REPORT_REASONS, REPORT_REASON_LABEL } from './model/dictionaries'
-export type { Profile, ProfileEdit, Report, ReportReason, Review } from './model/types'
+export type { BlockedUser, Profile, ProfileEdit, Report, ReportReason, Review } from './model/types'
