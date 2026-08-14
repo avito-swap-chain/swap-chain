@@ -255,12 +255,37 @@ func TestBlocklistCancelsPendingChainsAndKeepsTerminal(t *testing.T) {
 		t.Fatalf("block rows = %d, want 1", blockCount)
 	}
 
-	// Unblock removes the row; unblock of a never-blocked pair is a no-op.
+	if _, err := database.Exec(`
+		INSERT INTO matching_jobs (item_id,status,attempts,available_at,updated_at)
+		VALUES ($1,'DONE',1,now(),now()),($2,'DONE',1,now(),now())`, itemA, itemB); err != nil {
+		t.Fatalf("seed completed matching jobs: %v", err)
+	}
+
+	// Unblock removes the row and rechecks both users' currently matching items.
 	if err := repository.Unblock(ctx, userA, userB); err != nil {
 		t.Fatalf("unblock: %v", err)
 	}
+	var pendingJobs int
+	if err := database.QueryRow(`SELECT count(*) FROM matching_jobs WHERE item_id IN ($1,$2) AND status='PENDING' AND attempts=0`, itemA, itemB).Scan(&pendingJobs); err != nil {
+		t.Fatalf("count rescheduled jobs: %v", err)
+	}
+	if pendingJobs != 2 {
+		t.Fatalf("rescheduled jobs = %d, want 2", pendingJobs)
+	}
+
+	// A no-op repeat must not restart already completed work again.
+	if _, err := database.Exec(`UPDATE matching_jobs SET status='DONE' WHERE item_id=$1`, itemA); err != nil {
+		t.Fatalf("complete matching job: %v", err)
+	}
 	if err := repository.Unblock(ctx, userA, userB); err != nil {
 		t.Fatalf("unblock never-blocked: %v", err)
+	}
+	var repeatedStatus string
+	if err := database.QueryRow(`SELECT status::text FROM matching_jobs WHERE item_id=$1`, itemA).Scan(&repeatedStatus); err != nil {
+		t.Fatalf("load repeated job status: %v", err)
+	}
+	if repeatedStatus != "DONE" {
+		t.Fatalf("no-op unblock restarted job with status %q", repeatedStatus)
 	}
 	if err := repository.Unblock(ctx, userA, 9_999_999); !errors.Is(err, blocklistmodel.ErrTargetNotFound) {
 		t.Fatalf("unblock missing target error = %v, want ErrTargetNotFound", err)

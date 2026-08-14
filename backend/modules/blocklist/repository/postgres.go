@@ -74,16 +74,34 @@ func (r *PostgreSQL) Block(ctx context.Context, blockerID, blockedID int64) (mod
 // Unblock removes a directed block. A never-blocked pair is a no-op; a missing
 // target user is reported as not found.
 func (r *PostgreSQL) Unblock(ctx context.Context, blockerID, blockedID int64) error {
-	queries := db.New(r.database)
-	exists, err := queries.UserExists(ctx, blockedID)
+	tx, err := r.database.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("check blocked user exists: %w", err)
+		return fmt.Errorf("begin unblock: %w", err)
 	}
-	if !exists {
-		return model.ErrTargetNotFound
+	defer func() { _ = tx.Rollback() }()
+
+	if err := lockUserPair(ctx, tx, blockerID, blockedID); err != nil {
+		return err
 	}
-	if _, err := queries.UnblockUser(ctx, db.UnblockUserParams{BlockerID: blockerID, BlockedID: blockedID}); err != nil {
+	queries := db.New(tx)
+	deleted, err := queries.UnblockUser(ctx, db.UnblockUserParams{BlockerID: blockerID, BlockedID: blockedID})
+	if err != nil {
 		return fmt.Errorf("unblock user: %w", err)
+	}
+	if deleted > 0 {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO matching_jobs (item_id, status, attempts, available_at, locked_at, last_error, updated_at)
+			SELECT id, 'PENDING', 0, now(), NULL, NULL, now()
+			FROM items
+			WHERE user_id IN ($1, $2) AND status = 'MATCHING'
+			ON CONFLICT (item_id) DO UPDATE
+			SET status='PENDING', attempts=0, available_at=now(), locked_at=NULL,
+			    last_error=NULL, updated_at=now()`, blockerID, blockedID); err != nil {
+			return fmt.Errorf("schedule matching after unblock: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit unblock: %w", err)
 	}
 	return nil
 }
